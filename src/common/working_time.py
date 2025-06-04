@@ -101,6 +101,15 @@ def _get_attendance_day(t):
         return (t - timedelta(days=1)).date()
     else:
         return None  # 2:00-8:00无效
+    
+def _format_duration(hours):
+    """格式化时长输出：超过24小时转换为天+小时格式"""
+    if hours < 24:
+        return f"{hours:.1f} h"
+    else:
+        days = int(hours // 24)
+        remaining_hours = hours % 24
+        return f"{days} d {remaining_hours:.1f} h"
 
 def get_working_time(date=datetime.datetime.now().replace(hour=0, minute=0, second=0, microsecond=0), range=1):
     """
@@ -124,6 +133,8 @@ def get_working_time(date=datetime.datetime.now().replace(hour=0, minute=0, seco
     # 将结果转化为字符串
     result_str = f"{date.date()} 前 {range} 天的考勤数据如下: \n"
     for name, value in sorted_result.items():
-        result_str += f"{name}-考勤时长: {value:.1f}\n"
+        # 使用新的格式化函数
+        formatted_duration = _format_duration(value)
+        result_str += f"{name}-考勤时长: {formatted_duration}\n"
 
     return result_str
