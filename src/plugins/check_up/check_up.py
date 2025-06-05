@@ -9,28 +9,24 @@ from nonebot import require
 from nonebot import get_bot
 require("nonebot_plugin_apscheduler")
 from nonebot_plugin_apscheduler import scheduler
+from nonebot import logger
 
 from ...common import get_working_time
 from .config import Config
 
 __plugin_meta__ = PluginMetadata(
     name="check_up",
-    description="",
+    description="考勤相关插件, 支持手动输入日期查看考勤情况, 同时会每日推送考勤情况",
     usage="",
     config=Config,
     supported_adapters={ "~onebot.v11" }
 )
 
-GROUP_IDS = [779245720]
-TIMING_HOUR = '02'
-TIMING_MINUTE = '00'
-TIMING_SECOND = '00'
-
 check_up_command = on_command(
     "考勤",
     aliases={"考勤状况", "今日考勤"},
-    priority=10,
-    block=True
+    priority=Config.priority,
+    block=Config.block
 )
 
 @check_up_command.handle()
@@ -70,19 +66,20 @@ async def check_up(bot: Bot, event: MessageEvent, args: Message = CommandArg()):
         await bot.send(event=event, message=result_msg)
         
     except Exception as e:
-        print(f"响应错误: {e}")
+        logger.opt(exception=True).warning("响应错误")
         await bot.send(event=event, message="响应失败")
 
 
 
-@scheduler.scheduled_job("cron", hour=TIMING_HOUR, minute=TIMING_MINUTE ,second=TIMING_SECOND)
+@scheduler.scheduled_job("cron", hour=Config.TIMING_HOUR, minute=Config.TIMING_MINUTE ,second=Config.TIMING_SECOND)
 async def daily_timing():
     """每天指定时间向指定群发送消息"""
     bot = get_bot()
 
     msg = get_working_time()
+    group_ids = Config.GROUP_IDS
 
-    for group_id in GROUP_IDS:
+    for group_id in group_ids:
         try:
             payload = {
                 "group_id": str(group_id),
@@ -97,4 +94,4 @@ async def daily_timing():
             }
             await bot.call_api("send_group_msg", **payload)
         except Exception as e:
-            print(f"发送消息到群 {group_id} 失败: {e}") 
+            logger.opt(exception=True).warning(f"发送消息到群 {group_id} 失败") 
