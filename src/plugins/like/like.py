@@ -1,8 +1,12 @@
 from nonebot import Bot, on_command
 from nonebot.plugin import PluginMetadata
 from nonebot.adapters.onebot.v11 import MessageEvent, GroupMessageEvent, PrivateMessageEvent
+from nonebot import get_driver
 
 from .config import Config
+
+global_config = get_driver().config
+plugin_config = Config.parse_obj(global_config.dict())
 
 __plugin_meta__ = PluginMetadata(
     name="like",
@@ -26,7 +30,7 @@ async def like_handle(bot: Bot, event: MessageEvent):
     try:
         await bot.call_api("send_like", **{
             "user_id": str(user_id),
-            "times": Config.like_time
+            "times": plugin_config.like_time
         })
 
         await bot.send(event=event, message=f"✅ 成功点赞, 10个赞收好")

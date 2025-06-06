@@ -10,9 +10,13 @@ from nonebot import get_bot
 require("nonebot_plugin_apscheduler")
 from nonebot_plugin_apscheduler import scheduler
 from nonebot import logger
+from nonebot import get_driver
 
 from ...common import get_working_time
 from .config import Config
+
+global_config = get_driver().config
+plugin_config = Config.parse_obj(global_config.dict())
 
 __plugin_meta__ = PluginMetadata(
     name="check_up",
@@ -25,8 +29,8 @@ __plugin_meta__ = PluginMetadata(
 check_up_command = on_command(
     "考勤",
     aliases={"考勤状况", "今日考勤"},
-    priority=Config.priority,
-    block=Config.block
+    priority=plugin_config.priority,
+    block=plugin_config.block
 )
 
 @check_up_command.handle()
@@ -34,7 +38,7 @@ async def check_up(bot: Bot, event: MessageEvent, args: Message = CommandArg()):
     try:
         # 初始化参数变量
         date_val = None # 目标类型：datetime 或 None
-        range_val = None # 目标类型：int 或 None
+        range_val = 1 # 目标类型：int 或 None
 
         # 提取原始参数并分割（参数用空格分隔）
         raw_args = args.extract_plain_text().strip()
@@ -71,13 +75,13 @@ async def check_up(bot: Bot, event: MessageEvent, args: Message = CommandArg()):
 
 
 
-@scheduler.scheduled_job("cron", hour=Config.TIMING_HOUR, minute=Config.TIMING_MINUTE ,second=Config.TIMING_SECOND)
+@scheduler.scheduled_job("cron", hour=plugin_config.TIMING_HOUR, minute=plugin_config.TIMING_MINUTE ,second=plugin_config.TIMING_SECOND)
 async def daily_timing():
     """每天指定时间向指定群发送消息"""
     bot = get_bot()
 
     msg = get_working_time()
-    group_ids = Config.GROUP_IDS
+    group_ids = plugin_config.GROUP_IDS
 
     for group_id in group_ids:
         try:
