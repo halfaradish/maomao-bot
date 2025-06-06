@@ -1,16 +1,22 @@
+import nonebot
 from nonebot import Bot, on_command
 from nonebot.plugin import PluginMetadata
 from nonebot.adapters.onebot.v11 import MessageEvent, GroupMessageEvent, PrivateMessageEvent
 from nonebot.adapters import Message
 from nonebot.params import CommandArg
 from datetime import datetime
+from nonebot import require
+from nonebot import get_bot
+require("nonebot_plugin_apscheduler")
+from nonebot_plugin_apscheduler import scheduler
+from nonebot import logger
 
 from ...common import get_working_time
 from .config import Config
 
 __plugin_meta__ = PluginMetadata(
     name="check_up",
-    description="",
+    description="考勤相关插件, 支持手动输入日期查看考勤情况, 同时会每日推送考勤情况",
     usage="",
     config=Config,
     supported_adapters={ "~onebot.v11" }
@@ -19,8 +25,8 @@ __plugin_meta__ = PluginMetadata(
 check_up_command = on_command(
     "考勤",
     aliases={"考勤状况", "今日考勤"},
-    priority=10,
-    block=True
+    priority=Config.priority,
+    block=Config.block
 )
 
 @check_up_command.handle()
@@ -30,8 +36,9 @@ async def check_up(bot: Bot, event: MessageEvent, args: Message = CommandArg()):
         date_val = None # 目标类型：datetime 或 None
         range_val = None # 目标类型：int 或 None
 
-        # # 提取原始参数并分割（参数用空格分隔）
+        # 提取原始参数并分割（参数用空格分隔）
         raw_args = args.extract_plain_text().strip()
+        raw_args = str(raw_args)
         params = raw_args.split() if raw_args else []
 
         # 校验参数数量
@@ -59,7 +66,32 @@ async def check_up(bot: Bot, event: MessageEvent, args: Message = CommandArg()):
         await bot.send(event=event, message=result_msg)
         
     except Exception as e:
-        print(f"响应错误: {e}")
+        logger.opt(exception=True).warning("响应错误")
         await bot.send(event=event, message="响应失败")
 
-    
+
+
+@scheduler.scheduled_job("cron", hour=Config.TIMING_HOUR, minute=Config.TIMING_MINUTE ,second=Config.TIMING_SECOND)
+async def daily_timing():
+    """每天指定时间向指定群发送消息"""
+    bot = get_bot()
+
+    msg = get_working_time()
+    group_ids = Config.GROUP_IDS
+
+    for group_id in group_ids:
+        try:
+            payload = {
+                "group_id": str(group_id),
+                "message": [
+                    {
+                        "type": "text",
+                        "data": {
+                            "text": msg
+                        }
+                    }
+                ]
+            }
+            await bot.call_api("send_group_msg", **payload)
+        except Exception as e:
+            logger.opt(exception=True).warning(f"发送消息到群 {group_id} 失败") 

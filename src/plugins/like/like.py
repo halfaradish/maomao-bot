@@ -26,7 +26,7 @@ async def like_handle(bot: Bot, event: MessageEvent):
     try:
         await bot.call_api("send_like", **{
             "user_id": str(user_id),
-            "times": 10
+            "times": Config.like_time
         })
 
         await bot.send(event=event, message=f"✅ 成功点赞, 10个赞收好")
