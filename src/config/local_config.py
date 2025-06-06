@@ -17,5 +17,7 @@ class IcpcDBConfig:
 
 
 class CheckUpDay:
-    DAY_START = int(os.getenv('DAY_START') or 8) # 表示第一天的八点
-    DAY_END = int(os.getenv('DAY_END') or 2) # 表示第二天的两点
+    # 表示第一天的八点
+    DAY_START = int(os.getenv('DAY_START') or 8)
+    # 表示第二天的两点
+    DAY_END = int(os.getenv('DAY_END') or 2)
