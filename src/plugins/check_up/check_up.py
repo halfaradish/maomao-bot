@@ -42,7 +42,6 @@ async def check_up(bot: Bot, event: MessageEvent, args: Message = CommandArg()):
 
         # 提取原始参数并分割（参数用空格分隔）
         raw_args = args.extract_plain_text().strip()
-        raw_args = str(raw_args)
         params = raw_args.split() if raw_args else []
 
         # 校验参数数量
