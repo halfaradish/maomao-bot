@@ -35,4 +35,4 @@ async def like_handle(bot: Bot, event: MessageEvent):
 
         await bot.send(event=event, message=f"✅ 成功点赞, 10个赞收好")
     except Exception as e:
-        await bot.send(event=event, message=f"❌ 点赞失败, 今日已达上限")
+        await bot.send(event=event, message=f"❌ 点赞失败: {e}")
