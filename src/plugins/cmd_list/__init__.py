@@ -32,8 +32,9 @@ cmd_list = on_command(
 @cmd_list.handle()
 async def _(bot: Bot, event: MessageEvent, args: Message = CommandArg()):
     try:
-        cmd_list_msg = plugin_config.user_msg + plugin_config.editor_msg + plugin_config.admin_msg
-        await bot.send(event=event, message=cmd_list_msg)
+        cmd_info_list = plugin_config.user_msg + plugin_config.editor_msg + plugin_config.admin_msg
+        cmd_info = "\n".join(cmd_info_list)
+        await bot.send(event=event, message=cmd_info)
     except Exception as e:
         logger.opt(exception=True).warning("响应失败")
-        await bot.send(event=event, message="响应失败")
+        await bot.send(event=event, message=f"响应失败: {e}")

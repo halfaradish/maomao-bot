@@ -8,9 +8,13 @@ class Config(BaseModel):
     # 是否阻塞
     block: bool = True
 
-    user_msg: str = """/cmd 列出所有命令
-    /赞我 点赞10次"""
+    user_msg: list = [
+        "/cmd 列出所有命令",
+        "/赞我 点赞10次"
+    ]
 
-    editor_msg: str = "/考勤 查看考勤情况(yyyy-mm-dd range)"
+    editor_msg: list = [
+        "/考勤 查看考勤情况"
+    ]
 
-    admin_msg: str = ''
+    admin_msg: list = []
