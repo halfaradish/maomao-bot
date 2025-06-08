@@ -31,6 +31,7 @@ async def _(bot: Bot, event: MessageEvent, args: Message = CommandArg()):
     try:
         cmd_info_list = plugin_config.user_msg + plugin_config.editor_msg + plugin_config.admin_msg
         cmd_info = "\n".join(cmd_info_list)
+        cmd_info = plugin_config.DEFAULT_MSG + cmd_info
         await bot.send(event=event, message=cmd_info)
     except Exception as e:
         logger.opt(exception=True).warning("[cmd_list]响应失败")

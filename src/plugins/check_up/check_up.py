@@ -23,7 +23,7 @@ __plugin_meta__ = PluginMetadata(
 
 check_up_command = on_command(
     "考勤",
-    aliases={"考勤状况", "今日考勤", "check"},
+    aliases={"考勤状况", "check"},
     priority=plugin_config.priority,
     block=plugin_config.block
 )

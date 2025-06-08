@@ -8,6 +8,13 @@ class Config(BaseModel):
     # 是否阻塞
     block: bool = True
 
+    DEFAULT_MSG: str = (
+        "/cmd: 列出所有命令\n"
+        "[别名]\n"
+        "/命令; /help; /帮助\n"
+        "[命令列表]\n"
+    )
+
     user_msg: list = [
         "/cmd 列出所有命令",
         "/赞我 点赞10次"
