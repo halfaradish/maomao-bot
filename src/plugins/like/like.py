@@ -22,24 +22,31 @@ like_command = on_command(
     block=True
 )
 
-@like_command.handle()
-async def like_handle(bot: Bot, event: MessageEvent):
-    user_id = event.user_id
-
+async def send_like(bot: Bot, user_id):
+    """点赞函数"""
+    count = 0
     try:
-        # 尝试给指定用户点赞 50 次
         for i in range(5):
             await bot.call_api("send_like", **{
                 "user_id": str(user_id),
                 "times": plugin_config.like_time
             })
             count += 10
-            logger.opt(exception=True).info(f"给 {event.sender.user_id} 点赞成功, 当前点赞次数:{count}")
+            logger.opt(exception=True).info(f"给 {user_id} 点赞成功, 当前点赞次数:{count}")
+    except Exception as e:
+        logger.opt(exception=True).error(f"给 {user_id} 点赞失败: {e}")
+    return count
 
+@like_command.handle()
+async def like_handle(bot: Bot, event: MessageEvent):
+    user_id = event.user_id
+    nickname = event.sender.nickname
+
+    # 尝试给指定用户点赞 50 次
+    if user_id:
+        count = await send_like(bot, user_id)
         # 判断是否点赞成功
         if count != 0:
-            await bot.send(event=event, message=f"已经给 '{event.sender.nickname}' 点赞 {count} 次\n点赞的送达可能会有延迟, 如果失败了可以添加好友再试")
+            await bot.send(event=event, message=f"已经给 '{nickname}' 点赞 {count} 次\n点赞的送达可能会有延迟, 如果失败了可以添加好友再试")
         else:
-            await bot.send(event=event, message=f"'{event.sender.nickname}' , 给不了更多赞了哦")
-    except Exception as e:
-        logger.opt(exception=True).error(f"给 {event.sender.nickname}: {event.sender.user_id} 点赞失败: {e}")
+            await bot.send(event=event, message=f"'{nickname}' , 给不了更多赞了哦")
