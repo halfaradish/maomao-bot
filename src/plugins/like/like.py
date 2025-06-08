@@ -1,7 +1,6 @@
-from nonebot import Bot, on_command
+from nonebot import Bot, on_command, get_driver, logger
 from nonebot.plugin import PluginMetadata
-from nonebot.adapters.onebot.v11 import MessageEvent, GroupMessageEvent, PrivateMessageEvent
-from nonebot import get_driver
+from nonebot.adapters.onebot.v11 import MessageEvent
 
 from .config import Config
 
@@ -28,11 +27,19 @@ async def like_handle(bot: Bot, event: MessageEvent):
     user_id = event.user_id
 
     try:
-        await bot.call_api("send_like", **{
-            "user_id": str(user_id),
-            "times": plugin_config.like_time
-        })
+        # 尝试给指定用户点赞 50 次
+        for i in range(5):
+            await bot.call_api("send_like", **{
+                "user_id": str(user_id),
+                "times": plugin_config.like_time
+            })
+            count += 10
+            logger.opt(exception=True).info(f"给 {event.sender.user_id} 点赞成功, 当前点赞次数:{count}")
 
-        await bot.send(event=event, message=f"✅ 成功点赞, 10个赞收好")
+        # 判断是否点赞成功
+        if count != 0:
+            await bot.send(event=event, message=f"已经给 '{event.sender.nickname}' 点赞 {count} 次\n点赞的送达可能会有延迟, 如果失败了可以添加好友再试")
+        else:
+            await bot.send(event=event, message=f"'{event.sender.nickname}' , 给不了更多赞了哦")
     except Exception as e:
-        await bot.send(event=event, message=f"❌ 点赞失败: {e}")
+        logger.opt(exception=True).error(f"给 {event.sender.nickname}: {event.sender.user_id} 点赞失败: {e}")
