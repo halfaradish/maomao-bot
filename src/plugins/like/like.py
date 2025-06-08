@@ -1,11 +1,10 @@
-from nonebot import Bot, on_command, get_driver, logger
+from nonebot import Bot, on_command, logger, get_plugin_config
 from nonebot.plugin import PluginMetadata
 from nonebot.adapters.onebot.v11 import MessageEvent
 
 from .config import Config
 
-global_config = get_driver().config
-plugin_config = Config.parse_obj(global_config.dict())
+plugin_config = get_plugin_config(Config)
 
 __plugin_meta__ = PluginMetadata(
     name="like",
@@ -18,8 +17,8 @@ __plugin_meta__ = PluginMetadata(
 like_command = on_command(
     "赞我",
     aliases={"超我", "超市我", "点赞"},
-    priority=10,
-    block=True
+    priority=plugin_config.priority,
+    block=plugin_config.block
 )
 
 async def send_like(bot: Bot, user_id):

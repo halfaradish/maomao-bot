@@ -1,4 +1,4 @@
-from nonebot import get_plugin_config, Bot, on_command, logger, get_driver
+from nonebot import get_plugin_config, Bot, on_command, logger, get_plugin_config
 from nonebot.plugin import PluginMetadata
 from nonebot.adapters.onebot.v11 import MessageEvent
 from nonebot.adapters import Message
@@ -6,8 +6,9 @@ from nonebot.params import CommandArg
 
 from .config import Config
 
-global_config = get_driver().config
-plugin_config = Config.parse_obj(global_config.dict())
+# global_config = get_driver().config
+# plugin_config = Config.parse_obj(global_config.dict())
+plugin_config = get_plugin_config(Config)
 
 __plugin_meta__ = PluginMetadata(
     name="cmd_list",
