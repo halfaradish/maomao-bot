@@ -1,13 +1,10 @@
-from nonebot import get_plugin_config, Bot, on_command
+from nonebot import get_plugin_config, Bot, on_command, logger, get_driver
 from nonebot.plugin import PluginMetadata
-from nonebot.adapters.onebot.v11 import MessageEvent, GroupMessageEvent, PrivateMessageEvent
+from nonebot.adapters.onebot.v11 import MessageEvent
 from nonebot.adapters import Message
 from nonebot.params import CommandArg
-from nonebot import logger
-from nonebot import get_driver
 
 from .config import Config
-from ...config import local_config
 
 global_config = get_driver().config
 plugin_config = Config.parse_obj(global_config.dict())
@@ -36,5 +33,5 @@ async def _(bot: Bot, event: MessageEvent, args: Message = CommandArg()):
         cmd_info = "\n".join(cmd_info_list)
         await bot.send(event=event, message=cmd_info)
     except Exception as e:
-        logger.opt(exception=True).warning("响应失败")
-        await bot.send(event=event, message=f"响应失败: {e}")
+        logger.opt(exception=True).warning("[cmd_list]响应失败")
+        await bot.send(event=event, message=f"响应失败:\n{e}")

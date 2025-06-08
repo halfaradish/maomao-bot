@@ -1,6 +1,6 @@
-from nonebot import Bot, on_command, get_bot, logger, get_driver
+from nonebot import Bot, on_command, logger, get_driver
 from nonebot.plugin import PluginMetadata
-from nonebot.adapters.onebot.v11 import MessageEvent, GroupMessageEvent, PrivateMessageEvent
+from nonebot.adapters.onebot.v11 import MessageEvent
 from nonebot.adapters import Message
 from nonebot.params import CommandArg
 
@@ -37,5 +37,5 @@ async def _(bot: Bot, event: MessageEvent, args: Message = CommandArg()):
             await bot.send(event=event, message=get_one_problem_by_random())
 
     except Exception as e:
-        logger.opt(exception=True).warning("/duel 响应错误")
-        await bot.send(event=event, message=f"/duel 响应错误: {e}")
+        logger.opt(exception=True).warning("[duel]响应错误")
+        await bot.send(event=event, message=f"响应错误:\n{e}")
