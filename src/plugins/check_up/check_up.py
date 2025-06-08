@@ -28,7 +28,7 @@ __plugin_meta__ = PluginMetadata(
 
 check_up_command = on_command(
     "考勤",
-    aliases={"考勤状况", "今日考勤"},
+    aliases={"考勤状况", "今日考勤", "check"},
     priority=plugin_config.priority,
     block=plugin_config.block
 )
@@ -44,6 +44,10 @@ async def check_up(bot: Bot, event: MessageEvent, args: Message = CommandArg()):
         raw_args = args.extract_plain_text().strip()
         params = raw_args.split() if raw_args else []
 
+        if not params:
+            await bot.send(event=event, message=plugin_config.DEFAULT_MSG)
+            return
+
         # 校验参数数量
         if len(params) > 2:
             await bot.send(event=event, message="参数过多！最多支持 2 个参数(date 和 range)")
@@ -55,13 +59,13 @@ async def check_up(bot: Bot, event: MessageEvent, args: Message = CommandArg()):
                 # 尝试按指定格式解析日期（如 YYYY-MM-DD）
                 date_val = datetime.strptime(date_str, "%Y-%m-%d")
             except ValueError:
-                await bot.send(event=event, message=f"日期格式错误！请使用 YYYY-MM-DD 格式（当前：{date_str}）")
+                await bot.send(event=event, message=f"日期格式错误! 请确保数据合法, 并使用了 YYYY-MM-DD 格式(当前: {date_str})")
                 return
         # 处理 range 参数（字符串转 int）
         if len(params) == 2:
             range_str = params[1]
             if not range_str.isdigit():
-                await bot.send(event=event, message=f"range 参数 '{range_str}' 需为数字")
+                await bot.send(event=event, message=f"请确保 range 参数 '{range_str}' 为合法的正整数")
                 return
             range_val = int(range_str)  # 手动转为 int
         
@@ -69,8 +73,8 @@ async def check_up(bot: Bot, event: MessageEvent, args: Message = CommandArg()):
         await bot.send(event=event, message=result_msg)
         
     except Exception as e:
-        logger.opt(exception=True).warning("响应错误")
-        await bot.send(event=event, message="响应失败")
+        logger.opt(exception=True).warning("[考勤]响应错误")
+        await bot.send(event=event, message=f"响应失败:\n{e}")
 
 
 
