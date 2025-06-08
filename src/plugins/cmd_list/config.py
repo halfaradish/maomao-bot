@@ -17,11 +17,12 @@ class Config(BaseModel):
 
     user_msg: list = [
         "/cmd 列出所有命令",
-        "/赞我 点赞10次"
+        "/赞我 给QQ资料卡点赞"
     ]
 
     editor_msg: list = [
-        "/考勤 查看考勤情况"
+        "/考勤 查看考勤情况",
+        "/duel cf推题"
     ]
 
     admin_msg: list = []

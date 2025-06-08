@@ -124,14 +124,14 @@ def get_working_time(date=datetime.datetime.now().replace(hour=0, minute=0, seco
     # 获取对应范围的数据
     records = _get_range_records(range_start, range_end)
     if not records:
-        return f"从 {date.date()} 起 {range} 天内没有数据"
+        return f"从 {date.date()} 日上溯 {range} 天内没有数据"
     # 根据数据计算结果
     result = _calculate_attendance(records)
     # 排序
     sorted_result = dict(sorted(result.items(), key=lambda item: item[1], reverse=True))
     
     # 将结果转化为字符串
-    result_str = f"从 {date.date()} 起 {range} 天内的考勤数据如下: \n"
+    result_str = f"从 {date.date()} 日上溯 {range} 天内的考勤数据如下: \n"
     for name, value in sorted_result.items():
         # 使用新的格式化函数
         formatted_duration = _format_duration(value)
