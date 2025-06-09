@@ -105,9 +105,6 @@ async def check_up(bot: Bot, event: MessageEvent, args: Message = CommandArg()):
         await bot.send(event=event, message=result_msg)
     except Exception as e:
         logger.opt(exception=True).warning("[考勤]响应错误")
-        await bot.send(event=event, message=f"响应失败:\n{e}")
-
-
 
 @scheduler.scheduled_job("cron", hour=plugin_config.TIMING_HOUR, minute=plugin_config.TIMING_MINUTE ,second=plugin_config.TIMING_SECOND)
 async def daily_timing():
