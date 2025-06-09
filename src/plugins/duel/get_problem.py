@@ -19,16 +19,14 @@ def _generate_cf_url(problem_id: str) -> str:
         problem_id: 题目ID, 例如 "1845A" 或 "1A"
     
     Returns:
-        对应的题目URL, 例如 "https://codeforces.com/problemset/problem/18/45A"
+        对应的题目URL, 例如 "https://codeforces.com/problemset/problem/1845/A"
     """
-    if len(problem_id) < 2:
-        contest_id_part = problem_id.zfill(2)
-        problem_index_part = ''
-    else:
-        contest_id_part = problem_id[:2]
-        problem_index_part = problem_id[2:]
-
-    return f"https://codeforces.com/problemset/problem/{contest_id_part}/{problem_index_part}"
+    for i, char in enumerate(problem_id):
+        if char.isalpha():
+            contest_id_part = problem_id[:i]
+            problem_index_part = problem_id[i:]
+            return f"https://codeforces.com/problemset/problem/{contest_id_part}/{problem_index_part}"
+    return problem_id
 
 def get_one_problem_by_random():
     """
