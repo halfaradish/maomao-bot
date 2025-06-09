@@ -2,8 +2,8 @@ import datetime
 from collections import defaultdict
 from datetime import timedelta
 
-from ..config import CheckUpDay
-from . import get_icpc_db_connection
+from ...config import CheckUpDay
+from ...common import get_icpc_db_connection
 
 day_start_hours = CheckUpDay.DAY_START
 day_end_hours = CheckUpDay.DAY_END

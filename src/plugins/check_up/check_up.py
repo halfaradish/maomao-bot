@@ -7,7 +7,7 @@ require("nonebot_plugin_apscheduler")
 from nonebot_plugin_apscheduler import scheduler
 from datetime import datetime
 
-from ...common import get_working_time
+from .working_time import get_working_time
 from .config import Config
 
 plugin_config = get_plugin_config(Config)
