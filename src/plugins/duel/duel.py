@@ -44,7 +44,7 @@ async def _(bot: Bot, event: MessageEvent, args: Message = CommandArg()):
             await bot.send(event=event, message=get_one_problem_by_random())
             return
         elif params[0] == 'problem':
-            rating = vaildate_rating(bot=bot, event=event, rating_str=params[1])
+            rating = await vaildate_rating(bot=bot, event=event, rating_str=params[1])
             tags = []
             for param in params[2:]:
                 tags.append(param)
