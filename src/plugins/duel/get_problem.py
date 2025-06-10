@@ -53,7 +53,7 @@ def get_one_problem_by_random():
     """
     # 获取题库中所有题目id
     problems = _get_all_problem_id()
-    if problems is None:
+    if not problems:
         return "无法从题库中找到题目"
     # 随机选取一个id
     problem = random.choice(problems)
@@ -67,7 +67,7 @@ def get_problem_id_by_rating_tags(rating: int, tags: List[str]):
     根据rating和tags随机获取Codeforces题库中的一题url
     """
     problems = _match_id_by_rating_tags(rating=rating, tags=tags)
-    if problems is None:
+    if not problems:
         return "无法根据所给的rating和tags找到题目: {rating} {tags}"
     problem = random.choice(problems)
     problem_url = _generate_cf_url(problem['id'])
