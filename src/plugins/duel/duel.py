@@ -34,7 +34,7 @@ async def vaildate_rating(bot: Bot, event: MessageEvent, rating_str: str):
 async def _(bot: Bot, event: MessageEvent, args: Message = CommandArg()):
     try:
         raw_args = args.extract_plain_text().strip()
-        params = raw_args.strip() if raw_args else []
+        params = raw_args.split() if raw_args else []
 
         if not params:
             await bot.send(event=event, message=plugin_config.DEFAULT_MSG)
