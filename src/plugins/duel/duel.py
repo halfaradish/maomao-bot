@@ -30,10 +30,12 @@ async def _(bot: Bot, event: MessageEvent, args: Message = CommandArg()):
         params = raw_args.strip() if raw_args else []
 
         if not params:
-            raise TypeError("没有参数, 请输入参数")
+            await bot.send(event=event, message=plugin_config.DEFAULT_MSG)
+            return
 
         if params[0] == 'daily' or 'day':
             await bot.send(event=event, message=get_one_problem_by_random())
+            return
 
     except Exception as e:
         logger.opt(exception=True).warning("[duel]响应错误")

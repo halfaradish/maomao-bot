@@ -9,9 +9,7 @@ class Config(BaseModel):
     block: bool = True
 
     DEFAULT_MSG: str = (
-        "/cmd: 列出所有命令\n"
-        "[别名]\n"
-        "/命令; /help; /帮助\n"
+        "[cmd/命令/help/帮助]: 列出所有命令\n"
         "[命令列表]\n"
     )
 

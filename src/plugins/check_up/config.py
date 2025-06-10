@@ -19,9 +19,7 @@ class Config(BaseModel):
 
     # /考勤 默认提示词
     DEFAULT_MSG: str = (
-        "/考勤 命令使用方法\n"
-        "[别名]\n"
-        "/考勤状况; /check\n"
+        "[考勤/考勤状况/check] 命令使用方法\n"
         "[参数]:\n"
         "日期(date): 起始日期, 格式(yyyy-mm-dd)\n"
         "范围(range): 展示从起始日期开始上溯x天的考勤范围\n"
