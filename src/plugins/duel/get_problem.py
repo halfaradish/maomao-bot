@@ -68,7 +68,7 @@ def get_problem_id_by_rating_tags(rating: int, tags: List[str]):
     """
     problems = _match_id_by_rating_tags(rating=rating, tags=tags)
     if not problems:
-        return "无法根据所给的rating和tags找到题目: {rating} {tags}"
+        return f"无法根据所给的rating和tags找到题目: {rating} {tags}"
     problem = random.choice(problems)
     problem_url = _generate_cf_url(problem['id'])
     return problem_url
