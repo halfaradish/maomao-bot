@@ -19,7 +19,7 @@ __plugin_meta__ = PluginMetadata(
 
 duel_command = on_command(
     "duel",
-    aliases={"cf", "题目"},
+    aliases={"cf推题", "题目"},
     priority=plugin_config.priority,
     block=plugin_config.block
 )
