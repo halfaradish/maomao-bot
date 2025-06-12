@@ -1,16 +1,23 @@
 from pydantic import BaseModel
 from typing import List
-
+from ...common import JsonUtils
 
 class Config(BaseModel):
     """Plugin Config Here"""
+    @staticmethod
+    def load_json_to_group_id(filename: str = 'check_up.json') -> List[int]:
+        content = []
+        content, _=JsonUtils.read(filename, {})
+
+        return content['group_id']
+
     # 优先级
     priority: int = 10
     # 是否阻塞
     block: bool = True
 
     # 要发送定时消息的群
-    GROUP_IDS: List[int] = [779245720]
+    GROUP_IDS: List[int] = load_json_to_group_id()
     # 定时发送的时间
     TIMING_HOUR: str = '02'
     TIMING_MINUTE: str = '00'
