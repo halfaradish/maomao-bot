@@ -14,3 +14,6 @@ plugins = [
 ]
 plugin_dirs = ["src/plugins"]
 builtin_plugins = ["echo", "single_session"]
+
+[tool.nonebot.config]
+delay_enabled = true
