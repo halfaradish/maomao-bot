@@ -13,5 +13,5 @@ class Config(BaseModel):
         "[duel/cf推题] 命令使用方法\n"
         "[使用示例]\n"
         "> /duel daily  每日推题(随机推送一题)\n"
-        "> /duel problem *rating '*tags...'  随机匹配符合rating和tags的题。如\"duel problem 2300 'dp' 'binary search'\"\n"
+        "> /duel problem *rating '*tags...'  随机匹配符合rating和tags的题。如\"duel problem 2300 'dp' 'binary search'\""
     )

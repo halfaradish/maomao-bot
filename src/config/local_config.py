@@ -1,23 +1,32 @@
 import os
-from datetime import datetime
 from dotenv import load_dotenv
 
 load_dotenv()
 
 class Config:
-    HOST = os.getenv('HOST')
-    PORT = os.getenv('PORT')
+    HOST: str = os.getenv('HOST')
+    PORT: str = os.getenv('PORT')
 
 class IcpcDBConfig:
-    ICPC_DB_HOST = os.getenv('ICPC_DB_HOST') or 'localhost'
-    ICPC_DB_USER = os.getenv('ICPC_DB_USER') or 'root'
-    ICPC_DB_PASSWORD = os.getenv('ICPC_DB_PASSWORD') or ''
-    ICPC_DB_NAME = os.getenv('ICPC_DB_NAME') or ''
-    ICPC_DB_PORT = os.getenv('ICPC_DB_PORT') or 3306
+    ICPC_DB_HOST: str = os.getenv('ICPC_DB_HOST') or 'localhost'
+    ICPC_DB_USER: str = os.getenv('ICPC_DB_USER') or 'root'
+    ICPC_DB_PASSWORD: str = os.getenv('ICPC_DB_PASSWORD') or ''
+    ICPC_DB_NAME: str = os.getenv('ICPC_DB_NAME') or ''
+    ICPC_DB_PORT: int = os.getenv('ICPC_DB_PORT') or 3306
 
 
 class CheckUpDay:
     # 表示第一天的八点
-    DAY_START = int(os.getenv('DAY_START') or 8)
+    DAY_START: int = int(os.getenv('DAY_START') or 8)
     # 表示第二天的两点
-    DAY_END = int(os.getenv('DAY_END') or 2)
+    DAY_END: int = int(os.getenv('DAY_END') or 2)
+    # 定时发送的时间
+    TIMING_HOUR: str = '02'
+    TIMING_MINUTE: str = '00'
+    TIMING_SECOND: str = '00'
+
+class SleepConfig:
+    # 最短睡眠时间
+    MIN_SLEEP_TIME: float = os.getenv('MIN_SLEEP_TIME') or 0.3
+    # 最长睡眠时间
+    MAX_SLEEP_TIME: float = os.getenv('MAX_SLEEP_TIME') or 1.0

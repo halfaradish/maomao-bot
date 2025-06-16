@@ -1,5 +1,7 @@
 from pydantic import BaseModel
 from typing import List
+
+from ...config import CheckUpDay
 from ...common import JsonUtils
 
 class Config(BaseModel):
@@ -16,12 +18,17 @@ class Config(BaseModel):
     # 是否阻塞
     block: bool = True
 
+    # 考勤开始时间
+    DAY_START: int = CheckUpDay.DAY_START
+    # 考勤结束时间
+    DAY_END: int = CheckUpDay.DAY_END
+
     # 要发送定时消息的群
     GROUP_IDS: List[int] = load_json_to_group_id()
     # 定时发送的时间
-    TIMING_HOUR: str = '02'
-    TIMING_MINUTE: str = '00'
-    TIMING_SECOND: str = '00'
+    TIMING_HOUR: str = CheckUpDay.TIMING_HOUR
+    TIMING_MINUTE: str = CheckUpDay.TIMING_MINUTE
+    TIMING_SECOND: str = CheckUpDay.TIMING_SECOND
 
 
     # /考勤 默认提示词
