@@ -8,7 +8,7 @@ class Config(BaseModel):
 
     data_filename: str = 'shit_transport.json'
 
-    DEFAULT_MSG = (
+    DEFAULT_MSG: str = (
         "[搬史] 命令使用方法\n"
         "[示例]\n"
         "\"/搬史\" - 引用\回复 要搬的合并消息, 同时使用该命令, 即可将消息搬运到转发列表中的群组\n"
