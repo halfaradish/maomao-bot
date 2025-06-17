@@ -1,7 +1,8 @@
 from nonebot import on_command, logger, get_plugin_config
-from nonebot.adapters import Bot
+from nonebot.adapters import Bot, Message
 from nonebot.adapters.onebot.v11 import GROUP, GroupMessageEvent, Event
 from nonebot.plugin import PluginMetadata
+from nonebot.params import CommandArg
 from typing import List
 
 from .config import Config
@@ -32,8 +33,8 @@ def get_forward_groups() -> List[int]:
     return content['forward_groups']
 
 @transport_manual.handle()
-async def _(bot: Bot, evnet: GroupMessageEvent):
-    raw_args = evnet.get_plaintext().strip()
+async def _(bot: Bot, evnet: GroupMessageEvent, args: Message = CommandArg()):
+    raw_args = args.extract_plain_text().strip()
     params = raw_args.split() if raw_args else []
     try:
         # 如果没有参数
