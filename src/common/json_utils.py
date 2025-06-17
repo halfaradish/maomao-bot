@@ -8,9 +8,9 @@ class JsonUtils:
     """
     JSON 文件操作
     """
-    windows_relative_url = r".\src\data"
-    linux_relative_url = "./src/data"
-    macos_relative_url = "./src/data"
+    windows_relative_url = r".\data"
+    linux_relative_url = "./data"
+    macos_relative_url = "./data"
 
     @staticmethod
     def __pre_built_file(file: str, default: Optional[Union[str, dict, Any]] = None) -> bool:
@@ -50,7 +50,7 @@ class JsonUtils:
     def __get_relative_url(cls, filename: str):
         """根据操作系统, 获取文件相对文件路径"""
         os_name = platform.system()
-        logger.info(f"正在基于当前操作系统 {os_name} 构建所需的 json 文件 {filename}")
+        logger.info(f"正在构建 {filename} 在当前系统 {os_name} 下的相对路径")
         if os_name == "Windows":
             relative_url = cls.windows_relative_url
         elif os_name == "Linux":
@@ -88,3 +88,48 @@ class JsonUtils:
         except Exception as e:
             logger.opt(exception=True).warning(f"{file_url} 文件读取失败: {e}")
             return (default_value, is_new)
+        
+    @classmethod
+    def write(cls, filename: str, content: Union[dict, list, Any]) -> bool:
+        """
+        写入JSON文件
+
+        :param filename: 文件名（相对路径）
+        :param content: 要写入的内容
+        :return: 是否写入成功
+        """
+        file_url = cls.__get_relative_url(filename)
+
+        # 确保文件存在
+        # if not cls.__pre_built_file(file_url):
+        #     logger.error(f"无法创建或访问文件 {file_url}")
+        #     return False
+        cls.__pre_built_file(file_url)
+
+        try:
+            with open(file_url, "w", encoding="utf-8") as f:
+                json.dump(content, f, indent=4, ensure_ascii=False)
+            return True
+        except Exception as e:
+            logger.opt(exception=True).warning(f"{file_url} 文件写入失败: {e}")
+            return False
+        
+
+    @classmethod
+    def update(cls, filename: str, updates: Dict[str, Any]) -> bool:
+        """
+        更新JSON文件中的内容
+
+        :param filename: 文件名（相对路径）
+        :param updates: 要更新的内容
+        :return: 是否更新成功
+        """
+        content, _ = cls.read(filename)
+        
+        if not isinstance(content, dict):
+            logger.error(f"{filename} 文件内容不是字典，无法更新")
+            return False
+        
+        content.update(updates)
+        
+        return cls.write(filename, content)
