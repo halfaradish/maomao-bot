@@ -1,4 +1,4 @@
-from nonebot import on_regex, logger, get_plugin_config
+from nonebot import on_command, logger, get_plugin_config
 from nonebot.adapters import Bot
 from nonebot.adapters.onebot.v11 import GROUP, GroupMessageEvent, Event
 from nonebot.plugin import PluginMetadata
@@ -16,8 +16,9 @@ __plugin_meta__ = PluginMetadata(
     config=Config,
 )
 
-transport_manual = on_regex(
-    r'\b[^\w]*(搬|转|转发)\b',
+transport_manual = on_command(
+    "搬史",
+    aliases={"搬", "搬屎", "转发"},
     priority=plugin_config.priority,
     block=plugin_config.block
 )
