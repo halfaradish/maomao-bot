@@ -51,18 +51,36 @@ async def _(bot: Bot, evnet: GroupMessageEvent, args: Message = CommandArg()):
                 message_id=evnet.reply.message_id,
             )
 
-            # 重构消息节点
+            # 重构消息节点时添加字段检查
             messages = [
                 {
                     "type": "node",
                     "data": {
-                        "name": msg["sender"]["nickname"],
-                        "uin": msg["sender"]["user_id"],
-                        "content": msg["content"]
+                        "name": msg["sender"].get("nickname", "未知用户"),
+                        "uin": str(msg["sender"].get("user_id", "")),  # 确保uin是字符串类型
+                        "content": msg.get("content", "")  # 添加默认值防止KeyError
                     }
                 }
                 for msg in forward_msg["messages"]
+                if "sender" in msg  # 确保消息包含sender字段
             ]
+
+            # 添加有效性检查
+            if not any(msg["data"]["content"] for msg in messages):
+                await bot.send(event=evnet, message="合并转发消息内容无效")
+                return
+
+            if not messages:
+                await bot.send(event=evnet, message="合并转发消息内容为空")
+                return
+
+            try:
+                # 尝试序列化消息内容
+                json.dumps(messages)
+            except TypeError as e:
+                logger.error(f"消息序列化失败: {e}")
+                await bot.send(event=evnet, message="消息格式不合法")
+                return
 
             forward_groups = get_forward_groups()
             if not forward_groups:
@@ -75,7 +93,7 @@ async def _(bot: Bot, evnet: GroupMessageEvent, args: Message = CommandArg()):
                 await bot.call_api(
                     "send_group_forward_msg",
                     group_id=group_id,
-                    messages=messages  # 使用重构后的消息结构
+                    messages=[{"type": "node", "data": msg} for msg in messages]  # 显式指定消息类型
                 )
         elif params[0].lower() in ["list", "ls", "查看", "查询"]:
             """查看转发的群列表"""
