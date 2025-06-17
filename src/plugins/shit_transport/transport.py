@@ -51,6 +51,19 @@ async def _(bot: Bot, evnet: GroupMessageEvent, args: Message = CommandArg()):
                 message_id=evnet.reply.message_id,
             )
 
+            # 重构消息节点
+            messages = [
+                {
+                    "type": "node",
+                    "data": {
+                        "name": msg["sender"]["nickname"],
+                        "uin": msg["sender"]["user_id"],
+                        "content": msg["content"]
+                    }
+                }
+                for msg in forward_msg["messages"]
+            ]
+
             forward_groups = get_forward_groups()
             if not forward_groups:
                 await bot.send(event=evnet, message="没有配置转发的群组")
@@ -62,7 +75,7 @@ async def _(bot: Bot, evnet: GroupMessageEvent, args: Message = CommandArg()):
                 await bot.call_api(
                     "send_group_forward_msg",
                     group_id=group_id,
-                    messages=forward_msg['messages']
+                    messages=messages  # 使用重构后的消息结构
                 )
         elif params[0].lower() in ["list", "ls", "查看", "查询"]:
             """查看转发的群列表"""
