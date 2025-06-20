@@ -30,3 +30,11 @@ class SleepConfig:
     MIN_SLEEP_TIME: float = os.getenv('MIN_SLEEP_TIME') or 0.3
     # 最长睡眠时间
     MAX_SLEEP_TIME: float = os.getenv('MAX_SLEEP_TIME') or 1.0
+
+class QQControlConfig:
+    # QQ控制的主机地址
+    QQ_CONTROL_HOST: str = os.getenv('QQ_CONTROL_HOST') or 'localhost'
+    # QQ控制的端口
+    QQ_CONTROL_PORT: int = int(os.getenv('QQ_CONTROL_PORT') or 6097)
+    # QQ控制的令牌
+    QQ_CONTROL_TOKEN: str = os.getenv('QQ_CONTROL_TOKEN') or 'default_token'
