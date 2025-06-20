@@ -20,11 +20,13 @@ def _match_id_by_rating_tags(rating: int, tags: List[str]):
         FROM CF_contest_official
         WHERE rating = %s
         """
-        query_tags = "AND JSON_CONTAINS(tags, JSON_QUOTE(%s))\n"
+        # query_tags = "AND JSON_CONTAINS(tags, JSON_QUOTE(%s))\n"
+        query_tags = "AND JSON_SEARCH(LOWER(tags), 'all', %s) IS NOT NULL\n"
         if tags is not None:
-            for i in range(len(tags)):
+            for _ in range(len(tags)):
                 query += query_tags
-            records = db.execute(query, (rating, *tags)).fetchall()
+            tags = ['%' + tag.lower() + '%' for tag in tags]
+            records = db.execute(query, (rating, *tags)).fetchall() 
         else:
             records = db.execute(query, (rating,)).fetchall()
         return records
