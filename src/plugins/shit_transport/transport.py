@@ -87,6 +87,8 @@ def send_group_forward_msg(group_id: int, forward_msg: dict) -> None:
 async def _(bot: Bot, event: GroupMessageEvent, args: Message = CommandArg()):
     raw_args = args.extract_plain_text().strip()
     params = raw_args.split() if raw_args else []
+    logger.info(event.reply.message_id)
+    return
     try:
         # 如果没有参数
         if not params:
