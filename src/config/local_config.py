@@ -21,9 +21,9 @@ class CheckUpDay:
     # 表示第二天的两点
     DAY_END: int = int(os.getenv('DAY_END') or 2)
     # 定时发送的时间
-    TIMING_HOUR: str = '02'
-    TIMING_MINUTE: str = '00'
-    TIMING_SECOND: str = '00'
+    TIMING_HOUR: str = str(os.getenv('TIMING_HOUR', 10))
+    TIMING_MINUTE: str = str(os.getenv('TIMING_MINUTE', 30))
+    TIMING_SECOND: str = str(os.getenv('TIMING_SECOND', 00))
 
 class SleepConfig:
     # 最短睡眠时间

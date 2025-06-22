@@ -5,7 +5,7 @@ from nonebot.adapters import Message
 from nonebot.params import CommandArg
 require("nonebot_plugin_apscheduler")
 from nonebot_plugin_apscheduler import scheduler
-from datetime import datetime
+from datetime import datetime, timedelta
 
 from .working_time import get_working_time
 from .config import Config
@@ -110,8 +110,10 @@ async def check_up(bot: Bot, event: MessageEvent, args: Message = CommandArg()):
 async def daily_timing():
     """每天指定时间向指定群发送消息"""
     bot = get_bot()
+    date_val: datetime = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0) - timedelta(hours=24)
+    range_val: int = 1
 
-    msg = get_working_time()
+    msg = get_working_time(date=date_val, range=range_val)
     group_ids = plugin_config.GROUP_IDS
 
     for group_id in group_ids:
