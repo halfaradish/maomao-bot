@@ -33,12 +33,11 @@ def regex_search(str_list: list[str], pattern: str) -> list[str]:
             result.append(str)
     return result
 
-async def validate_rating(bot: Bot, event: MessageEvent, rating_str: str):
-    """判断rating是否为数字"""
-    if not rating_str.isdigit():
-        await bot.send(event=event, message=f"rating参数错误, 确保其为整数")
-        return None
-    return int(rating_str)
+def rating_or_tag(bot: Bot, event: MessageEvent, confirmed_str: str):
+    """判断是rating还是tag"""
+    if not confirmed_str.isdigit():
+        return confirmed_str
+    return int(confirmed_str)
 
 def text_msg_to_params(raw_args: str):
     # parts = re.findall(r"(?<!\\)'(.*?)(?<!\\)'|(?<!\\)\"(.*?)(?<!\\)\"|(\S+)", raw_args)
@@ -65,12 +64,42 @@ async def _(bot: Bot, event: MessageEvent, args: Message = CommandArg()):
             await bot.send(event=event, message=get_one_problem_by_random())
             return
         elif params[0] in ['problem', '题目']: # 第一个参数为 problem 时
-            rating = await validate_rating(bot=bot, event=event, rating_str=params[1])
-            tags = []
-            if len(params) > 2:
-                for param in params[2:]:
-                    tags.append(param)
-            await bot.send(event=event, message=get_problem_id_by_rating_tags(rating=rating, tags=tags))
+            problem_opt_params: str = params[1:]
+            if not problem_opt_params:
+                await bot.send(event=event, message=f"该命令可在 problem 后可添加一个 rating 参数和多个 tag 参数。如\"duel problem 2300 dp 'binary search'，并根据输入的参数推题\"")
+                return
+            rating = None
+            rating_cnt: int = 0
+            tags: list[str] = []
+            for opt_param in problem_opt_params:
+                if opt_param.isdigit():
+                    rating_cnt += 1
+                    if rating_cnt > 1:
+                        await bot.send(event=event, message=f"该命令只接收一个 rating 参数，请检查参数{problem_opt_params}")
+                        return
+                    rating = int(opt_param)
+                else:
+                    tags.append(opt_param)
+            if tags:
+                data, _ = JsonUtils.read(plugin_config.filename, {})
+                tags_quick_map: dict[str, list[str]] = data.get("quick_map", {})
+                for i in range(len(tags)):
+                    if tags[i] in tags_quick_map:
+                        tags[i] = tags_quick_map.get(tags[i], "")
+            res_msg = get_problem_id_by_rating_tags(rating=rating, tags=tags)
+            #region
+            # rating = rating_or_tag(bot=bot, event=event, confirmed_str=params[1])
+            # tags: list[str] = []
+            # if len(params) > 2:
+            #     for param in params[2:]:
+            #         tags.append(param)
+            #     data, _ = JsonUtils.read(plugin_config.filename, {})
+            #     tags_quick_map: dict[str, list[str]] = data.get("quick_map", {})
+            #     for i in range(len(tags)):
+            #         if tags[i] in tags_quick_map:  # 如果tags参数存在映射
+            #             tags[i] = tags_quick_map.get(tags[i], "")
+            #endregion
+            await bot.send(event=event, message=res_msg)
             return
         elif params[0] in ['map', '映射']: # 第一个参数为 map 时
             """映射相关操作"""
@@ -81,6 +110,7 @@ async def _(bot: Bot, event: MessageEvent, args: Message = CommandArg()):
             else:
                 data, _ = JsonUtils.read(plugin_config.filename, {}) # 提取json中的数据
                 tags_map: dict[str, list[str]] = data.get("map", {})
+                tags_quick_map: dict[str, str] = data.get("quick_map", {})
                 for key in tags_map:
                     if not isinstance(tags_map[key], list):
                         tags_map[key] = []
@@ -89,20 +119,28 @@ async def _(bot: Bot, event: MessageEvent, args: Message = CommandArg()):
                 if map_opt_params[0] in ['tags', '标签']:
                     for key in tags_map:
                         res_msg += f"{key}\n"
-                    await bot.send(event=event, message=res_msg)
+                    await bot.send(event=event, message=res_msg.strip())
+                    return
                 # 当map后面的参数为current时, 列出已经添加的映射
                 elif map_opt_params[0] in ['current', '现存', '现存标签']:
-                    for key in tags_map:
+                    for key in tags_map:  # 遍历 map 中的所有键
                         sub_msg = ""
                         values: list[str] = tags_map.get(key, "")
-                        for value in values:
-                            sub_msg += f"[{value}]"
-                        res_msg += f"{key} -> {sub_msg}\n"
-                    await bot.send(event=event, message=res_msg)
+                        if values:
+                            for value in values:
+                                sub_msg += f"[{value}]"
+                            res_msg += f"{key} -> {sub_msg}\n"
+                    if res_msg == "":
+                        res_msg = "当前没有任何标签映射，请使用\n/duel map add\n命令添加新的映射。"
+                    await bot.send(event=event, message=res_msg.strip())
+                    return
                 # 当map后面的参数为add时，实行添加映射的操作
                 elif map_opt_params[0] in ['add', '添加']:
-                    if len(map_opt_params) != 3:
-                        await bot.send(event=event, message=f"参数个数有误！！！\n该命令在add后面只接收两个参数，第一个为可映射的tag，第二个为tag的映射\n请检查当前参数：{map_opt_params}\n可以使用\"/duel map list\"查看可映射的tags")
+                    if len(map_opt_params) == 1:
+                        await bot.send(event=eval, message=f"该命令在 add 后接收两个参数，第一个参数是存在的可映射的 tag ，第二个参数是 tag 的映射。如\"duel map add 'binary search' 二分\"")
+                        return
+                    elif len(map_opt_params) != 3:
+                        await bot.send(event=event, message=f"参数个数有误！！！\n该命令在 add 后面只接收两个参数，请检查当前参数：{map_opt_params}\n可以使用命令\n/duel map add\n查看命令使用详细")
                         return
                     map_key = map_opt_params[1]
                     map_value = map_opt_params[2]
@@ -110,39 +148,57 @@ async def _(bot: Bot, event: MessageEvent, args: Message = CommandArg()):
                     if map_key not in tags_map:
                         may_mention_key: list[str] = regex_search(list(tags_map.keys()), map_key)
                         if not may_mention_key:
-                            await bot.send(event=event, message=f"输入的参数 '{map_key}' 不在标准的 tags 中，请输入\"/duel map list\"查看可映射的tags")
+                            await bot.send(event=event, message=f"输入的参数 '{map_key}' 不在标准的 tags 中，请输入\n/duel map tags\n查看可映射的 tags")
                             return
                         else:
-                            await bot.send(event=event, message=f"输入的参数 '{map_key}' 不在标准的 tags 中\n是否在找{may_mention_key}?\n如果不是，请输入\"/duel map list\"查看可映射的tags")
+                            await bot.send(event=event, message=f"输入的参数 '{map_key}' 不在标准的 tags 中\n是否在找{may_mention_key}?\n如果不是，请输入\n/duel map tags\n查看可映射的 tags")
                             return
                     else:
                         if map_value in tags_map[map_key]:
                             await bot.send(event=event, message=f"当前映射已存在 '{map_key}' - '{map_value}'")
+                            return
                         tags_map[map_key].append(map_value)
-                        await bot.send(event=event, message=f"映射键值对添加成功：'{map_key}' - '{map_value}'\n可以通过\"/duel map current\"查看")
+                        tags_quick_map[map_value] = map_key
+                        JsonUtils.update(plugin_config.filename, {
+                            "map": tags_map,
+                            "quick_map": tags_quick_map
+                        })
+                        await bot.send(event=event, message=f"映射键值对添加成功：'{map_key}' - '{map_value}'\n可以通过\n/duel map current\n查看")
                         return
                 # 当map后面的参数为rm时，实行删除映射的操作
                 elif map_opt_params[0] in ['rm', 'remove', '删除']:
-                    if len(map_opt_params) != 3:
-                        await bot.send(event=event, message=f"参数个数有误！！！\n该命令在rm后面只接收两个参数，第一个为可映射的tag，第二个为tag的映射\n请检查当前参数：{map_opt_params}\n可以使用\"/duel map list\"查看可映射的tags")
+                    if len(map_opt_params) == 1:
+                        await bot.send(event=eval, message=f"该命令在 rm 后接收两个参数，第一个参数是存在的可映射的 tag ，第二个参数是 tag 的映射。如\"duel map rm 'binary search' 二分\"")
+                        return
+                    elif len(map_opt_params) != 3:
+                        await bot.send(event=event, message=f"参数个数有误！！！\n该命令在 rm 后面只接收两个参数，请检查当前参数：{map_opt_params}\n可以使用命令\n/duel map rm\n查看命令使用详细")
                         return
                     map_key = map_opt_params[1]
                     map_value = map_opt_params[2]
                     if map_key not in tags_map:
                         may_mention_key: list[str] = regex_search(list(tags_map.keys()), map_key)
                         if not may_mention_key:
-                            await bot.send(event=event, message=f"输入的参数 '{map_key}' 不在标准的 tags 中，请输入\"/duel map list\"查看可映射的tags")
+                            await bot.send(event=event, message=f"输入的参数 '{map_key}' 不在标准的 tags 中，请输入\"/duel map tags\"查看可映射的tags")
                             return
                         else:
-                            await bot.send(event=event, message=f"输入的参数 '{map_key}' 不在标准的 tags 中\n是否在找{may_mention_key}?\n如果不是，请输入\"/duel map list\"查看可映射的tags")
+                            await bot.send(event=event, message=f"输入的参数 '{map_key}' 不在标准的 tags 中\n是否在找{may_mention_key}?\n如果不是，请输入\"/duel map tags\"查看可映射的tags")
                             return
                     else:
                         if map_value in tags_map[map_key]:
                             tags_map[map_key].remove(map_value)
-                            await bot.send(event=event, message=f"映射键值对删除成功：'{map_key}' - '{map_value}'")
+                            tags_quick_map.pop(map_value)
+                            JsonUtils.update(plugin_config.filename, {
+                                "map": tags_map,
+                                "quick_map": tags_quick_map
+                            })
+                            await bot.send(event=event, message=f"映射键值对删除成功：'{map_key}' : '{map_value}'")
                             return
                         else:
-                            await bot.send(event=event, message=f"当前映射不存在 '{map_key}' - '{map_value}'")
+                            await bot.send(event=event, message=f"当前映射不存在 '{map_key}' : '{map_value}'")
+                            return
+                else:
+                    await bot.send(event=event, message=f"map 后跟了未知参数: {map_opt_params[0]}，请使用\n/duel map\n查看可用的命令")
+                    return
         else:
             await bot.send(event=event, message=f"未知命令: {params[0]}")
             return

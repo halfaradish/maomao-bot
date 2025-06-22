@@ -1,6 +1,8 @@
-from ...common import get_icpc_db_connection
 import random
-from typing import List
+from typing import List, Dict
+from nonebot import logger
+
+from ...common import get_icpc_db_connection
 
 def _get_all_problem_id():
     """获取题库所有的题目id"""
@@ -12,24 +14,37 @@ def _get_all_problem_id():
         records = db.execute(query=query).fetchall()
         return records
     
-def _match_id_by_rating_tags(rating: int, tags: List[str]):
+def _match_id_by_rating_tags(rating: int, tags: List[str]) -> List[Dict]:
     """根据rating和tags获取题目id"""
+    # 检查参数有效性
+    if rating is None and not tags:
+        return []  # 返回空列表而不是错误字符串
+    
     with get_icpc_db_connection() as db:
         query = """
         SELECT id
         FROM CF_contest_official
-        WHERE rating = %s
+        WHERE 1 = 1
         """
-        # query_tags = "AND JSON_CONTAINS(tags, JSON_QUOTE(%s))\n"
-        query_tags = "AND JSON_SEARCH(LOWER(tags), 'all', %s) IS NOT NULL\n"
-        if tags is not None:
-            for _ in range(len(tags)):
-                query += query_tags
-            tags = ['%' + tag.lower() + '%' for tag in tags]
-            records = db.execute(query, (rating, *tags)).fetchall() 
-        else:
-            records = db.execute(query, (rating,)).fetchall()
-        return records
+        params = []
+        
+        if rating is not None:
+            query += "AND rating = %s\n"
+            params.append(rating)
+            
+        if tags:
+            tag_patterns = ['%' + tag.lower() + '%' for tag in tags]
+            tag_conditions = " AND ".join(["JSON_SEARCH(LOWER(tags), 'all', %s) IS NOT NULL"] * len(tags))
+            query += f"AND {tag_conditions}\n"
+            params.extend(tag_patterns)
+            
+        try:
+            records = db.execute(query, params).fetchall()
+            return records
+        except Exception as e:
+            # 记录错误日志
+            logger.error(f"查询数据库时出错: {str(e)}")
+            return []  # 发生错误时返回空列表
 
 
 def _generate_cf_url(problem_id: str) -> str:
