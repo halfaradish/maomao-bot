@@ -1,5 +1,5 @@
 from nonebot import on_command, logger, get_plugin_config
-from nonebot.adapters.onebot.v11 import GROUP, GroupMessageEvent, Event, Message, Bot
+from nonebot.adapters.onebot.v11 import GROUP, GroupMessageEvent, Event, Message, Bot, MessageEvent
 from nonebot.plugin import PluginMetadata
 from nonebot.params import CommandArg
 from typing import List
@@ -33,42 +33,16 @@ def get_forward_groups() -> List[int]:
 
     return content['forward_groups']
 
-def build_forward_node(nickname: str, user_id: str, content: list[dict]) -> dict:
-    """构建转发消息的节点"""
-    return {
-        "type": "node",
-        "data": {
-            "nickname": nickname,
-            "user_id": str(user_id),
-            "content": content if isinstance(content, list) else [content]
-        }
-    }
+def is_forwarded_message(event: MessageEvent) -> bool:
+    # 检查消息段列表
+    for segment in event.reply.message:
+        # 1. 判断是否为 JSON 类型消息段
+        if segment.type == "json" or "forward":
+            return True
+    return False
 
-def build_forward_msg(messages: list[dict]) -> list[dict]:
-    """构建转发消息的格式"""
-    forward_messages = []
-    for msg in messages:
-        if "sender" in msg and "message" in msg:
-            if msg["message"][0].get("type") == "forward":
-                forward_messages.append(
-                    build_forward_node(
-                        nickname=msg["sender"].get("nickname", "未知用户"),
-                        user_id=str(msg["sender"].get("user_id", "")),
-                        content=build_forward_msg(msg["message"][0].get("data", {}).get("content", []))
-                    )
-                )
-                continue
-            forward_messages.append(
-                build_forward_node(
-                    nickname=msg["sender"].get("nickname", "未知用户"),
-                    user_id=str(msg["sender"].get("user_id", "")),
-                    content=msg["message"][0]
-                )
-            )
-    return forward_messages
-
-def send_group_forward_msg(group_id: int, forward_msg: dict) -> None:
-    """发送群转发消息"""
+def forward_group_single_msg(group_id: int, message_id) -> None:
+    """转发消息"""
     conn = http.client.HTTPConnection(plugin_config.api_host, plugin_config.api_port)
     headers = {
         'Content-Type': 'application/json',
@@ -76,19 +50,36 @@ def send_group_forward_msg(group_id: int, forward_msg: dict) -> None:
     }
     payload = json.dumps({
         "group_id": group_id,
-        "messages": build_forward_msg(forward_msg.get("messages", []))
+        "message_id": message_id
     })
-    conn.request("POST", "/send_group_forward_msg", payload, headers)
-    res = conn.getresponse()
-    data = res.read()
-    logger.info(f"转发消息到群 {group_id} 响应: {data.decode('utf-8')}")
+    try:
+        conn.request("POST", "/forward_group_single_msg", payload, headers)
+        res = conn.getresponse()
+        logger.info(res.read().decode())
+    except Exception as e:
+        logger.opt(exception=True).error(f"转发消息到{str(message_id)}时出错: {e}")
+    finally:
+        conn.close()
+
+async def send_group_text_msg(group_id: int, bot: Bot) -> None:
+    """发送默认消息"""
+    payload = {
+        "group_id": group_id,
+        "message": [
+            {
+                "type": "text",
+                "data": {
+                    "text": "以下信息由 搬史小助手 负责转发"
+                }
+            }
+        ]
+    }
+    await bot.call_api("send_group_msg", **payload)
     
 @transport_manual.handle()
 async def _(bot: Bot, event: GroupMessageEvent, args: Message = CommandArg()):
     raw_args = args.extract_plain_text().strip()
     params = raw_args.split() if raw_args else []
-    logger.info(event.reply.message_id)
-    return
     try:
         # 如果没有参数
         if not params:
@@ -96,44 +87,41 @@ async def _(bot: Bot, event: GroupMessageEvent, args: Message = CommandArg()):
             if not event.reply:
                 await bot.send(event=event, message=plugin_config.DEFAULT_MSG)
                 return
-            
-            forward_msg = await bot.call_api(
-                "get_forward_msg",
-                message_id=event.reply.message_id,
-            )
+            message_id = event.reply.message_id
+            logger.info(f"event type is: {event.get_type}")
+            # logger.info(message_id)
+            # logger.info(f"reply message: {event.reply}")
 
-            # 获取当前引用的消息的群组ID
+            if not is_forwarded_message(event=event):
+                await bot.send(event=event, message="bot只转发合并转发消息")
+                return
+
+            # 获取消息出现的群组
             source_group_id = event.group_id
-
-            # 重构消息节点时添加字段检查
-            # messages = build_forward_msg(forward_msg.get("messages", []))
-
-            # 获取转发的群组列表
-            forward_groups = get_forward_groups()
+            # 获取要转发的群组
+            forward_groups: list[int] = get_forward_groups()
             if not forward_groups:
                 logger.warning(f"空转发群组列表 (用户:{event.user_id} 群组:{event.group_id})")
                 await bot.send(event=event, message="没有配置转发的群组")
                 return
-
+            
             # 转发消息
-            success_count = 0
+            success_cnt = 0
             error_groups = []
             for group_id in forward_groups:
+                # 如果要转发的群组包含当前群组
                 if group_id == source_group_id:
                     continue
+                # 发送消息
                 try:
-                    # await bot.call_api(
-                    #     "send_group_forward_msg",
-                    #     group_id=group_id,
-                    #     messages={"messages": messages}  # 显式指定消息类型
-                    # )
-                    send_group_forward_msg(group_id, forward_msg)
-                    success_count += 1
+                    forward_group_single_msg(group_id=group_id, message_id=message_id)
+                    success_cnt += 1
+                    await send_group_text_msg(group_id=group_id, bot=bot)
                 except Exception as e:
-                    logger.error(f"转发消息到群 {group_id} 失败: {e}")
-                    error_groups.append(str(group_id))
-
-            result_msg = f"已成功转发到 {success_count} 个群组"
+                    error_groups.append(group_id)
+            
+            # 回复结果
+            result_msg = f"已成功转发到 {success_cnt} 个群组"
             if error_groups:
                 result_msg += f"\n以下群组发送失败: {', '.join(error_groups)}"
             await bot.send(event=event, message=result_msg)
