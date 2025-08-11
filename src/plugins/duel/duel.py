@@ -63,7 +63,10 @@ class CommandHandler:
                 tags.append(param)
         
         if tags:
-            data, _ = JsonUtils.read(plugin_config.filename, {})
+            data, _ = JsonUtils.read(plugin_config.filename, {
+                "map": {},
+                "quick_map": {}
+            })
             tags_quick_map = data.get("quick_map", {})
             tags = [tags_quick_map.get(tag, tag) for tag in tags]
         
@@ -156,7 +159,10 @@ class CommandHandler:
     @staticmethod
     def handle_map(bot: Bot, event: MessageEvent, params: list[str]):
         """处理映射命令"""
-        data, _ = JsonUtils.read(plugin_config.filename, {})
+        data, _ = JsonUtils.read(plugin_config.filename, {
+            "map": {},
+            "quick_map": {}
+        })
         
         if not params:
             bot.send(event=event, message=plugin_config.MAP_DEFAULT_MSG)

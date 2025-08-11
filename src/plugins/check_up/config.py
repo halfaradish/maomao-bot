@@ -9,7 +9,7 @@ class Config(BaseModel):
     @staticmethod
     def load_json_to_group_id(filename: str = 'check_up.json') -> List[int]:
         content = []
-        content, _=JsonUtils.read(filename, {})
+        content, _=JsonUtils.read(filename, {"group_id": []})
 
         return content['group_id']
 

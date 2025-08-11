@@ -13,38 +13,53 @@ class JsonUtils:
     macos_relative_url = "./data"
 
     @staticmethod
-    def __pre_built_file(file: str, default: Optional[Union[str, dict, Any]] = None) -> bool:
+    def __pre_built_file(file: str, default: Optional[dict] = None) -> bool:
+        is_new: bool = False # 文件已存在
+        default = default or {}
         if not os.path.exists(file):
-            logger.info(f"当前文件: {file} 不存在, 正在尝试创建所需的 json 文件")
+            
+            is_new = True # 文件是新建的
+            logger.debug(f"当前文件: {file} 不存在, 正在尝试创建所需的 json 文件")
             dir_path = os.path.dirname(file)
 
             # 尝试创建文件
             if dir_path and not os.path.exists(dir_path):
                 try:
                     os.makedirs(dir_path, exist_ok=True)
-                    logger.info(f"{dir_path} 目录创建成功")
+                    logger.success(f"{dir_path} 目录创建成功")
                 except Exception as e:
-                    logger.opt(exception=True).warning(f"{dir_path} 目录创建失败: {e}")
+                    logger.opt(exception=True).error(f"{dir_path} 目录创建失败: {e}")
                     return False
 
-            # 往目标文件写入默认内容
+        # 往目标文件写入默认内容
+        if is_new:
             with open(file, "w", encoding="utf-8") as f:
-                if default is not None:
-                    if isinstance(default, str):
-                        f.write(default)
-                    elif isinstance(default, dict):
-                        try:
-                            json_str = json.dumps(default, indent=4, ensure_ascii=False)
-                            f.write(json_str)
-                        except TypeError as e:
-                            raise TypeError(f"字典无法序列化为JSON: {e}")
-                    else:
-                        f.write(str(default))
-                else:
-                    f.write("{}")
-            return True # 文件时新建的
-        logger.info(f"{file} 已存在")
-        return False # 文件已存在
+                try:
+                    json.dump(default, f, indent=4, ensure_ascii=False)
+                except TypeError as e:
+                    raise TypeError(f"字典无法序列化为JSON: {e}")
+            logger.success(f"{file} 成功写入默认内容")
+        else:
+            try:
+                # 先读原内容
+                with open(file, "r", encoding="utf-8") as f:
+                    content = json.load(f)
+                
+                # 更新
+                for key, value in default.items():
+                    if key not in content:
+                        content[key] = value
+                
+                # 写入更新的内容
+                with open(file, "w", encoding="utf-8") as f:
+                    json.dump(content, f, indent=4, ensure_ascii=False)
+                logger.success(f"{file} 内容已更新")
+            except json.JSONDecodeError as e:
+                raise ValueError(f"文件 {file} 不是有效的JSON: {e}")
+            except Exception as e:
+                raise RuntimeError(f"处理文件 {file} 时出错: {e}")
+        return is_new
+
     
     @classmethod
     def __get_relative_url(cls, filename: str):
@@ -62,7 +77,7 @@ class JsonUtils:
 
     
     @classmethod
-    def read(cls, filename: str, *default: Any) -> Tuple[Union[dict, list, Any], bool]:
+    def read(cls, filename: str, default: Optional[dict] = None) -> Tuple[Union[dict, list, Any], bool]:
         """
         读取JSON文件
 
@@ -73,10 +88,7 @@ class JsonUtils:
         # 构建完整文件路径
         file_url = cls.__get_relative_url(filename)
 
-        # 默认处理参数
-        default_value = default[0] if default else None
-
-        is_new = cls.__pre_built_file(file_url, default_value)
+        is_new = cls.__pre_built_file(file_url, default or {})
 
         try:
             with open(file_url, "r", encoding="utf-8") as f:
@@ -84,10 +96,10 @@ class JsonUtils:
             return (content, is_new)
         except json.JSONDecodeError as e:
             logger.opt(exception=True).warning(f"{file_url} 文件JSON解析失败: {e}")
-            return (default_value, is_new)
+            return (default, is_new)
         except Exception as e:
             logger.opt(exception=True).warning(f"{file_url} 文件读取失败: {e}")
-            return (default_value, is_new)
+            return (default, is_new)
         
     @classmethod
     def write(cls, filename: str, content: Union[dict, list, Any]) -> bool:
@@ -100,10 +112,6 @@ class JsonUtils:
         """
         file_url = cls.__get_relative_url(filename)
 
-        # 确保文件存在
-        # if not cls.__pre_built_file(file_url):
-        #     logger.error(f"无法创建或访问文件 {file_url}")
-        #     return False
         cls.__pre_built_file(file_url)
 
         try:

@@ -29,7 +29,7 @@ def get_forward_groups() -> List[int]:
     """获取转发的群列表"""
     filename = plugin_config.data_filename
     content = []
-    content, _= JsonUtils.read(filename, {})
+    content, _= JsonUtils.read(filename, {"forward_groups": []})
 
     return content['forward_groups']
 
@@ -88,7 +88,7 @@ async def _(bot: Bot, event: GroupMessageEvent, args: Message = CommandArg()):
                 await bot.send(event=event, message=plugin_config.DEFAULT_MSG)
                 return
             message_id = event.reply.message_id
-            logger.info(f"event type is: {event.get_type}")
+            # logger.info(f"event type is: {event.get_type}")
             # logger.info(message_id)
             # logger.info(f"reply message: {event.reply}")
 
