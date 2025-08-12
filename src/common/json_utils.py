@@ -66,7 +66,7 @@ class JsonUtils:
     @classmethod
     def __get_relative_url(cls, filename: str):
         """获取文件绝对路径"""
-        data_url = DiTingData.DATA_DIR
+        data_url = DiTingData.NONEBOT_DATA_DIR
         file_url = os.path.join(data_url, filename)
         return file_url
 
