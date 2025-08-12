@@ -1,16 +1,14 @@
 import json
 import os
-import platform
 from nonebot import logger
-from typing import Any, Dict, List, Optional, Union, Tuple
+from typing import Any, Dict, Optional, Union, Tuple
+
+from ..config import DiTingData
 
 class JsonUtils:
     """
     JSON 文件操作
     """
-    windows_relative_url = r".\data"
-    linux_relative_url = "./data"
-    macos_relative_url = "./data"
 
     @staticmethod
     def __pre_built_file(file: str, default: Optional[dict] = None) -> bool:
@@ -30,7 +28,6 @@ class JsonUtils:
                 except Exception as e:
                     logger.opt(exception=True).error(f"{dir_path} 目录创建失败: {e}")
                     return False
-
         # 往目标文件写入默认内容
         if is_new:
             with open(file, "w", encoding="utf-8") as f:
@@ -44,16 +41,21 @@ class JsonUtils:
                 # 先读原内容
                 with open(file, "r", encoding="utf-8") as f:
                     content = json.load(f)
-                
+
+                change: bool = False
                 # 更新
                 for key, value in default.items():
                     if key not in content:
                         content[key] = value
+                        change = True
                 
-                # 写入更新的内容
-                with open(file, "w", encoding="utf-8") as f:
-                    json.dump(content, f, indent=4, ensure_ascii=False)
-                logger.success(f"{file} 内容已更新")
+                if change:
+                    # 写入更新的内容
+                    with open(file, "w", encoding="utf-8") as f:
+                        json.dump(content, f, indent=4, ensure_ascii=False)
+                    logger.success(f"{file} 内容已更新")
+                else:
+                    logger.success(f"{file} 对应键已存在，无需更新")
             except json.JSONDecodeError as e:
                 raise ValueError(f"文件 {file} 不是有效的JSON: {e}")
             except Exception as e:
@@ -63,16 +65,9 @@ class JsonUtils:
     
     @classmethod
     def __get_relative_url(cls, filename: str):
-        """根据操作系统, 获取文件相对文件路径"""
-        os_name = platform.system()
-        logger.info(f"正在构建 {filename} 在当前系统 {os_name} 下的相对路径")
-        if os_name == "Windows":
-            relative_url = cls.windows_relative_url
-        elif os_name == "Linux":
-            relative_url = cls.linux_relative_url
-        elif os_name == "Darwin":
-            relative_url = cls.macos_relative_url
-        file_url = os.path.join(relative_url, filename)
+        """获取文件绝对路径"""
+        data_url = DiTingData.DATA_DIR
+        file_url = os.path.join(data_url, filename)
         return file_url
 
     
