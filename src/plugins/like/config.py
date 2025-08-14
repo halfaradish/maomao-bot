@@ -8,3 +8,5 @@ class Config(BaseModel):
     # 是否阻塞
     block: bool = True
     like_time: int = 10
+
+    data_filename: str = "like.json"
