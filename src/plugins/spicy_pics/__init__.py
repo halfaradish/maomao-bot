@@ -1,11 +1,8 @@
-import requests
-import json
-import os
+from pathlib import Path
 import datetime
-from urllib.parse import urlparse
-from nonebot import get_plugin_config, on_regex, logger, Bot
+from nonebot import get_plugin_config, on_regex, logger, Bot, on_command
 from nonebot.plugin import PluginMetadata
-from nonebot.adapters.onebot.v11 import GroupMessageEvent, MessageEvent, Message
+from nonebot.adapters.onebot.v11 import GroupMessageEvent, MessageEvent, Message, MessageSegment
 from nonebot.params import CommandArg
 
 from .config import Config
@@ -21,15 +18,15 @@ __plugin_meta__ = PluginMetadata(
 
 config = get_plugin_config(Config)
 
-sexy_command = on_regex(
-    r"^(来点(涩|色)(涩|色)|涩图|色图)$",
+sexy_command = on_command(
+    '来点涩图',
+    aliases={"来张涩图", "来点色图", "来张色图"},
     priority=config.priority,
-    block=config.block,
 )
 
 def is_in_cd(user_id: int, cd_time: int = 30):
     """检查用户是否在冷却时间内"""
-    data, _ = JsonUtils.read(config.filename, {})
+    data, _ = JsonUtils.read(config.filename, {"cd": {}})
     old_cd_str = data.get("cd", {}).get(str(user_id), "1970-01-01 00:00:00")
     old_cd = datetime.datetime.strptime(old_cd_str, "%Y-%m-%d %H:%M:%S")
     sec = (datetime.datetime.now() - old_cd).total_seconds()
@@ -43,6 +40,29 @@ def is_in_cd(user_id: int, cd_time: int = 30):
         JsonUtils.write(config.filename, data)
         return False
                 
+def create_image_segment(image_path: str) -> MessageSegment:
+    # 获取绝对路径
+    abs_path = Path(image_path).absolute().as_posix()
+
+    start_pattern = "/app/data/images"
+    start_index = str(abs_path).find(start_pattern)
+
+    if start_index != -1:
+        result_path = str(abs_path)[start_index:]
+    
+    uri = f"file://{result_path}"
+    logger.info(f"the pic uri is: {uri}")
+    return MessageSegment.image(uri)
+
+async def send_group_msg(event: GroupMessageEvent, bot: Bot, img_path: str) -> None:
+    img_msg = create_image_segment(image_path=img_path)
+
+    try:
+        await bot.send(event=event, message=img_msg)
+    except Exception as e:
+        await bot.send(event=event , message="图片发送超时，请稍后再试")
+        logger.opt(exception=True).error(f"图片发送失败: {e}")
+
 @sexy_command.handle()
 async def handle_sexy_command(bot: Bot, event: GroupMessageEvent, args: Message = CommandArg()):
     """发涩图了"""
@@ -68,19 +88,26 @@ async def handle_sexy_command(bot: Bot, event: GroupMessageEvent, args: Message 
                 is_source_img = True
                 continue
             tags.append(param)
+            
+    lolicon = Lolicon()
 
-    await bot.send(event=event, message=f"正在处理 {username} 的响应")
-    img_save_path = Lolicon.get_img(tags=tags)
+    await bot.send(event=event, message=f"正在响应 {username} 的请求")
+    img_save_path = await lolicon.get_img(tags=tags, event=event, bot=bot)
+
+    if img_save_path is None:
+        await sexy_command.finish("涩图下载失败，请稍后再试")
 
     if is_source_img:
-        await sexy_command.finish(f"[CQ:image,file={img_save_path}]")
+        await send_group_msg(event=event, bot=bot, img_path=img_save_path)
+        return
 
     compress_pic = CompressPic()
     try:
-        comperss_path = await compress_pic.compress_one_image(img_save_path)
+        compress_path = await compress_pic.compress_one_image(img_save_path)
     except Exception as e:
         logger.error(f"压缩图片 {img_save_path} 失败: {e}")
         await sexy_command.finish("压缩涩图失败，请稍后再试。")
 
-    # 发送图片
-    await sexy_command.finish(f"[CQ:image,file={comperss_path}]")
+    if compress_path:
+        await send_group_msg(event=event, bot=bot, img_path=compress_path)
+        return

@@ -5,8 +5,16 @@ import asyncio
 import shutil
 from nonebot import logger
 
-DIR = os.path.abspath("./data/tmp")
-COMPRESS_DIR = os.path.abspath("./data/pictures")
+from ..config import DiTingData
+
+DIR = os.path.abspath(DiTingData.IMAGES_DIR)
+if not os.path.exists(DIR):
+    os.makedirs(DIR, exist_ok=True)
+    logger.info(f"创建 spicy_pics 插件图片存放目录: {DIR}")
+COMPRESS_DIR = os.path.abspath(DiTingData.IMAGES_COMPRESSED_DIR)
+if not os.path.exists(COMPRESS_DIR):
+    os.makedirs(COMPRESS_DIR, exist_ok=True)
+    logger.info(f"创建 spicy_pics 插件'压缩'图片存放目录: {COMPRESS_DIR}")
 MAX_DIMENSION = 1280
 
 class CompressPic(object):
@@ -16,9 +24,9 @@ class CompressPic(object):
     DEFAULT_PNG_COMPRESS_LEVEL = 6
     SUPPORTED_FORMATS = ('.jpg', '.jpeg', '.png', '.bmp', '.gif')
 
-    def __init__(self, input_dir: str = "./data/tmp", output_dir: str = "./data/pictures"):
-        self.DIR = os.path.abspath(input_dir)
-        self.COMPRESS_DIR = os.path.abspath(output_dir)
+    def __init__(self,):
+        self.DIR = DIR
+        self.COMPRESS_DIR = COMPRESS_DIR
         self.supported_formats = self.SUPPORTED_FORMATS
 
     def calculate_new_size(self, original_width, original_height):
@@ -58,7 +66,7 @@ class CompressPic(object):
                 if original_width <= MAX_DIMENSION and original_height <= MAX_DIMENSION:
                     logger.info(f"图片 {img_path} 不需要压缩，直接复制")
                     shutil.copy(img_path, self.COMPRESS_DIR)
-                    return
+                    return self._get_saved_path(img_path=img_path)
 
                 new_size = self.calculate_new_size(original_width, original_height)
                 logger.info(f"压缩图片 {img_path}: {original_width}*{original_height} -> {new_size[0]}*{new_size[1]}")

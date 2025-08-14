@@ -3,8 +3,14 @@ import requests
 import json
 import os
 from urllib.parse import urlparse
+from nonebot.adapters.onebot.v11 import GroupMessageEvent, Bot
 
-SAVE_DIR = os.path.abspath("data/tmp/")
+from ...config import DiTingData
+
+SAVE_DIR = os.path.abspath(DiTingData.IMAGES_DIR)
+if not os.path.exists(SAVE_DIR):
+    os.makedirs(SAVE_DIR, exist_ok=True)
+    logger.info(f"创建 spicy_pics 插件图片存放目录: {SAVE_DIR}")
 API_URL = "https://api.lolicon.app/setu/v2"
 LOLICON_HEADERS = {"Content-Type": "application/json"}
 PIXIV_HEADERS = {
@@ -23,8 +29,8 @@ class Lolicon:
     def _get_random_image_data(self, tags: list[str] = None, r18: int = 0):
         """获取随机涩图"""
         data = {
-            tags: tags if tags else [],
-            r18: r18,
+            "tags": tags if tags else [],
+            "r18": r18,
         }
         try:
             response = requests.post(
@@ -42,7 +48,7 @@ class Lolicon:
             logger.opt(exception=True).error(f"解析 lolicon 响应失败: {e}")
             return None
         
-    def _download_image(self, img_url: str, save_dir: str = SAVE_DIR) -> str:
+    async def _download_image(self, img_url: str, save_dir: str = SAVE_DIR) -> str:
         """下载图片并保存到指定目录"""
         try:
             os.makedirs(save_dir, exist_ok=True)
@@ -75,15 +81,17 @@ class Lolicon:
             logger.opt(exception=True).error(f"下载图片时出错 {e}")
             return None
         
-    def get_img(self, tags: list[str] = None, r18: int = 0):
+    async def get_img(self, tags: list[str] = None, r18: int = 0, event: GroupMessageEvent = None, bot: Bot = None):
         """获取一张涩图"""
         img_data: dict = self._get_random_image_data(tags=tags, r18=r18)
         if img_data == None:
             return None
         img_url: str = img_data["data"][0]["urls"]["original"]
 
-        save_path: str = self._download_image(img_url=img_url)
+        await bot.send(event=event, message="正在下载图片...")
+        save_path: str = await self._download_image(img_url=img_url)
         if save_path == None:
+            logger.error("save_path 不存在")
             return None
         return save_path
     
