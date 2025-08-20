@@ -38,15 +38,16 @@ class CommandHandler:
         return [item for part in parts for item in part if item]
 
     @staticmethod
-    def handle_daily(bot: Bot, event: MessageEvent):
+    async def handle_daily(bot: Bot, event: MessageEvent):
         """处理每日一题命令"""
-        bot.send(event=event, message=get_one_problem_by_random())
+        logger.info("##########################################\n2222222222222222222222222222222222222222222222")
+        await bot.send(event=event, message=get_one_problem_by_random())
 
     @staticmethod
-    def handle_problem(bot: Bot, event: MessageEvent, params: list[str]):
+    async def handle_problem(bot: Bot, event: MessageEvent, params: list[str]):
         """处理题目查询命令"""
         if len(params) < 1:
-            bot.send(event=event, message=f"该命令可在 problem 后可添加一个 rating 参数和多个 tag 参数。如\"duel problem 2300 dp 'binary search'，并根据输入的参数推题\"")
+            await bot.send(event=event, message=f"该命令可在 problem 后可添加一个 rating 参数和多个 tag 参数。如\"duel problem 2300 dp 'binary search'，并根据输入的参数推题\"")
             return
 
         rating = None
@@ -56,7 +57,7 @@ class CommandHandler:
             if param.isdigit():
                 rating_cnt += 1
                 if rating_cnt > 1:
-                    bot.send(event=event, message=f"该命令只接收一个 rating 参数，请检查参数{params}")
+                    await bot.send(event=event, message=f"该命令只接收一个 rating 参数，请检查参数{params}")
                     return
                 rating = int(param)
             else:
@@ -70,7 +71,7 @@ class CommandHandler:
             tags_quick_map = data.get("quick_map", {})
             tags = [tags_quick_map.get(tag, tag) for tag in tags]
         
-        bot.send(event=event, message=get_problem_id_by_rating_tags(rating, tags))
+        await bot.send(event=event, message=get_problem_id_by_rating_tags(rating, tags))
 
     @staticmethod
     def handle_map_tags(data: dict) -> str:
@@ -93,10 +94,10 @@ class CommandHandler:
         return "\n".join(lines)
 
     @staticmethod
-    def handle_map_add(bot: Bot, event: MessageEvent, params: list[str], data: dict):
+    async def handle_map_add(bot: Bot, event: MessageEvent, params: list[str], data: dict):
         """添加映射关系"""
         if len(params) != 2:
-            bot.send(event=event, message=f"参数个数有误！需要两个参数，实际收到{len(params)}个参数")
+            await bot.send(event=event, message=f"参数个数有误！需要两个参数，实际收到{len(params)}个参数")
             return
         
         map_key, map_value = params
@@ -109,11 +110,11 @@ class CommandHandler:
                 msg = f"输入的参数 '{map_key}' 不在标准的 tags 中，请输入\n/duel map tags\n查看可映射的 tags"
             else:
                 msg = f"输入的参数 '{map_key}' 不在标准的 tags 中\n是否在找{may_mention_key}?\n如果不是，请输入\n/duel map tags\n查看可映射的 tags"
-            bot.send(event=event, message=msg)
+            await bot.send(event=event, message=msg)
             return
         
         if map_value in tags_map[map_key]:
-            bot.send(event=event, message=f"当前映射已存在 '{map_key}' - '{map_value}'")
+            await bot.send(event=event, message=f"当前映射已存在 '{map_key}' - '{map_value}'")
             return
         
         tags_map[map_key].append(map_value)
@@ -122,13 +123,13 @@ class CommandHandler:
             "map": tags_map,
             "quick_map": tags_quick_map
         })
-        bot.send(event=event, message=f"映射键值对添加成功：'{map_key}' - '{map_value}'\n可通过\n/duel map current\n查看")
+        await bot.send(event=event, message=f"映射键值对添加成功：'{map_key}' - '{map_value}'\n可通过\n/duel map current\n查看")
 
     @staticmethod
-    def handle_map_remove(bot: Bot, event: MessageEvent, params: list[str], data: dict):
+    async def handle_map_remove(bot: Bot, event: MessageEvent, params: list[str], data: dict):
         """删除映射关系"""
         if len(params) != 2:
-            bot.send(event=event, message=f"参数个数有误！需要两个参数，实际收到{len(params)}个参数")
+            await bot.send(event=event, message=f"参数个数有误！需要两个参数，实际收到{len(params)}个参数")
             return
         
         map_key, map_value = params
@@ -141,11 +142,11 @@ class CommandHandler:
                 msg = f"输入的参数 '{map_key}' 不在标准的 tags 中，请输入\n/duel map tags\n查看可映射的 tags"
             else:
                 msg = f"输入的参数 '{map_key}' 不在标准的 tags 中\n是否在找{may_mention_key}?\n如果不是，请输入\n/duel map tags\n查看可映射的 tags"
-            bot.send(event=event, message=msg)
+            await bot.send(event=event, message=msg)
             return
         
         if map_value not in tags_map[map_key]:
-            bot.send(event=event, message=f"当前映射不存在 '{map_key}' : '{map_value}'")
+            await bot.send(event=event, message=f"当前映射不存在 '{map_key}' : '{map_value}'")
             return
         
         tags_map[map_key].remove(map_value)
@@ -154,10 +155,10 @@ class CommandHandler:
             "map": tags_map,
             "quick_map": tags_quick_map
         })
-        bot.send(event=event, message=f"映射键值对删除成功：'{map_key}' : '{map_value}'")
+        await bot.send(event=event, message=f"映射键值对删除成功：'{map_key}' : '{map_value}'")
 
     @staticmethod
-    def handle_map(bot: Bot, event: MessageEvent, params: list[str]):
+    async def handle_map(bot: Bot, event: MessageEvent, params: list[str]):
         """处理映射命令"""
         data, _ = JsonUtils.read(plugin_config.filename, {
             "map": {},
@@ -165,7 +166,7 @@ class CommandHandler:
         })
         
         if not params:
-            bot.send(event=event, message=plugin_config.MAP_DEFAULT_MSG)
+            await bot.send(event=event, message=plugin_config.MAP_DEFAULT_MSG)
             return
         
         subcommand = params[0]
@@ -182,11 +183,12 @@ class CommandHandler:
         if subcommand in handlers:
             handlers[subcommand]()
         else:
-            bot.send(event=event, message=f"map 后跟了未知参数: {subcommand}，请使用\n/duel map\n查看可用的命令")
+            await bot.send(event=event, message=f"map 后跟了未知参数: {subcommand}，请使用\n/duel map\n查看可用的命令")
 
 @duel_command.handle()
 async def handle_duel_command(bot: Bot, event: MessageEvent, args: Message = CommandArg()):
     try:
+        logger.info("##########################################\n111111111111111111111111111111111111111111111")
         raw_args = args.extract_plain_text().strip()
         params = CommandHandler.text_msg_to_params(raw_args) if raw_args else []
         
@@ -207,7 +209,7 @@ async def handle_duel_command(bot: Bot, event: MessageEvent, args: Message = Com
         }
         
         if command in command_handlers:
-            command_handlers[command]()
+            await command_handlers[command]()
         else:
             await bot.send(event=event, message=f"未知命令: {command}")
     
