@@ -2,7 +2,6 @@ from nonebot import on_command, logger, get_plugin_config
 from nonebot.adapters.onebot.v11 import GROUP, GroupMessageEvent, Event, Message, Bot, MessageEvent
 from nonebot.plugin import PluginMetadata
 from nonebot.params import CommandArg
-from typing import List
 import json
 import http.client
 
@@ -20,12 +19,12 @@ __plugin_meta__ = PluginMetadata(
 
 transport_manual = on_command(
     "搬史",
-    aliases={"搬屎", "转发"},
+    aliases={"搬屎", "转发", "banshi", "bs"},
     priority=plugin_config.priority,
     block=plugin_config.block
 )
 
-def get_forward_groups() -> List[int]:
+def get_forward_groups() -> list[dict]:
     """获取转发的群列表"""
     filename = plugin_config.data_filename
     content = []
@@ -33,20 +32,12 @@ def get_forward_groups() -> List[int]:
 
     return content['forward_groups']
 
-def is_forwarded_message(event: MessageEvent) -> bool:
-    # 检查消息段列表
-    for segment in event.reply.message:
-        # 1. 判断是否为 JSON 类型消息段
-        if segment.type == "json" or "forward":
-            return True
-    return False
-
 def forward_group_single_msg(group_id: int, message_id) -> None:
     """转发消息"""
     conn = http.client.HTTPConnection(plugin_config.api_host, plugin_config.api_port)
     headers = {
         'Content-Type': 'application/json',
-        'Authorization': plugin_config.api_tokne
+        'Authorization': plugin_config.api_token
     }
     payload = json.dumps({
         "group_id": group_id,
@@ -69,7 +60,7 @@ async def send_group_text_msg(group_id: int, bot: Bot) -> None:
             {
                 "type": "text",
                 "data": {
-                    "text": "以下信息由 搬史小助手 负责转发"
+                    "text": "该信息由 搬史小助手 负责转发"
                 }
             }
         ]
@@ -92,14 +83,10 @@ async def _(bot: Bot, event: GroupMessageEvent, args: Message = CommandArg()):
             # logger.info(message_id)
             # logger.info(f"reply message: {event.reply}")
 
-            if not is_forwarded_message(event=event):
-                await bot.send(event=event, message="bot只转发合并转发消息")
-                return
-
             # 获取消息出现的群组
             source_group_id = event.group_id
             # 获取要转发的群组
-            forward_groups: list[int] = get_forward_groups()
+            forward_groups: list[dict] = get_forward_groups()
             if not forward_groups:
                 logger.warning(f"空转发群组列表 (用户:{event.user_id} 群组:{event.group_id})")
                 await bot.send(event=event, message="没有配置转发的群组")
@@ -108,7 +95,8 @@ async def _(bot: Bot, event: GroupMessageEvent, args: Message = CommandArg()):
             # 转发消息
             success_cnt = 0
             error_groups = []
-            for group_id in forward_groups:
+            for forward_group in forward_groups:
+                group_id = forward_group["group_id"]
                 # 如果要转发的群组包含当前群组
                 if group_id == source_group_id:
                     continue
@@ -133,21 +121,30 @@ async def _(bot: Bot, event: GroupMessageEvent, args: Message = CommandArg()):
                 await bot.send(event=event, message="没有配置转发的群组")
                 return
             
-            group_list = "\n".join([f"群号: {group_id}" for group_id in forward_groups])
+            group_list = "\n".join(f"群号：{forward_group['group_id']}  群名：{forward_group['group_name']}" for forward_group in forward_groups)
             await bot.send(event=event, message=f"当前配置的转发群组:\n{group_list}")
         elif params[0].lower() in ["add", "添加", "增加"]:
             """添加转发的群"""
             if len(params) < 2 or not params[1].isdigit():
                 await bot.send(event=event, message="请提供合法的群号")
                 return
-            
+
             group_id = int(params[1])
+
+            # 查看是否在被指定的群组group_id里
+            exists_groups_list = await bot.call_api("get_group_list")
+            group_info = next((group_msg for group_msg in exists_groups_list if group_msg["group_id"] == group_id), None)
+            if not group_info:
+                await transport_manual.finish(f"bot 还未加入群组 {group_id} 中")
+
+            # 查看是否已在群组转发列表里
             forward_groups = get_forward_groups()
-            if group_id in forward_groups:
+            configured = any(forward_group["group_id"] == group_id for forward_group in forward_groups)
+            if configured:
                 await bot.send(event=event, message=f"群 {group_id} 已经在转发列表中")
                 return
             
-            forward_groups.append(group_id)
+            forward_groups.append(group_info)
             JsonUtils.update(plugin_config.data_filename, {"forward_groups": forward_groups})
             await bot.send(event=event, message=f"已将群 {group_id} 添加到转发列表")
             return
@@ -158,17 +155,23 @@ async def _(bot: Bot, event: GroupMessageEvent, args: Message = CommandArg()):
                 return
             
             group_id = int(params[1])
+            configured: bool = True
             forward_groups = get_forward_groups()
-            if group_id not in forward_groups:
-                await bot.send(event=event, message=f"群 {group_id} 不在转发列表中")
-                return
+            for i, forward_group in enumerate(forward_groups):
+                if forward_group["group_id"] == group_id:
+                    configured = False
+                    del forward_groups[i]
+                    break
             
-            forward_groups.remove(group_id)
+            # 如果群不在群列表中
+            if configured:
+                transport_manual.finish(f"群 {group_id} 不在转发列表中")
+
             JsonUtils.update(plugin_config.data_filename, {"forward_groups": forward_groups})
             await bot.send(event=event, message=f"已将群 {group_id} 从转发列表中移除")
             return
-        else:
-            await bot.send(event=event, message="无效的参数, 请使用 '/搬史' 查看帮助")
-            return
+        # else:
+        #     await bot.send(event=event, message="无效的参数, 请使用 '/搬史' 查看帮助")
+        #     return
     except Exception as e:
         logger.error(f"搬史小助手发生错误: {e}")
