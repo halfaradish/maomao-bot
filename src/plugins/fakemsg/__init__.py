@@ -6,7 +6,9 @@
 
 import re
 from typing import Union
-from nonebot import logger, on_regex
+from nonebot import logger, on_command
+from nonebot.permission import SUPERUSER
+from nonebot.params import CommandArg
 
 from nonebot.adapters.onebot.v11 import (
     Bot,
@@ -84,7 +86,7 @@ async def check_if_fakemsg(
         return True
     return False
 
-operate_user = on_regex("^(伪消息|伪造消息).*", priority=10, block=True)
+operate_user = on_command("伪造消息", aliases={"伪消息"}, priority=10, block=True, permission=SUPERUSER)
 send_fake_msg = on_message(rule=check_if_fakemsg, priority=5, block=True)
 
 @send_fake_msg.handle()
@@ -174,32 +176,50 @@ async def send_forward_msg(
             "send_private_forward_msg", user_id=event.user_id, messages=messages
         )
 
-# def change_data(add: bool = True, param: str = None):
-#     fakemsg_user, whitelist = load_config()
-#     fakemsg_user: list[str]
-#     whitelist: list[str]
-#     if param[0] == "user":
-#         if add:
-#             fakemsg_user.append(param[1])
+def modified_data(add: bool, is_person: bool, id: str = None, ids_list: list[str] = None):
+    """添加/删除 个人用户或群组"""
+    if not id and not ids_list:
+        return
+    if add and id not in ids_list:
+        ids_list.append(id)
+    elif id in ids_list:
+        ids_list.remove(id)
+    JsonUtils.update("fakemsg.json", {
+        ("fakemsg_user" if is_person else "group_users"): ids_list
+    })
 
 @operate_user.handle()
-def operate_user_(bot: Bot, event: Union[PrivateMessageEvent, GroupMessageEvent]):
-    match = event.matches[0]
-    # params: list[str] = match.split()
-    
-    logger.info(f"match is {match}")
-    # if not params:
-    #     operate_user.finish("添加：\nadd user/whitelist 'QQ号'\n删除：\nrm user/whitelist 'QQ号'")
+async def operate_user_(bot: Bot, event: Union[PrivateMessageEvent, GroupMessageEvent], args: Message = CommandArg()):
+    raw_args = args.extract_plain_text().strip()
+    params = raw_args.split() if raw_args else []
+    if not params:
+        await operate_user.finish("请输入参数")
 
-    # if params[0] in ["ls", "list"]:
-    #     fakemsg_user, whitelist = load_config()
-    #     operate_user.finish(f"user: {fakemsg_user}\nwhitelist: {whitelist}")
+    operation = params[0]
+    fakemsg_user, whitelist, group_users = load_config()
+    if operation in ["ls", "list"]:
+        res_msg = "已添加的个人用户:\n" + str(fakemsg_user) + "\n已添加的群组:\n" + str(group_users)
+        await operate_user.finish(res_msg)
+    else:
+        if len(params) < 3:
+            await operate_user("请输入user_id/group_id，并附带qq号或群号")
+        # 判断是增还是删
+        add: bool = True
+        if operation in ["add"]:
+            add = True
+        elif operation in ["rm", "remove"]:
+            add = False
+        else:
+            await operate_user("请输入正确的参数")
+        # 判断修改的类型
+        user_type = params[1]
+        is_person: bool = True
+        if user_type in ["user", "person"]:
+            is_person = True
+        elif user_type == "group":
+            is_person = False
+        else:
+            await operate_user("请输入正确的参数")
 
-    # if 
-
-    # if params[0] in ["add", "添加"]:
-    #     change_data(add=True, param=params[1:])
-    # elif params[0] in ["rm", "remove", "删除"]:
-    #     change_data(add=False, param=params[1:])
-    
-    
+        person_or_group_id = params[2]
+        modified_data(add=add, is_person=is_person, id=person_or_group_id, ids_list=fakemsg_user if is_person else group_users)
