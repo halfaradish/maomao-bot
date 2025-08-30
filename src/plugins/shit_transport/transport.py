@@ -86,7 +86,11 @@ async def _(bot: Bot, event: GroupMessageEvent, args: Message = CommandArg()):
             # 获取消息出现的群组
             source_group_id = event.group_id
             # 获取要转发的群组
-            forward_groups: list[dict] = get_forward_groups()
+            data, _= JsonUtils.read(plugin_config.data_filename, {
+                "forward_groups": [],
+                "frequency_statistics": {}
+            })
+            forward_groups: list[dict] = data['forward_groups']
             if not forward_groups:
                 logger.warning(f"空转发群组列表 (用户:{event.user_id} 群组:{event.group_id})")
                 await bot.send(event=event, message="没有配置转发的群组")
@@ -108,6 +112,16 @@ async def _(bot: Bot, event: GroupMessageEvent, args: Message = CommandArg()):
                 except Exception as e:
                     error_groups.append(group_id)
             
+            # 统计使用该插件的人的使用次数
+            freq: dict = data["frequency_statistics"]
+            freq[str(event.sender.user_id)] = {
+                "count": freq.get(str(event.sender.user_id), {}).get("count", 0) + 1,
+                "nickname": event.sender.nickname
+            }
+            JsonUtils.update(plugin_config.data_filename, {
+                "frequency_statistics": freq
+            })
+
             # 回复结果
             result_msg = f"已成功转发到 {success_cnt} 个群组"
             if error_groups:
@@ -170,6 +184,21 @@ async def _(bot: Bot, event: GroupMessageEvent, args: Message = CommandArg()):
             JsonUtils.update(plugin_config.data_filename, {"forward_groups": forward_groups})
             await bot.send(event=event, message=f"已将群 {group_id} 从转发列表中移除")
             return
+        elif params[0].lower() in ["count", "计数", "统计"]:
+            """展示使用该插件的人的使用次数"""
+            data, _= JsonUtils.read(plugin_config.data_filename, {
+                "forward_groups": [],
+                "frequency_statistics": {}
+            })
+            freq: dict = data["frequency_statistics"]
+
+            res_msg = "搬史插件使用次数统计:"
+            if not freq:
+                await transport_manual.finish(res_msg + "\n无使用记录")
+            for user_info in freq.values():
+                res_msg += f"\n{user_info['nickname']} 搬史 {user_info['count']} 次"
+
+            await transport_manual.finish(res_msg)
         # else:
         #     await bot.send(event=event, message="无效的参数, 请使用 '/搬史' 查看帮助")
         #     return
