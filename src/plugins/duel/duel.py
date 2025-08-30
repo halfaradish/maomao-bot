@@ -40,7 +40,6 @@ class CommandHandler:
     @staticmethod
     async def handle_daily(bot: Bot, event: MessageEvent):
         """处理每日一题命令"""
-        logger.info("##########################################\n2222222222222222222222222222222222222222222222")
         await bot.send(event=event, message=get_one_problem_by_random())
 
     @staticmethod
@@ -188,7 +187,6 @@ class CommandHandler:
 @duel_command.handle()
 async def handle_duel_command(bot: Bot, event: MessageEvent, args: Message = CommandArg()):
     try:
-        logger.info("##########################################\n111111111111111111111111111111111111111111111")
         raw_args = args.extract_plain_text().strip()
         params = CommandHandler.text_msg_to_params(raw_args) if raw_args else []
         
