@@ -8,6 +8,8 @@ class Config(BaseModel):
 
     data_filename: str = "prd.json"
 
+    page_size: int = 5
+
     default_msg: str = (
         "[prd]命令使用详细\n"
         "[参数]:\n"

@@ -29,6 +29,7 @@ __plugin_meta__ = PluginMetadata(
 )
 
 config = get_plugin_config(Config)
+page_size = config.page_size
 
 prd = on_command(
     "prd",
@@ -41,25 +42,38 @@ def update_to_do(to_do: list[dict]):
         "to_do": to_do
     })
 
-def handle_list(to_do: list[dict] = None, operation_params: list[str] = []) -> str:
+def handle_list(to_do: list[dict] = None, operation_params: list[str] = [], index: int = 0) -> str:
     """展示目前未完成的需求"""
     # 检查需求列表是否为空
     if not to_do:
         return "目前无需求"
     # 检查是否需要列出全部需求
     list_all = False
-    if operation_params and operation_params[0] in ["all", "a"]:
-        list_all = True
+
+    page: int = (index + page_size) // page_size
+    # 获取分页内容
+    for params in operation_params:
+        if params in ["all", "a"]:
+            list_all = True
+        elif params.isdigit():
+            page = int(params)
+    # 计算分页相关的核心参数
+    offset = (page - 1) * page_size
+    total_pages = (len(to_do) + page_size - 1) // page_size
+    # 对数据进行切片
+    requirements = to_do[offset : offset + page_size]
+    if not requirements:
+        return f"当前输入页数 {page} 超出范围，请输入小于 {total_pages} 的参数"
     # 初始化返回消息
     res_msg = ""
-    for i, requirement in enumerate(to_do):
+    for requirement in requirements:
         # 修复逻辑：如果不要求显示全部且需求已完成，则跳过
         if not list_all and requirement["finish"]:
             continue
-        res_msg += f"\n编号 {i} :\n" + f"是否完成: {requirement['finish']}\n" + f"需求: {requirement['content']}" + f"\n创建于 {requirement['create_at']} by {requirement['creator']}\n"
+        res_msg += f"\n编号 {requirement['id']} :\n" + f"是否完成: {requirement['finish']}\n" + f"需求: {requirement['content']}" + f"\n创建于 {requirement['create_at']} by {requirement['creator']}\n"
         if requirement["last_modifyor"]:
             res_msg += f"最后修改于 {requirement['last_modify_at']} by {requirement['last_modifyor']}\n"
-    return res_msg.strip('\n\r') if res_msg else "目前所有需求都已完成"
+    return f"当前为第 {page} 页，共 {total_pages} 页\n" + res_msg.strip('\n\r') if res_msg else f"当前页数所有需求都已完成，可用/prd ls {page} all 查看当前页数已完成的需求"
 
 def handle_add(to_do: list[dict] = None, operation_params: list[str] = [], creator: str = None) -> str:
     """增加需求"""
@@ -70,6 +84,7 @@ def handle_add(to_do: list[dict] = None, operation_params: list[str] = [], creat
         return "请输入要添加的内容"
     # 添加需求到列表
     add_info: dict = {
+        "id": to_do[-1]["id"] + 1 if to_do else 1,
         "finish": False,
         "content": content,
         "creator": creator,
@@ -79,8 +94,8 @@ def handle_add(to_do: list[dict] = None, operation_params: list[str] = [], creat
     }
     to_do.append(add_info)
     update_to_do(to_do=to_do)
-    to_do_list_msg = handle_list(to_do=to_do)
-    return f"需求已添加，对应编号为 {len(to_do) - 1}\n" + to_do_list_msg
+    to_do_list_msg = handle_list(to_do=to_do, index=len(to_do) - 1)
+    return f"需求已添加，对应编号为 {to_do[-1]['id']}\n" + to_do_list_msg
 
 def handle_remove(to_do: list[dict] = None, operation_params: list[str] = []):
     """删除需求"""
@@ -88,12 +103,12 @@ def handle_remove(to_do: list[dict] = None, operation_params: list[str] = []):
         index = int(operation_params[0])
     else:
         return "请输入要删除的需求的下标"
-    if index >= len(to_do) or index < 0:
-        return "输入的下标超出范围"
-    del to_do[index]
-    update_to_do(to_do=to_do)
-    to_do_list_msg = handle_list(to_do=to_do)
-    return f"对应编号 {index} 的需求已删除\n" + to_do_list_msg
+    for i, requirement in enumerate(to_do):
+        if requirement["id"] == index:
+            del to_do[i]
+            update_to_do(to_do=to_do)
+            return f"对应编号 {index} 的需求已删除"
+    return f"未找到所指定的编号 {index}"
 
 def handle_modify(to_do:list[dict] = None, operation_params: list[str] = [], last_modifyor: str = None):
     """更改需求"""
@@ -103,16 +118,17 @@ def handle_modify(to_do:list[dict] = None, operation_params: list[str] = [], las
         content = operation_params[1]
     else:
         return "请输入正确的下标和修改的内容"
-    if index >= len(to_do) or index < 0:
-        return "输入的下标超出范围"
-    to_do[index].update({
-        "content": content,
-        "last_modifyor": last_modifyor,
-        "last_modify_at": datetime.now().strftime("%Y-%m-%d")
-    })
-    update_to_do(to_do=to_do)
-    to_do_list_msg = handle_list(to_do=to_do)
-    return f"对应编号 {index} 的需求已修改\n" + to_do_list_msg
+    for i, requirement in enumerate(to_do):
+        if requirement["id"] == index:
+            to_do[i].update({
+                "content": content,
+                "last_modifyor": last_modifyor,
+                "last_modify_at": datetime.now().strftime("%Y-%m-%d")
+            })
+            update_to_do(to_do=to_do)
+            to_do_list_msg = handle_list(to_do=to_do)
+            return f"对应编号 {index} 的需求已修改\n" + to_do_list_msg
+    return f"未找到所指定的编号 {index}"
     
 def handle_complete(to_do: list[dict] = None, operation_params: list[str] = []):
     """更改对应下标的需求的状态"""
@@ -120,15 +136,15 @@ def handle_complete(to_do: list[dict] = None, operation_params: list[str] = []):
         index = int(operation_params[0])
     else:
         return "请输入正确的下标"
-    if index >= len(to_do) or index < 0:
-        return "输入的下标超出范围"
-    to_do[index].update({
-        "finish": not to_do[index]["finish"]
-    })
-    update_to_do(to_do=to_do)
-    to_do_list_msg = handle_list(to_do=to_do)
-    return f"已修改应编号 {index} 的需求的状态\n" + to_do_list_msg
-
+    for i, requirement in enumerate(to_do):
+        if requirement["id"] == index:
+            to_do[i].update({
+                "finish": not to_do[i]["finish"]
+            })
+            update_to_do(to_do=to_do)
+            to_do_list_msg = handle_list(to_do=to_do, operation_params=["a"], index=i)
+            return f"已修改对应编号 {index} 的需求的状态\n" + to_do_list_msg
+    return f"未找到所指定的编号 {index}"
 
 @prd.handle()
 async def _(bot: Bot, event: Union[PrivateMessageEvent, GroupMessageEvent], args: Message = CommandArg()):
