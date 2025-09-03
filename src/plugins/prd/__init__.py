@@ -29,7 +29,6 @@ __plugin_meta__ = PluginMetadata(
 )
 
 config = get_plugin_config(Config)
-page_size = config.page_size
 
 prd = on_command(
     "prd",
@@ -42,40 +41,56 @@ def update_to_do(to_do: list[dict]):
         "to_do": to_do
     })
 
-def handle_list(to_do: list[dict] = None, operation_params: list[str] = [], index: int = 0) -> str:
+async def send_forward_msg(bot: Bot, event: MessageEvent, messges: list[str]):
+    """发送合并转发消息"""
+    def to_node(name: str, uin: str, message: Message):
+        """构建统一的格式"""
+        return {
+            "type": "node",
+            "data": {"name": name, "uin": uin, "content": message},
+        }
+    
+    info = await bot.get_login_info()
+    name = info['nickname']
+    uin = bot.self_id
+    
+    # 构建消息节点
+    message_nodes = [to_node(name=name, uin=uin, message=message) for message in messges]
+
+    if isinstance(event, GroupMessageEvent):
+        await bot.call_api("send_group_forward_msg", group_id=event.group_id, messages=message_nodes)
+    else:
+        await bot.call_api("send_private_forward_msg", user_id=event.user_id, messages=message_nodes)
+
+def handle_list(to_do: list[dict] = None) -> tuple[str, str]:
     """展示目前未完成的需求"""
     # 检查需求列表是否为空
     if not to_do:
-        return "目前无需求"
-    # 检查是否需要列出全部需求
-    list_all = False
+        return ("目前无需求", "目前无已完成的需求")
+    # 初始化返回的内容
+    finish_msg: str = ""
+    unfinish_msg: str = ""
 
-    page: int = (index + page_size) // page_size
-    # 获取分页内容
-    for params in operation_params:
-        if params in ["all", "a"]:
-            list_all = True
-        elif params.isdigit():
-            page = int(params)
-    # 计算分页相关的核心参数
-    offset = (page - 1) * page_size
-    total_pages = (len(to_do) + page_size - 1) // page_size
-    # 对数据进行切片
-    requirements = to_do[offset : offset + page_size]
-    if not requirements:
-        return f"当前输入页数 {page} 超出范围，请输入小于 {total_pages} 的参数"
-    # 初始化返回消息
-    res_msg = ""
-    for requirement in requirements:
-        # 修复逻辑：如果不要求显示全部且需求已完成，则跳过
-        if not list_all and requirement["finish"]:
-            continue
-        res_msg += f"\n编号 {requirement['id']} :\n" + f"是否完成: {requirement['finish']}\n" + f"需求: {requirement['content']}" + f"\n创建于 {requirement['create_at']} by {requirement['creator']}\n"
-        if requirement["last_modifyor"]:
-            res_msg += f"最后修改于 {requirement['last_modify_at']} by {requirement['last_modifyor']}\n"
-    return f"当前为第 {page} 页，共 {total_pages} 页\n" + res_msg.strip('\n\r') if res_msg else f"当前页数所有需求都已完成，可用/prd ls {page} all 查看当前页数已完成的需求"
+    def build_single_msg(requirement: dict):
+        """构建单个需求的语句"""
+        res: str = f"\n编号: {requirement['id']}\n是否完成: {requirement['finish']}\n需求: {requirement['content']}\n创建于 {requirement['create_at']} by {requirement['create_by']}\n"
+        if requirement['last_modify_by']:
+            res += f"最后修改于 {requirement['last_modify_at']} by {requirement['last_modify_by']}\n"
+        if requirement['finish_by'] and requirement['finish']:
+            res += f"finish_by: {requirement['finish_by']}\n"
+        return res
 
-def handle_add(to_do: list[dict] = None, operation_params: list[str] = [], creator: str = None) -> str:
+    # 将存储的需求转化为str
+    for requirement in to_do:
+        if requirement['finish']:
+            finish_msg += build_single_msg(requirement=requirement)
+        else:
+            unfinish_msg += build_single_msg(requirement=requirement)
+    # 返回已完成和未完成的需求
+    return (f"未完成的需求如下：{unfinish_msg}" if unfinish_msg else "目前无需求",
+            f"已完成的需求如下：{finish_msg}" if finish_msg else "目前无已完成的需求")
+
+def handle_add(to_do: list[dict] = None, operation_params: list[str] = [], create_by: str = None) -> str:
     """增加需求"""
     # 检查是否有足够的参数
     if operation_params:
@@ -87,15 +102,15 @@ def handle_add(to_do: list[dict] = None, operation_params: list[str] = [], creat
         "id": to_do[-1]["id"] + 1 if to_do else 1,
         "finish": False,
         "content": content,
-        "creator": creator,
+        "create_by": create_by,
         "create_at": datetime.now().strftime("%Y-%m-%d"),
-        "last_modifyor": "",
-        "last_modify_at": ""
+        "last_modify_by": "",
+        "last_modify_at": "",
+        "finish_by": ""
     }
     to_do.append(add_info)
     update_to_do(to_do=to_do)
-    to_do_list_msg = handle_list(to_do=to_do, index=len(to_do) - 1)
-    return f"需求已添加，对应编号为 {to_do[-1]['id']}\n" + to_do_list_msg
+    return f"需求已添加，对应编号为 {to_do[-1]['id']}"
 
 def handle_remove(to_do: list[dict] = None, operation_params: list[str] = []):
     """删除需求"""
@@ -110,7 +125,7 @@ def handle_remove(to_do: list[dict] = None, operation_params: list[str] = []):
             return f"对应编号 {index} 的需求已删除"
     return f"未找到所指定的编号 {index}"
 
-def handle_modify(to_do:list[dict] = None, operation_params: list[str] = [], last_modifyor: str = None):
+def handle_modify(to_do:list[dict] = None, operation_params: list[str] = [], last_modify_by: str = None):
     """更改需求"""
     # 检查参数
     if len(operation_params) >= 2 and operation_params[0].isdigit():
@@ -122,15 +137,14 @@ def handle_modify(to_do:list[dict] = None, operation_params: list[str] = [], las
         if requirement["id"] == index:
             to_do[i].update({
                 "content": content,
-                "last_modifyor": last_modifyor,
+                "last_modify_by": last_modify_by,
                 "last_modify_at": datetime.now().strftime("%Y-%m-%d")
             })
             update_to_do(to_do=to_do)
-            to_do_list_msg = handle_list(to_do=to_do)
-            return f"对应编号 {index} 的需求已修改\n" + to_do_list_msg
+            return f"对应编号 {index} 的需求已修改"
     return f"未找到所指定的编号 {index}"
     
-def handle_complete(to_do: list[dict] = None, operation_params: list[str] = []):
+def handle_complete(to_do: list[dict] = None, operation_params: list[str] = [], finish_by: str = "未指定"):
     """更改对应下标的需求的状态"""
     if operation_params and operation_params[0].isdigit():
         index = int(operation_params[0])
@@ -139,11 +153,11 @@ def handle_complete(to_do: list[dict] = None, operation_params: list[str] = []):
     for i, requirement in enumerate(to_do):
         if requirement["id"] == index:
             to_do[i].update({
-                "finish": not to_do[i]["finish"]
+                "finish": not to_do[i]["finish"],
+                "finish_by": finish_by
             })
             update_to_do(to_do=to_do)
-            to_do_list_msg = handle_list(to_do=to_do, operation_params=["a"], index=i)
-            return f"已修改对应编号 {index} 的需求的状态\n" + to_do_list_msg
+            return f"已修改对应编号 {index} 的需求的状态"
     return f"未找到所指定的编号 {index}"
 
 @prd.handle()
@@ -159,29 +173,33 @@ async def _(bot: Bot, event: Union[PrivateMessageEvent, GroupMessageEvent], args
             "to_do": []
         })
         to_do = data["to_do"]
-        logger.info(f"to_do is: {to_do}")
+        logger.debug(f"to_do is: {to_do}")
 
         operation = params[0]
         operation_params = params[1:]
-        logger.info(f"operation is: {operation}")
-        logger.info(f"operation_params is: {operation_params}")
+        logger.debug(f"operation is: {operation}")
+        logger.debug(f"operation_params is: {operation_params}")
 
         res_msg = None
         if operation in ["list", "ls"]:
-            res_msg = handle_list(to_do=to_do, operation_params=operation_params)
+            pass
         elif operation in ["add"]:
-            res_msg = handle_add(to_do=to_do, operation_params=operation_params, creator=event.sender.nickname)
+            res_msg = handle_add(to_do=to_do, operation_params=operation_params, create_by=event.sender.nickname)
         elif operation in ["rm", "remove"]:
             res_msg = handle_remove(to_do=to_do, operation_params=operation_params)
         elif operation in ["modify", "md"]:
-            res_msg = handle_modify(to_do=to_do, operation_params=operation_params, last_modifyor=event.sender.nickname)
+            res_msg = handle_modify(to_do=to_do, operation_params=operation_params, last_modify_by=event.sender.nickname)
         elif operation in ["x", "complete"]:
-            res_msg = handle_complete(to_do=to_do, operation_params=operation_params)
+            res_msg = handle_complete(to_do=to_do, operation_params=operation_params, finish_by=event.sender.nickname)
         else:
             return
         
-        logger.info(f"res_msg is: {res_msg}")
-        await prd.finish(res_msg)
+        logger.debug(f"res_msg is: {res_msg}")
+        if res_msg:
+            await prd.send(res_msg)
+
+        unfinish_msg, finish_msg = handle_list(to_do=to_do)
+        await send_forward_msg(bot, event, [unfinish_msg, finish_msg])
     except FinishedException:
         # 让 FinishedException 正常传递，不记录为错误
         raise
