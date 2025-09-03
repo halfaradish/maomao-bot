@@ -36,6 +36,14 @@ prd = on_command(
     priority=config.priority
 )
 
+def get_whitelist():
+    """获取白名单"""
+    data, _ = JsonUtils.read(config.data_filename, {
+        "whitelist_person": [],
+        "whitelist_groups": []
+    })
+    return data.get("whitelist_person"), data.get("whitelist_groups")
+
 def update_to_do(to_do: list[dict]):
     JsonUtils.update(config.data_filename, {
         "to_do": to_do
@@ -168,6 +176,13 @@ async def _(bot: Bot, event: Union[PrivateMessageEvent, GroupMessageEvent], args
     # 当没有传入参数时
     if not params:
         await prd.finish(config.default_msg)
+
+    whitelist_person, whitelist_groups = get_whitelist()
+    user_id = event.sender.user_id
+    group_id = event.group_id
+    if str(user_id) not in whitelist_person and str(group_id) not in whitelist_groups:
+        await prd.finish("你没有权限使用这个插件")
+
     try:
         data, _ =JsonUtils.read(config.data_filename, {
             "to_do": []
