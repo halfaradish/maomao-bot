@@ -131,7 +131,7 @@ async def like_me_handle(bot: Bot, event: GroupMessageEvent):
 
     if user_id:
         sender: Message = Message([MessageSegment.at(user_id=event.user_id)])
-        count, err_msg = await send_like(event=event, bot=bot, user_id=user_id)
+        count, err_msg = await send_like(bot=bot, user_id=user_id)
         if count > 0:
             count_liked_times(user_id=user_id, count=count, nickname=nickname)
             await like_me.finish("已经给 " + sender + f" 点赞 {count} 次\n点赞的送达可能会有延迟, 如果失败了可以添加好友再试")
@@ -166,7 +166,7 @@ async def like_other_handle(bot: Bot, event: GroupMessageEvent):
             logger.error(f"获取@时出错: {e}")
             await bot.send(event=event, message="不是群里的人不赞")
 
-        count, err_msg = await send_like(event=event, bot=bot, user_id=user_id)
+        count, err_msg = await send_like(bot=bot, user_id=user_id)
         if count > 0:
             count_liked_times(user_id=user_id, count=count, nickname=nickname)
             await like_other.finish("成功帮" + sender + " 给 " + likeder + f" 点赞 {count} 次")
