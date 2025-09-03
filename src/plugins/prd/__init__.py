@@ -85,7 +85,7 @@ def handle_list(to_do: list[dict] = None) -> tuple[str, str]:
         if requirement['last_modify_by']:
             res += f"最后修改于 {requirement['last_modify_at']} by {requirement['last_modify_by']}\n"
         if requirement['finish_by'] and requirement['finish']:
-            res += f"finish_by: {requirement['finish_by']}\n"
+            res += f"完成于 {requirement['finish_at']} by {requirement['finish_by']}\n"
         return res
 
     # 将存储的需求转化为str
@@ -114,7 +114,8 @@ def handle_add(to_do: list[dict] = None, operation_params: list[str] = [], creat
         "create_at": datetime.now().strftime("%Y-%m-%d"),
         "last_modify_by": "",
         "last_modify_at": "",
-        "finish_by": ""
+        "finish_by": "",
+        "finish_at": ""
     }
     to_do.append(add_info)
     update_to_do(to_do=to_do)
@@ -162,6 +163,7 @@ def handle_complete(to_do: list[dict] = None, operation_params: list[str] = [], 
         if requirement["id"] == index:
             to_do[i].update({
                 "finish": not to_do[i]["finish"],
+                "finish_at": datetime.now().strftime("%Y-%m-%d"),
                 "finish_by": finish_by
             })
             update_to_do(to_do=to_do)
