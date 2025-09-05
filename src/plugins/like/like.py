@@ -5,6 +5,7 @@ from nonebot.adapters.onebot.v11.exception import ActionFailed
 from nonebot_plugin_apscheduler import scheduler
 
 import re
+import asyncio
 
 from .config import Config
 from ...common import JsonUtils
@@ -196,7 +197,7 @@ async def _(bot: Bot, event: GroupMessageEvent):
     msg = follow_or_not(follow=follow, user_id=user_id, nickname=nickname)
     await like_unfollow.finish(msg)
 
-@scheduler.scheduled_job("cron", hour=6, minute=0 ,second=0, id="job_subscribed_likes")
+@scheduler.scheduled_job("cron", hour=5, minute=0 ,second=0, id="job_subscribed_likes")
 async def _():
     "给订阅的用户进行每日点赞"
     # 获取数据
@@ -221,6 +222,8 @@ async def _():
             except Exception as e:
                 logger.error(f"Error occurred while sending like to user {user_id}: {e}")
                 continue
+            finally:
+                await asyncio.sleep(5)
     # 存入数据
     JsonUtils.update(filename, {
         "liked_by_bot": liked_by_bot
