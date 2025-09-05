@@ -9,7 +9,6 @@ from datetime import datetime, timedelta
 from typing import Union
 
 from .working_time import get_working_time
-from .cf_sub_condition import CFSubmission
 from .config import Config
 from ...common import JsonUtils
 
@@ -32,14 +31,8 @@ check_up_command = on_command(
     block=plugin_config.block
 )
 
-cf_sub_command = on_command(
-    "cf过题",
-    priority=plugin_config.priority,
-    block=plugin_config.block
-)
-
 async def send_msg_to_group(group_ids: int, bot: Bot, msg: str):
-    """用于发送消息的函数"""
+    """用于发送文本消息的函数"""
     for group_id in group_ids:
         try:
             payload = {
@@ -154,7 +147,7 @@ async def check_up(bot: Bot, event: Union[GroupMessageEvent, PrivateMessageEvent
 
 @scheduler.scheduled_job("cron", hour=plugin_config.TIMING_HOUR, minute=plugin_config.TIMING_MINUTE ,second=plugin_config.TIMING_SECOND, id="send_check_on_work_msg")
 async def daily_timing():
-    """每天指定时间向指定群发送消息"""
+    """每天指定时间向指定群发送考勤记录"""
     bot = get_bot()
     date_val: datetime = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0) - timedelta(hours=24)
     range_val: int = 1
@@ -164,44 +157,3 @@ async def daily_timing():
     group_ids = plugin_config.GROUP_IDS
 
     await send_msg_to_group(group_ids=group_ids, bot=bot, msg=msg)
-
-@scheduler.scheduled_job("cron", day_of_week=0, hour=10, minute=00, id="send_cf_submissions_msg")
-async def _():
-    """每周发送过题记录"""
-    bot = get_bot()
-    cf_submission = CFSubmission()
-
-    data, _ = JsonUtils.read('check_up.json', {
-        "cf_submission_groups": []
-    })
-    group_ids = data["cf_submission_groups"]
-
-    msg = cf_submission.get_records_msg()
-
-    await send_msg_to_group(group_ids=group_ids, bot=bot, msg=msg)
-
-@cf_sub_command.handle()
-async def _(bot: Bot, event: Union[GroupMessageEvent, PrivateMessageEvent], args: Message = CommandArg()):
-    try:
-        # 提取原始参数并分割（参数用空格分隔）
-        raw_args = args.extract_plain_text().strip()
-        params: list[str] = raw_args.split() if raw_args else []
-
-        # 没有参数时 发送默认消息
-        if not params:
-            await cf_sub_command.finish("[过题]命令使用方法\n[参数]\n范围(int): 展示从上一日开始，上溯x天的cf过题数据")
-        
-        # 权限检测
-        group_whitelist, person_whitelist = get_whitelist()
-        if str(event.group_id) not in group_whitelist and str(event.user_id) not in person_whitelist and str(event.user_id) not in superuser:
-            logger.warning(f"用户 {event.user_id} 尝试使用 '过题' 功能，但没有权限")
-            await cf_sub_command.finish(f"你没有权限使用 '过题' 功能")
-
-        if not params[0].isdigit():
-            await cf_sub_command.finish("参数错误")
-
-        cf_submission = CFSubmission()
-        msg: str = cf_submission.get_records_msg(int(params[0]))
-        await cf_sub_command.finish(msg)
-    except Exception as e:
-        logger.opt(exception=True).warning(f"[过题]响应错误: {e}")

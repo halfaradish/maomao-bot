@@ -44,3 +44,5 @@ class DiTingData:
     DATA_DIR: str = os.getenv('DATA_DIR') or "./data"
     IMAGES_DIR: str = os.getenv('IMAGES_DIR') or "./data/tmp/"
     IMAGES_COMPRESSED_DIR: str = os.getenv('IMAGES_COMPRESSED_DIR') or "./data/pictures"
+    # 过题排行数据存放目录
+    SUB_RANKING_DIR: str = os.getenv('SUB_RANKING_DIR') or "./data/sub_ranking"
