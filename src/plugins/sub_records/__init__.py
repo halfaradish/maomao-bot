@@ -1,6 +1,7 @@
 from nonebot import get_plugin_config, logger, on_command, require, get_bot
 from nonebot.plugin import PluginMetadata
 from nonebot.params import CommandArg
+from nonebot.exception import FinishedException
 from nonebot.adapters.onebot.v11 import(
     Bot,
     Message,
@@ -44,7 +45,7 @@ async def _():
     })
     group_ids = data["submission_groups"]
 
-    success, pic_path = submission.create_ranking_table(upstream_days=7)
+    success, pic_path = await submission.create_ranking_table(upstream_days=7)
     if not success and pic_path:
         for group_id in group_ids:
             await bot.send_group_msg(
@@ -81,7 +82,7 @@ async def _(bot: Bot, event: Union[GroupMessageEvent, PrivateMessageEvent], args
             await cf_sub_command.finish("参数错误")
 
         submission = Submission()
-        success, pic_path = submission.create_ranking_table(upstream_days=int(params[0]))
+        success, pic_path = await submission.create_ranking_table(upstream_days=int(params[0]))
         logger.info(pic_path)
         if not success and pic_path:
             await cf_sub_command.finish(pic_path)
@@ -89,5 +90,8 @@ async def _(bot: Bot, event: Union[GroupMessageEvent, PrivateMessageEvent], args
             pic_uri = BuildUri.create_napcat_file_uri(file_path=pic_path)
             pic_msg = MessageSegment.image(pic_uri)
             await cf_sub_command.finish(pic_msg)
+    except FinishedException:
+        # 让 FinishedException 正常传递，不记录为错误
+        raise
     except Exception as e:
         logger.opt(exception=True).warning(f"[过题]响应错误: {e}")
