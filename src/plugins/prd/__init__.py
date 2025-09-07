@@ -70,6 +70,15 @@ async def send_forward_msg(bot: Bot, event: MessageEvent, messges: list[str]):
     else:
         await bot.call_api("send_private_forward_msg", user_id=event.user_id, messages=message_nodes)
 
+def build_single_msg(requirement: dict):
+    """构建单个需求的语句"""
+    res: str = f"\n编号: {requirement['id']}\n是否完成: {requirement['finish']}\n需求: {requirement['content']}\n创建于 {requirement['create_at']} by {requirement['create_by']}\n"
+    if requirement['last_modify_by']:
+        res += f"最后修改于 {requirement['last_modify_at']} by {requirement['last_modify_by']}\n"
+    if requirement['finish_by'] and requirement['finish']:
+        res += f"完成于 {requirement['finish_at']} by {requirement['finish_by']}\n"
+    return res
+
 def handle_list(to_do: list[dict] = None) -> tuple[str, str]:
     """展示目前未完成的需求"""
     # 检查需求列表是否为空
@@ -78,15 +87,6 @@ def handle_list(to_do: list[dict] = None) -> tuple[str, str]:
     # 初始化返回的内容
     finish_msg: str = ""
     unfinish_msg: str = ""
-
-    def build_single_msg(requirement: dict):
-        """构建单个需求的语句"""
-        res: str = f"\n编号: {requirement['id']}\n是否完成: {requirement['finish']}\n需求: {requirement['content']}\n创建于 {requirement['create_at']} by {requirement['create_by']}\n"
-        if requirement['last_modify_by']:
-            res += f"最后修改于 {requirement['last_modify_at']} by {requirement['last_modify_by']}\n"
-        if requirement['finish_by'] and requirement['finish']:
-            res += f"完成于 {requirement['finish_at']} by {requirement['finish_by']}\n"
-        return res
 
     # 将存储的需求转化为str
     for requirement in to_do:
@@ -119,7 +119,7 @@ def handle_add(to_do: list[dict] = None, operation_params: list[str] = [], creat
     }
     to_do.append(add_info)
     update_to_do(to_do=to_do)
-    return f"需求已添加，对应编号为 {to_do[-1]['id']}"
+    return f"需求已添加，对应编号为 {to_do[-1]['id']}" + build_single_msg(requirement=to_do[-1])
 
 def handle_remove(to_do: list[dict] = None, operation_params: list[str] = []):
     """删除需求"""
@@ -129,9 +129,10 @@ def handle_remove(to_do: list[dict] = None, operation_params: list[str] = []):
         return "请输入要删除的需求的下标"
     for i, requirement in enumerate(to_do):
         if requirement["id"] == index:
+            res: str = f"对应编号 {index} 的需求已删除" + build_single_msg(requirement=requirement)
             del to_do[i]
             update_to_do(to_do=to_do)
-            return f"对应编号 {index} 的需求已删除"
+            return res
     return f"未找到所指定的编号 {index}"
 
 def handle_modify(to_do:list[dict] = None, operation_params: list[str] = [], last_modify_by: str = None):
@@ -150,7 +151,7 @@ def handle_modify(to_do:list[dict] = None, operation_params: list[str] = [], las
                 "last_modify_at": datetime.now().strftime("%Y-%m-%d")
             })
             update_to_do(to_do=to_do)
-            return f"对应编号 {index} 的需求已修改"
+            return f"对应编号 {index} 的需求已修改" + build_single_msg(requirement=requirement)
     return f"未找到所指定的编号 {index}"
     
 def handle_complete(to_do: list[dict] = None, operation_params: list[str] = [], finish_by: str = "未指定"):
@@ -167,7 +168,7 @@ def handle_complete(to_do: list[dict] = None, operation_params: list[str] = [], 
                 "finish_by": finish_by
             })
             update_to_do(to_do=to_do)
-            return f"已修改对应编号 {index} 的需求的状态"
+            return f"已修改对应编号 {index} 的需求的状态" + build_single_msg(requirement=requirement)
     return f"未找到所指定的编号 {index}"
 
 @prd.handle()
