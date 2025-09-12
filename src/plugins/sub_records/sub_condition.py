@@ -24,45 +24,51 @@ SELECT
     school,
     SUM(cf_count) AS cf_count,
     SUM(luogu_count) AS luogu_count,
-    SUM(cf_count + luogu_count) AS all_count
+    SUM(all_count) AS all_count
 FROM (
-         -- CF统计部分
-         SELECT
-             u.username,
-             COUNT(DISTINCT s.problemName) AS cf_count,
-             0 AS luogu_count,
-             CASE
-                 WHEN u.school='gxu' THEN '广西大学'
-                 WHEN u.school='gxnu' THEN '广西师范大学'
-                 ELSE '其他学校'
-                 END AS school
-         FROM cf_all_submissions s
-                  INNER JOIN user u ON s.handle = u.account
-         WHERE s.creationTime BETWEEN %s AND %s
-           AND s.verdict = 'OK'
-         GROUP BY u.username, u.school
+        -- 洛谷提交统计
+        SELECT
+            u.username,
+            u.school,
+            0 AS cf_count,
+            COUNT(DISTINCT sub.pid) AS luogu_count,
+            COUNT(DISTINCT sub.pid) AS all_count
+        FROM
+            luogu_all_submissions AS sub
+                JOIN platform_id AS p ON sub.uid = p.luogu
+                JOIN user AS u ON p.user_id = u.id
+        WHERE
+            sub.isPass = 1
+                AND sub.subTime BETWEEN %s AND %s
+        GROUP BY
+            u.username,
+            u.school
 
-         UNION ALL
+        UNION ALL
 
-         -- 洛谷统计部分
-         SELECT
-             u.username,
-             0 AS cf_count,
-             COUNT(DISTINCT sub.pid) AS luogu_count,
-             CASE
-                 WHEN u.school='gxu' THEN '广西大学'
-                 WHEN u.school='gxnu' THEN '广西师范大学'
-                 ELSE '其他学校'
-                 END AS school
-         FROM luogu_all_submissions sub
-                  INNER JOIN platform_id p ON sub.uid = p.luogu
-                  INNER JOIN user u ON p.user_id = u.id
-         WHERE sub.isPass = 1
-           AND sub.subTime BETWEEN %s AND %s
-         GROUP BY u.username, u.school
-     ) combined
-GROUP BY username, school
-ORDER BY all_count DESC;
+        -- Codeforces提交统计
+        SELECT
+        u.username,
+        u.school,
+            COUNT(DISTINCT s.problemName) AS cf_count,
+            0 AS luogu_count,
+            COUNT(DISTINCT s.problemName) AS all_count
+        FROM
+            cf_all_submissions s
+                JOIN platform_id AS p ON s.handle = p.codeforces
+                JOIN user AS u ON p.user_id = u.id
+        WHERE
+            s.creationTime BETWEEN %s AND %s
+        AND s.verdict = 'OK'
+        GROUP BY
+            u.username,
+            u.school
+    ) AS combined
+GROUP BY
+    username,
+    school
+ORDER BY
+    all_count DESC;
 """
             records = db.execute(query, (start_time, end_time, start_time, end_time)).fetchall()
             return records
