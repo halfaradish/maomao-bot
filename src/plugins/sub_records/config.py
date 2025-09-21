@@ -9,3 +9,5 @@ class Config(BaseModel):
     block: bool = True
 
     scheduled_default_msg: str = "前 7 日没有过题数据"
+
+    GET_RANGE_SUB_RECORDS: str = "read/sub_records_get_range_records.sql"

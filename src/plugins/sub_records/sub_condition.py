@@ -4,10 +4,13 @@ from decimal import Decimal
 from playwright.async_api import async_playwright
 import os
 
-from nonebot import logger
+from nonebot import logger, get_plugin_config
 
+from .config import Config
 from ...config import DiTingData
-from ...common import get_icpc_db_connection
+from ...common import get_icpc_db_connection, utils
+
+config = get_plugin_config(Config)
 
 class Submission(object):
     """
@@ -17,61 +20,14 @@ class Submission(object):
     @staticmethod
     def _get_range_sub_records(start_time, end_time):
         """获取范围内过题数据"""
-        with get_icpc_db_connection() as db:
-            query = """
-SELECT
-    username,
-    school,
-    SUM(cf_count) AS cf_count,
-    SUM(luogu_count) AS luogu_count,
-    SUM(all_count) AS all_count
-FROM (
-        -- 洛谷提交统计
-        SELECT
-            u.username,
-            u.school,
-            0 AS cf_count,
-            COUNT(DISTINCT sub.pid) AS luogu_count,
-            COUNT(DISTINCT sub.pid) AS all_count
-        FROM
-            luogu_all_submissions AS sub
-                JOIN platform_id AS p ON sub.uid = p.luogu
-                JOIN user AS u ON p.user_id = u.id
-        WHERE
-            sub.isPass = 1
-                AND sub.subTime BETWEEN %s AND %s
-        GROUP BY
-            u.username,
-            u.school
-
-        UNION ALL
-
-        -- Codeforces提交统计
-        SELECT
-        u.username,
-        u.school,
-            COUNT(DISTINCT s.problemName) AS cf_count,
-            0 AS luogu_count,
-            COUNT(DISTINCT s.problemName) AS all_count
-        FROM
-            cf_all_submissions s
-                JOIN platform_id AS p ON s.handle = p.codeforces
-                JOIN user AS u ON p.user_id = u.id
-        WHERE
-            s.creationTime BETWEEN %s AND %s
-        AND s.verdict = 'OK'
-        GROUP BY
-            u.username,
-            u.school
-    ) AS combined
-GROUP BY
-    username,
-    school
-ORDER BY
-    all_count DESC;
-"""
-            records = db.execute(query, (start_time, end_time, start_time, end_time)).fetchall()
-            return records
+        try:
+            with get_icpc_db_connection() as db:
+                query = utils.GetSQL.read_sql_file(config.GET_RANGE_SUB_RECORDS)
+                records = db.execute(query, (start_time, end_time, start_time, end_time)).fetchall()
+                return records
+        except Exception as e:
+            logger.error(f"查询过题记录时出错：{e}")
+            return []
         
     @classmethod
     def get_records_msg(cls, upstream_days: int = 7):
@@ -85,10 +41,10 @@ ORDER BY
         
         result_msg = f"从上一日开始上溯 {upstream_days} 天cf过题记录如下"
         for record in records:
-            result_msg += f"{record['username']}: {record['cf_count']} - school: {record['school']}\n"
+            result_msg += f"{record['real_name']}: {record['cf_count']} - school: {record['school']}\n"
         result_msg += f"\n从上一日开始上溯 {upstream_days} 天luogu过题记录如下:"
         for record in records:
-            result_msg += f"{record['username']}: {record['luogu_count']} - school: {record['school']}\n"
+            result_msg += f"{record['real_name']}: {record['luogu_count']} - school: {record['school']}\n"
         # 去掉最后一个换行符
         result_msg = result_msg.rstrip('\n')
         return result_msg
@@ -118,10 +74,13 @@ ORDER BY
         output_path = os.path.join(output_dir, output_filename)
 
         # 3. 构建HTML表格（纯内存操作，无需异步）
-        headers = ["排名", "用户名", "CF题数", "洛谷题数", "总题数", "学校"]
+        headers = ["排名", "用户名", "CF题数", "洛谷题数", "总题数", "身份", "学校"]
         # 给数据添加排名
         for i, item in enumerate(data, 1):
             item["rank"] = i
+            # 根据role_id映射身份名称
+            role_map = {0: "管理员", 1: "现役", 2: "退役", 3: "预备役"}
+            item["role_name"] = role_map.get(item.get("role_id", 0), "未知")
 
         html_content = """
         <!DOCTYPE html>
@@ -131,7 +90,7 @@ ORDER BY
             <style>
                 * { margin: 0; padding: 0; box-sizing: border-box; }
                 body { font-family: "WenQuanYi Micro Hei", "Heiti TC", "Microsoft YaHei", Arial, sans-serif; margin: 0; padding: 20px; background-color: #f5f5f5; display: flex; justify-content: center; align-items: flex-start; }
-                .container { background-color: white; border-radius: 10px; box-shadow: 0 4px 12px rgba(0,0,0,0.1); overflow: hidden; width: 900px; margin: 0 auto; }
+                .container { background-color: white; border-radius: 10px; box-shadow: 0 4px 12px rgba(0,0,0,0.1); overflow: hidden; width: 980px; margin: 0 auto; }
                 .header { background-color: #2c3e50; color: white; padding: 15px; text-align: center; font-size: 20px; font-weight: bold; }
                 table { width: 100%; border-collapse: collapse; table-layout: fixed; }
                 th { background-color: #3498db; color: white; padding: 12px 10px; text-align: center; font-weight: bold; border: 1px solid #2980b9; }
@@ -139,10 +98,11 @@ ORDER BY
                 tr:nth-child(even) { background-color: #f8f9fa; }
                 tr:hover { background-color: #e8f4fc; }
                 .rank { font-weight: bold; color: #2c3e50; width: 60px; }
-                .username { text-align: center !important; width: 120px; font-weight: bold; }
+                .real_name { text-align: center !important; width: 120px; font-weight: bold; }
                 .school { text-align: center !important; width: 180px; }
                 .count { font-weight: bold; color: #e74c3c; width: 80px; }
                 .total { font-weight: bold; color: #27ae60; width: 80px; }
+                .role { text-align: center !important; width: 90px; font-weight: bold; color: #8e44ad; }
             </style>
         </head>
         """
@@ -162,10 +122,11 @@ ORDER BY
             html_content += f"""
             <tr>
                 <td class="rank">{row['rank']}</td>
-                <td class="username">{row['username']}</td>
+                <td class="real_name">{row['real_name']}</td>
                 <td class="count">{row['cf_count']}</td>
                 <td class="count">{row['luogu_count']}</td>
                 <td class="total">{row['all_count']}</td>
+                <td class="role">{row['role_name']}</td>
                 <td class="school">{row['school'].strip()}</td>
             </tr>
             """
@@ -178,7 +139,7 @@ ORDER BY
         """
 
         # 4. 异步生成图片（用playwright替换html2image）
-        image_width = 950
+        image_width = 1030  # 增加表格宽度以适应新列
         base_height = 200  # 基础高度（表头+标题）
         row_height = 45    # 每行高度
         image_height = min(base_height + len(data) * row_height, 10000)  # 限制最大高度

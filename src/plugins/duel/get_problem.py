@@ -1,18 +1,22 @@
 import random
 from typing import List, Dict
-from nonebot import logger
+from nonebot import logger, get_plugin_config
 
-from ...common import get_icpc_db_connection
+from .config import Config
+from ...common import get_icpc_db_connection, utils
+
+config = get_plugin_config(Config)
 
 def _get_all_problem_id():
     """获取题库所有的题目id"""
-    with get_icpc_db_connection() as db:
-        query = """
-            SELECT id
-            FROM CF_contest_official
-            """
-        records = db.execute(query=query).fetchall()
-        return records
+    try:
+        query = utils.GetSQL.read_sql_file(config.GET_CF_OFFICIAL_PROBLEMS)
+        with get_icpc_db_connection() as db:
+            records = db.execute(query=query).fetchall()
+            return records
+    except Exception as e:
+        logger.error(f"获取cf题库的题目id时出错：{e}")
+        return []
     
 def _match_id_by_rating_tags(rating: int, tags: List[str]) -> List[Dict]:
     """根据rating和tags获取题目id"""

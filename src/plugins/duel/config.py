@@ -19,6 +19,8 @@ class Config(BaseModel):
         "/duel map\n与搜题时的映射相关, 使用该命令查看详细"
     )
 
+    GET_CF_OFFICIAL_PROBLEMS: str = "read/get_cf_official_problems.sql"
+
     # 搜题映射默认消息
     MAP_DEFAULT_MSG: str = (
         "[duel map] 子命令使用详细\n"

@@ -47,8 +47,8 @@ async def send_record_to_groups(record: dict):
         # 消息模板
         msg = (
             f"影子过题:\n"
-            f"{record['real_name']} 在 {record['ac_time'].year - record['enter_time'].year} 年前的今天 {record['ac_time'].strftime('%Y-%m-%d %H:%M:%S')} 完成了 {record['platform']} 题目 '{record['problem_name']}'\n"
-            f"题目链接：{problem_url}\n"
+            f"{record['real_name']} 在 {datetime.now().year - record['enter_time'].year} 年前的今天 {record['ac_time'].strftime('%Y-%m-%d %H:%M:%S')} 完成了 {record['platform']} 题目 '{record['problem_name']}'\n"
+            f"题目链接：{problem_url}"
         )
         data, _ = JsonUtils.read(
             filename=config.data_filename,

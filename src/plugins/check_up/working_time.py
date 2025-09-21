@@ -1,24 +1,28 @@
+from nonebot import logger, get_plugin_config
+
 import datetime
 from collections import defaultdict
 from datetime import timedelta
 
+from .config import Config
 from ...config import CheckUpDay
-from ...common import get_icpc_db_connection
+from ...common import get_icpc_db_connection, utils
 
 day_start_hours = CheckUpDay.DAY_START
 day_end_hours = CheckUpDay.DAY_END
 
+config = get_plugin_config(Config)
+
 def _get_range_records(range_start, range_end):
     """获取某个范围内的打卡记录"""
-    with get_icpc_db_connection() as db:
-        query = """
-            SELECT name, time, checkType
-            FROM checkup
-            WHERE time >= %s AND time <= %s
-            ORDER BY name ASC, time ASC
-            """
-        records = db.execute(query, (range_start, range_end)).fetchall()
-        return records
+    try:
+        query = utils.GetSQL.read_sql_file(config.GET_DING_RANGE_CHECKUP)
+        with get_icpc_db_connection() as db:
+            records = db.execute(query, (range_start, range_end)).fetchall()
+            return records
+    except Exception as e:
+        logger.error(f"读取考勤记录时失败：{e}")
+        return []
     
 def _calculate_attendance(records):
     """主计算函数"""
@@ -58,16 +62,16 @@ def _process_user_records(name, records, total_duration):
         
         # 生成On-Off配对
         while i < len(day_records):
-            if day_records[i]['checkType'] == 'OnDuty':
+            if day_records[i]['check_type'] == 'OnDuty':
                 on_time = day_records[i]['time']
                 last_off = None
                 j = i + 1
                 
                 # 寻找最后一个OffDuty
                 while j < len(day_records):
-                    if day_records[j]['checkType'] == 'OnDuty':
+                    if day_records[j]['check_type'] == 'OnDuty':
                         break
-                    elif day_records[j]['checkType'] == 'OffDuty':
+                    elif day_records[j]['check_type'] == 'OffDuty':
                         last_off = day_records[j]['time']
                     j += 1
                 

@@ -30,6 +30,7 @@ class Config(BaseModel):
     TIMING_MINUTE: str = CheckUpDay.TIMING_MINUTE
     TIMING_SECOND: str = CheckUpDay.TIMING_SECOND
 
+    GET_DING_RANGE_CHECKUP: str = "read/get_ding_range_checkup.sql"
 
     # /考勤 默认提示词
     DEFAULT_MSG: str = (
