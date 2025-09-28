@@ -33,5 +33,5 @@ async def global_random_delay(event: Event):
     max_time = plugin_config.max_sleep_time
     
     delay = random.uniform(min_time, max_time)
-    logger.opt(exception=True).info(f"随机延迟{delay:.2f}秒回复")
+    logger.info(f"随机延迟{delay:.2f}秒回复")
     await asyncio.sleep(delay)
