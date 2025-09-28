@@ -11,3 +11,12 @@ class Config(BaseModel):
     scheduled_default_msg: str = "前 7 日没有过题数据"
 
     GET_RANGE_SUB_RECORDS: str = "read/sub_records_get_range_records.sql"
+
+    DATA_FILENAME: str = 'sub_records.json'
+
+    roles_dict: dict = {
+        "管理员": 0,
+        "现役": 1,
+        "退役": 2,
+        "预备役": 3
+    }

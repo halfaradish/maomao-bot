@@ -50,7 +50,7 @@ class Submission(object):
         return result_msg
     
     @classmethod
-    async def create_ranking_table(cls, upstream_days: int = 7):
+    async def create_ranking_table(cls, upstream_days: int = 7, needed_roles: list = [], needed_schools: list = [], needed_users: list = []):
         """
         将数据转化为表格图片
         """
@@ -63,6 +63,24 @@ class Submission(object):
         )
         if not data:
             return (False, f"前 {upstream_days} 日没有数据")
+        # 过滤数据
+        # 过滤用户名
+        if needed_users:
+            new_data = [item for item in data if item.get('real_name', '') in needed_users]
+            data = new_data
+        # 过滤学校
+        if needed_schools:
+            new_data = [item for item in data if item.get('school', '') in needed_schools]
+            data = new_data
+        # 过滤身份
+        if needed_roles:
+            needed_role_ids: list = []
+            for role_name, role_id in config.roles_dict.items():
+                if role_name in needed_roles:
+                    needed_role_ids.append(role_id)
+            new_data = [item for item in data if item.get('role_id', -1) in needed_role_ids]
+            data = new_data
+
         logger.info(data)
 
         # 创建存放路径
