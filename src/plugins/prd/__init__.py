@@ -63,7 +63,7 @@ async def send_forward_msg(bot: Bot, event: MessageEvent, messges: list[str]):
     uin = bot.self_id
     
     # 构建消息节点
-    message_nodes = [to_node(name=name, uin=uin, message=message) for message in messges]
+    message_nodes = [to_node(name=name, uin=uin, message=Message(message)) for message in messges]
 
     if isinstance(event, GroupMessageEvent):
         await bot.call_api("send_group_forward_msg", group_id=event.group_id, messages=message_nodes)
@@ -72,31 +72,42 @@ async def send_forward_msg(bot: Bot, event: MessageEvent, messges: list[str]):
 
 def build_single_msg(requirement: dict):
     """构建单个需求的语句"""
-    res: str = f"\n编号: {requirement['id']}\n是否完成: {requirement['finish']}\n需求: {requirement['content']}\n创建于 {requirement['create_at']} by {requirement['create_by']}\n"
+    res: str = f"\n编号: {requirement['id']}\n是否完成: {requirement['finish']}\n分类：{requirement.get('group', '其他')}\n需求: {requirement['content']}\n创建于 {requirement['create_at']} by {requirement['create_by']}\n"
     if requirement['last_modify_by']:
         res += f"最后修改于 {requirement['last_modify_at']} by {requirement['last_modify_by']}\n"
     if requirement['finish_by'] and requirement['finish']:
         res += f"完成于 {requirement['finish_at']} by {requirement['finish_by']}\n"
     return res
 
-def handle_list(to_do: list[dict] = None) -> tuple[str, str]:
+def handle_list(to_do: list[dict] = None, exist_groups: list = []) -> tuple[list, list]:
     """展示目前未完成的需求"""
     # 检查需求列表是否为空
     if not to_do:
-        return ("目前无需求", "目前无已完成的需求")
-    # 初始化返回的内容
-    finish_msg: str = ""
-    unfinish_msg: str = ""
+        return (["目前无需求"], ["目前无已完成的需求"])
+    
+    # 使用存在的组别初始化字典
+    finish_msg_dict: dict = {element:"" for element in exist_groups}
+    unfinish_msg_dict: dict = {element:"" for element in exist_groups}
+    # 保证默认的'其他'组别存在
+    finish_msg_dict['其他'] = ''
+    unfinish_msg_dict['其他'] = ''
 
-    # 将存储的需求转化为str
+    # 分类
     for requirement in to_do:
+        group_name = requirement.get('group', '其他')
         if requirement['finish']:
-            finish_msg += build_single_msg(requirement=requirement)
+            finish_msg_dict[group_name if group_name in exist_groups else '其他'] += build_single_msg(requirement=requirement)
         else:
-            unfinish_msg += build_single_msg(requirement=requirement)
-    # 返回已完成和未完成的需求
-    return (f"未完成的需求如下：{unfinish_msg}" if unfinish_msg else "目前无需求",
-            f"已完成的需求如下：{finish_msg}" if finish_msg else "目前无已完成的需求")
+            unfinish_msg_dict[group_name if group_name in exist_groups else '其他'] += build_single_msg(requirement=requirement)
+    # 需要返回的内容
+    finish_msg_list = [f"{key}:\n{val if val else '无'}" for key, val in finish_msg_dict.items()]
+    unfinish_msg_list = [f"{key}:\n{val if val else '无'}" for key, val in unfinish_msg_dict.items()]
+    # 添加初始化内容
+    finish_msg_list.insert(0, "已完成的需求如下")
+    unfinish_msg_list.insert(0, "未完成的需求如下")
+
+    return (finish_msg_list, unfinish_msg_list)
+
 
 def handle_add(to_do: list[dict] = None, operation_params: list[str] = [], create_by: str = None) -> str:
     """增加需求"""
@@ -109,6 +120,7 @@ def handle_add(to_do: list[dict] = None, operation_params: list[str] = [], creat
     add_info: dict = {
         "id": to_do[-1]["id"] + 1 if to_do else 1,
         "finish": False,
+        "group": "其他",
         "content": content,
         "create_by": create_by,
         "create_at": datetime.now().strftime("%Y-%m-%d"),
@@ -171,6 +183,36 @@ def handle_complete(to_do: list[dict] = None, operation_params: list[str] = [], 
             return f"已修改对应编号 {index} 的需求的状态" + build_single_msg(requirement=requirement)
     return f"未找到所指定的编号 {index}"
 
+def handle_grouped(to_do: list[dict] = None, operation_params: list[str] = [], exist_groups: list[str] = []):
+    """将对应下标的需求分组"""
+    # 展示默认消息
+    if not operation_params:
+        return f"现有可分类组别：{exist_groups}"
+    # 检查参数个数
+    if len(operation_params) != 2:
+        return f"参数数量错误，参数必须由一个数字和一个存在的组别构成：{operation_params}"
+    # 查找下标和组别
+    index: int = None
+    group_name: str = None
+    for opt_param in operation_params:
+        if opt_param.isdigit():
+            index = int(opt_param)
+        else:
+            group_name = opt_param
+    # 二次检查
+    if not index and not group_name:
+        return f"参数错误！参数必须由一个数字和一个存在的组别构成：{operation_params}"
+    if group_name not in exist_groups:
+        return f"修改失败，{group_name} 不在默认组别中：{exist_groups}"
+    # 更改分类
+    for i, requirement in enumerate(to_do):
+        if requirement['id'] == index:
+            to_do[i].update({
+                "group": group_name
+            })
+            update_to_do(to_do)
+            return f"对应下标 {index} 的组别已更改 {group_name}\n" + build_single_msg(requirement=requirement)
+
 @prd.handle()
 async def _(bot: Bot, event: Union[PrivateMessageEvent, GroupMessageEvent], args: Message = CommandArg()):
     raw_args = args.extract_plain_text()
@@ -188,9 +230,11 @@ async def _(bot: Bot, event: Union[PrivateMessageEvent, GroupMessageEvent], args
 
     try:
         data, _ =JsonUtils.read(config.data_filename, {
+            "exist_groups": [],
             "to_do": []
         })
         to_do = data["to_do"]
+        exist_groups = data["exist_groups"]
         logger.debug(f"to_do is: {to_do}")
 
         operation = params[0]
@@ -209,6 +253,8 @@ async def _(bot: Bot, event: Union[PrivateMessageEvent, GroupMessageEvent], args
             res_msg = handle_modify(to_do=to_do, operation_params=operation_params, last_modify_by=event.sender.nickname)
         elif operation in ["x", "complete"]:
             res_msg = handle_complete(to_do=to_do, operation_params=operation_params, finish_by=event.sender.nickname)
+        elif operation in ["group", "分组"]:
+            res_msg = handle_grouped(to_do=to_do, operation_params=operation_params, exist_groups=data.get('exist_groups', []))
         else:
             return
         
@@ -216,8 +262,9 @@ async def _(bot: Bot, event: Union[PrivateMessageEvent, GroupMessageEvent], args
         if res_msg:
             await prd.send(res_msg)
 
-        unfinish_msg, finish_msg = handle_list(to_do=to_do)
-        await send_forward_msg(bot, event, [unfinish_msg, finish_msg])
+        finish_msg_list, unfinish_msg_list = handle_list(to_do=to_do, exist_groups=exist_groups)
+        await send_forward_msg(bot, event, unfinish_msg_list)
+        await send_forward_msg(bot, event, finish_msg_list)
     except FinishedException:
         # 让 FinishedException 正常传递，不记录为错误
         raise
