@@ -4,6 +4,7 @@ from nonebot import (
     logger
 )
 from nonebot.plugin import PluginMetadata
+from nonebot.rule import Rule
 from nonebot.adapters.onebot.v11 import (
     GroupIncreaseNoticeEvent,
     GroupDecreaseNoticeEvent,
@@ -23,8 +24,13 @@ __plugin_meta__ = PluginMetadata(
 
 config = get_plugin_config(Config)
 
-group_increase = on_notice()
-group_decrease = on_notice()
+def is_group_increase(event) -> bool:
+    return isinstance(event, GroupIncreaseNoticeEvent)
+def is_group_decrease(event) -> bool:
+    return isinstance(event, GroupDecreaseNoticeEvent)
+
+group_increase = on_notice(rule=Rule(is_group_increase), priority=5, block=False)
+group_decrease = on_notice(rule=Rule(is_group_decrease), priority=5, block=False)
 
 def get_monitored_groups():
     data, _ = JsonUtils.read(
