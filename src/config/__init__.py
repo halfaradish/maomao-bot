@@ -1,4 +1,4 @@
 from . import local_config
-from .local_config import Config, IcpcDBConfig, CheckUpDay, SleepConfig, QQControlConfig, DiTingData
+from .local_config import Config, IcpcDBConfig, CheckUpDay, SleepConfig, QQControlConfig, DiTingData, RedisConfig
 
-__all__ = ['local_config', 'Config', 'IcpcDBConfig', 'CheckUpDay', 'SleepConfig', 'QQControlConfig', 'DiTingData']
+__all__ = ['local_config', 'Config', 'IcpcDBConfig', 'CheckUpDay', 'SleepConfig', 'QQControlConfig', 'DiTingData', 'RedisConfig']

@@ -48,3 +48,9 @@ class DiTingData:
     SUB_RANKING_DIR: str = os.getenv('SUB_RANKING_DIR') or "./data/sub_ranking"
     # sql语句存放目录
     SQL_DIR: str = os.getenv('SQL_DIR') or "./data/sql"
+
+class RedisConfig:
+    NEW_OJ_HOST: str = os.getenv('NEW_OJ_HOST') or 'localhost'
+    NEW_OJ_PORT: int = os.getenv('NEW_OJ_PORT') or 6379
+    NEW_OJ_PASSWORD: str = os.getenv('NEW_OJ_PASSWORD') or '123456'
+    NEW_OJ_DB: int = os.getenv('NEW_OJ_DB') or 0
