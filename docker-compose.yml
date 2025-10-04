@@ -1,16 +1,26 @@
 services:
-  none-bot:
-    container_name: none-bot
+  nonebot:
+    networks:
+      - ditingbot
+    container_name: nonebot
+    depends_on:
+      - mysql
+      - redis
+    build: .
     ports:
       - "6090:6090"
-    build: .
 
   redis:
+    networks:
+      - ditingbot
     image: library/redis:latest
+    command: redis-server --requirepass 12345678 #Redis 密码
     ports:
       - "6379:6379"
 
   mysql:
+    networks:
+      - ditingbot
     image: library/mysql:latest
     environment:
       - MYSQL_ROOT_PASSWORD=12345678
@@ -18,14 +28,16 @@ services:
       - "13306:3306"
 
   napcat:
+    networks:
+      - ditingbot
     image: mlikiowa/napcat-docker:latest
     container_name: napcat
     restart: always
-    network_mode: host
     mac_address: 00:e0:70:9a:5d:2b
     privileged: true
     ports:
       - "6099:6099"
+      - "30000:3000" #接口测试端口穿透设置
     environment:
       - TZ=Asia/Shanghai
       - NAPCAT_UID=0
@@ -34,3 +46,7 @@ services:
       - /app/.config/QQ:/app/.config/QQ
       - /app/napcat/config:/app/napcat/config
       - /app/napcat/config:/app/napcat/logs
+
+networks:
+  ditingbot:
+    driver: bridge

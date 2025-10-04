@@ -40,14 +40,14 @@ class QQControlConfig:
     QQ_CONTROL_TOKEN: str = os.getenv('QQ_CONTROL_TOKEN') or 'default_token'
 
 class DiTingData:
-    NONEBOT_DATA_DIR: str = os.getenv('NONEBOT_DATA_DIR') or './data'
-    DATA_DIR: str = os.getenv('DATA_DIR') or "./data"
-    IMAGES_DIR: str = os.getenv('IMAGES_DIR') or "./data/tmp/"
-    IMAGES_COMPRESSED_DIR: str = os.getenv('IMAGES_COMPRESSED_DIR') or "./data/pictures"
+    NONEBOT_DATA_DIR: str = os.getenv('NONEBOT_DATA_DIR') or '/app/data'
+    DATA_DIR: str = os.getenv('DATA_DIR') or "/app/data"
+    IMAGES_DIR: str = os.getenv('IMAGES_DIR') or "/app/data/tmp/"
+    IMAGES_COMPRESSED_DIR: str = os.getenv('IMAGES_COMPRESSED_DIR') or "/app/data/pictures"
     # 过题排行数据存放目录
-    SUB_RANKING_DIR: str = os.getenv('SUB_RANKING_DIR') or "./data/sub_ranking"
+    SUB_RANKING_DIR: str = os.getenv('SUB_RANKING_DIR') or "/app/data/sub_ranking"
     # sql语句存放目录
-    SQL_DIR: str = os.getenv('SQL_DIR') or "./data/sql"
+    SQL_DIR: str = os.getenv('SQL_DIR') or "/app/data/sql"
 
 class RedisConfig:
     NEW_OJ_HOST: str = os.getenv('NEW_OJ_HOST') or 'localhost'

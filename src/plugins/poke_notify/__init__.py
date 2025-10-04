@@ -28,6 +28,7 @@ config = get_plugin_config(Config)
 
 # 创建Redis连接池
 redis_pool = redis.ConnectionPool(
+    username="default",
     host=RedisConfig.NEW_OJ_HOST,
     port=RedisConfig.NEW_OJ_PORT,
     db=RedisConfig.NEW_OJ_DB,
