@@ -15,7 +15,8 @@ from nonebot_plugin_apscheduler import scheduler
 from datetime import datetime
 from typing import Union
 
-from ...common import JsonUtils, BuildUri
+from ...common import JsonUtils
+from ...common.utils import BuildUri
 from .config import Config
 from .sub_condition import Submission
 
