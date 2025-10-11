@@ -72,6 +72,7 @@ async def schedule_job():
 
     每天凌晨四点获取数据并存入定时任务
     """
+    return
     now: datetime = datetime.now()
     if now.hour >= config.day_start_hour:
         start_datetime: datetime = now.replace(hour=config.day_start_hour, minute=0, second=0)
