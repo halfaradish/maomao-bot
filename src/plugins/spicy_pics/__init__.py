@@ -8,6 +8,7 @@ from nonebot.params import CommandArg
 from .config import Config
 from ...common import CompressPic, JsonUtils
 from .lolicon import Lolicon
+from .anosu import Anosu
 
 __plugin_meta__ = PluginMetadata(
     name="spicy_pics",
@@ -89,10 +90,11 @@ async def handle_sexy_command(bot: Bot, event: GroupMessageEvent, args: Message 
                 continue
             tags.append(param)
             
-    lolicon = Lolicon()
+    # lolicon = Lolicon()
+    anosu = Anosu()
 
     await bot.send(event=event, message=f"正在响应 {username} 的请求")
-    img_save_path = await lolicon.get_img(tags=tags, event=event, bot=bot)
+    img_save_path = await anosu.get_img(tags=tags, event=event, bot=bot)
 
     if img_save_path is None:
         await sexy_command.finish("涩图下载失败，请稍后再试")
