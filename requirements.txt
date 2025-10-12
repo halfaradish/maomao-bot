@@ -11,4 +11,5 @@ mysql-connector-python
 nonebot-adapter-onebot
 nonebot-plugin-apscheduler
 nonebot-adapter-console
+nonebot-plugin-prometheus
 nonebot2[fastapi]
