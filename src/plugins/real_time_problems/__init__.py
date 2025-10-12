@@ -14,7 +14,7 @@ from .config import Config
 from .config import Config
 # 导入HourSubCondition类
 from .get_hour_problems import HourSubCondition
-from ...common import utils
+from ...common import utils, JsonUtils
 
 # 插件基本信息
 __plugin_meta__ = PluginMetadata(
@@ -102,7 +102,7 @@ def get_recent_ac_records(minutes: int = check_gap_minutes) -> List[Dict[str, An
 
 @scheduler.scheduled_job(
     "cron",
-    minute=f"*/{check_gap_minutes}",
+    minute="0",
     hour="*",
     id="real_time_problems"
 )
@@ -137,8 +137,15 @@ async def send_to_groups(message: Message):
     #发送消息到所有配置的QQ群
     try:
         bot = get_bot()
+
+        data, _ = JsonUtils.read(
+            filename=config.data_filename,
+            default={
+                "target_groups": []
+            }
+        )
         # 获取配置中的目标群组列表
-        target_groups = config.target_groups
+        target_groups = data.get('target_groups', [])
         
         # 遍历所有配置的群组
         for group_id in target_groups:
