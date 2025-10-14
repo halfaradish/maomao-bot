@@ -5,7 +5,7 @@ class Config(BaseModel):
     """Plugin Config Here"""
     priority: int = 10
 
-    post_url: str = 'https://silverstorm.cn/note/api/generate-image'
+    post_url: str = 'http://8.163.30.212:1145/api/generate-image'
 
     post_timeout: float = 30.0
 
