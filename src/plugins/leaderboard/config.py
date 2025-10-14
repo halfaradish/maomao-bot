@@ -8,7 +8,7 @@ class Config(BaseModel):
         "[参数]\n"
         "现役、退役、预备役"
     )
-    # http://127.0.0.1:8090/luogu/scores
-    qingluan_scores_data_base_url: str = "https://acm.gxu.edu.cn/gxuicpc/luogu/scores"
+    # https://acm.gxu.edu.cn/gxuicpc/luogu/scores
+    qingluan_scores_data_base_url: str = "http://127.0.0.1:8090/luogu/scores"
 
     timeout: float = 3.0
