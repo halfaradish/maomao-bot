@@ -3,14 +3,18 @@ from typing import List, Dict
 from nonebot import logger, get_plugin_config
 
 from .config import Config
-from ...common import get_icpc_db_connection, utils
+from ...common import get_icpc_db_connection
+from ...common.utils import (
+    GetSQL,
+    GenerateProblemUrl
+)
 
 config = get_plugin_config(Config)
 
 def _get_all_problem_id():
     """获取题库所有的题目id"""
     try:
-        query = utils.GetSQL.read_sql_file(config.GET_CF_OFFICIAL_PROBLEMS)
+        query = GetSQL.read_sql_file(config.GET_CF_OFFICIAL_PROBLEMS)
         with get_icpc_db_connection() as db:
             records = db.execute(query=query).fetchall()
             return records
@@ -25,11 +29,7 @@ def _match_id_by_rating_tags(rating: int, tags: List[str]) -> List[Dict]:
         return []  # 返回空列表而不是错误字符串
     
     with get_icpc_db_connection() as db:
-        query = """
-        SELECT id
-        FROM CF_contest_official
-        WHERE 1 = 1
-        """
+        query = GetSQL.read_sql_file(config.GET_CF_OFFICIAL_PROBLEMS)
         params = []
         
         if rating is not None:
@@ -50,24 +50,6 @@ def _match_id_by_rating_tags(rating: int, tags: List[str]) -> List[Dict]:
             logger.error(f"查询数据库时出错: {str(e)}")
             return []  # 发生错误时返回空列表
 
-
-def _generate_cf_url(problem_id: str) -> str:
-    """
-    根据Codeforces题目ID生成对应的题目URL
-    
-    Args:
-        problem_id: 题目ID, 例如 "1845A" 或 "1A"
-    
-    Returns:
-        对应的题目URL, 例如 "https://codeforces.com/problemset/problem/1845/A"
-    """
-    for i, char in enumerate(problem_id):
-        if char.isalpha():
-            contest_id_part = problem_id[:i]
-            problem_index_part = problem_id[i:]
-            return f"https://codeforces.com/problemset/problem/{contest_id_part}/{problem_index_part}"
-    return "https://codeforces.com/problemset/problem/"
-
 def get_one_problem_by_random():
     """
     随机获取Codeforces题库中的url
@@ -79,7 +61,7 @@ def get_one_problem_by_random():
     # 随机选取一个id
     problem = random.choice(problems)
     # 将题目id转化为Codeforces url
-    problem_url = _generate_cf_url(problem['id'])
+    problem_url = GenerateProblemUrl.generate_cf_url(problem_id=problem['problem_id'])
     return problem_url
 
 
@@ -91,5 +73,6 @@ def get_problem_id_by_rating_tags(rating: int, tags: List[str]):
     if not problems:
         return f"无法根据所给的rating和tags找到题目: {rating} {tags}"
     problem = random.choice(problems)
-    problem_url = _generate_cf_url(problem['id'])
+    # problem_url = _generate_cf_url(problem['problem_id'])
+    problem_url = GenerateProblemUrl.generate_cf_url(problem_id=problem['problem_id'])
     return problem_url
