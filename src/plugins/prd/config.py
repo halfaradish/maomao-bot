@@ -15,5 +15,6 @@ class Config(BaseModel):
         "/prd add 需求 (添加需求)\n"
         "/prd md 编号 修改后的内容 (修改需求)\n"
         "/prd rm 编号 (删除需求)\n"
-        "/prd x 编号 (更改需求完成状态True-False)"
+        "/prd x 编号 (更改需求完成状态True-False)\n"
+        "/prd 执行人名字 xxx 编号 (给需求分配指定执行人)"
     )

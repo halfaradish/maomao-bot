@@ -73,6 +73,8 @@ async def send_forward_msg(bot: Bot, event: MessageEvent, messges: list[str]):
 def build_single_msg(requirement: dict):
     """构建单个需求的语句"""
     res: str = f"\n编号: {requirement['id']}\n是否完成: {requirement['finish']}\n分类：{requirement.get('group', '其他')}\n需求: {requirement['content']}\n创建于 {requirement['create_at']} by {requirement['create_by']}\n"
+    if requirement.get('assign_to'):
+        res += f"执行人: {requirement['assign_to']} (分配于 {requirement.get('assign_at', '')} by {requirement.get('assign_by', '')})\n"
     if requirement['last_modify_by']:
         res += f"最后修改于 {requirement['last_modify_at']} by {requirement['last_modify_by']}\n"
     if requirement['finish_by'] and requirement['finish']:
@@ -213,6 +215,32 @@ def handle_grouped(to_do: list[dict] = None, operation_params: list[str] = [], e
             update_to_do(to_do)
             return f"对应下标 {index} 的组别已更改 {group_name}\n" + build_single_msg(requirement=requirement)
 
+def handle_assign(to_do: list[dict] = None, operation_params: list[str] = [], assign_by: str = None):
+    """给需求分配执行人"""
+    if len(operation_params) < 2:
+        return "参数格式错误，请使用：/prd 执行人名字 xxx 编号"
+    
+    # 检查参数格式：["执行人名字", "xxx", "编号"]
+    if operation_params[1] != "xxx":
+        return "参数格式错误，请使用：/prd 执行人名字 xxx 编号"
+    
+    if not operation_params[2].isdigit():
+        return "请输入正确的编号"
+    
+    assign_to_name = operation_params[0]  # 自定义执行人名字
+    index = int(operation_params[2])      # 需求编号
+    
+    for i, requirement in enumerate(to_do):
+        if requirement["id"] == index:
+            to_do[i].update({
+                "assign_to": assign_to_name,
+                "assign_at": datetime.now().strftime("%Y-%m-%d"),
+                "assign_by": assign_by
+            })
+            update_to_do(to_do=to_do)
+            return f"已为编号 {index} 的需求分配执行人: {assign_to_name}\n" + build_single_msg(requirement=requirement)
+    return f"未找到所指定的编号 {index}"
+
 @prd.handle()
 async def _(bot: Bot, event: Union[PrivateMessageEvent, GroupMessageEvent], args: Message = CommandArg()):
     raw_args = args.extract_plain_text()
@@ -243,7 +271,11 @@ async def _(bot: Bot, event: Union[PrivateMessageEvent, GroupMessageEvent], args
         logger.debug(f"operation_params is: {operation_params}")
 
         res_msg = None
-        if operation in ["list", "ls"]:
+        
+        # 检查是否是新的分配执行人命令格式：执行人名字 xxx 编号
+        if len(params) >= 3 and params[1] == "xxx":
+            res_msg = handle_assign(to_do=to_do, operation_params=params, assign_by=event.sender.nickname)
+        elif operation in ["list", "ls"]:
             pass
         elif operation in ["add"]:
             res_msg = handle_add(to_do=to_do, operation_params=operation_params, create_by=event.sender.nickname)
