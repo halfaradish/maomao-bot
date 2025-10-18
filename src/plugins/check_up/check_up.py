@@ -1,18 +1,16 @@
-import nonebot
-from nonebot import Bot, on_command
+from nonebot import Bot, on_command, require, get_driver, get_bot, logger, get_plugin_config
 from nonebot.plugin import PluginMetadata
-from nonebot.adapters.onebot.v11 import MessageEvent, GroupMessageEvent, PrivateMessageEvent
+from nonebot.adapters.onebot.v11 import MessageEvent, PrivateMessageEvent, GroupMessageEvent
 from nonebot.adapters import Message
 from nonebot.params import CommandArg
-from datetime import datetime
-from nonebot import require
-from nonebot import get_bot
 require("nonebot_plugin_apscheduler")
 from nonebot_plugin_apscheduler import scheduler
-from nonebot import logger
+from datetime import datetime, timedelta
+from typing import Union
 
-from ...common import get_working_time
+from .working_time import get_working_time
 from .config import Config
+from ...common import JsonUtils
 
 __plugin_meta__ = PluginMetadata(
     name="check_up",
@@ -22,63 +20,19 @@ __plugin_meta__ = PluginMetadata(
     supported_adapters={ "~onebot.v11" }
 )
 
+plugin_config = get_plugin_config(Config)
+driver = get_driver()
+superuser = driver.config.superusers
+
 check_up_command = on_command(
     "考勤",
-    aliases={"考勤状况", "今日考勤"},
-    priority=Config.priority,
-    block=Config.block
+    aliases={"考勤状况", "check"},
+    priority=plugin_config.priority,
+    block=plugin_config.block
 )
 
-@check_up_command.handle()
-async def check_up(bot: Bot, event: MessageEvent, args: Message = CommandArg()):
-    try:
-        # 初始化参数变量
-        date_val = None # 目标类型：datetime 或 None
-        range_val = None # 目标类型：int 或 None
-
-        # 提取原始参数并分割（参数用空格分隔）
-        raw_args = args.extract_plain_text().strip()
-        raw_args = str(raw_args)
-        params = raw_args.split() if raw_args else []
-
-        # 校验参数数量
-        if len(params) > 2:
-            await bot.send(event=event, message="参数过多！最多支持 2 个参数(date 和 range)")
-            return
-        # 处理 date 参数（字符串转 datetime）
-        if len(params) >= 1:
-            date_str = params[0]
-            try:
-                # 尝试按指定格式解析日期（如 YYYY-MM-DD）
-                date_val = datetime.strptime(date_str, "%Y-%m-%d")
-            except ValueError:
-                await bot.send(event=event, message=f"日期格式错误！请使用 YYYY-MM-DD 格式（当前：{date_str}）")
-                return
-        # 处理 range 参数（字符串转 int）
-        if len(params) == 2:
-            range_str = params[1]
-            if not range_str.isdigit():
-                await bot.send(event=event, message=f"range 参数 '{range_str}' 需为数字")
-                return
-            range_val = int(range_str)  # 手动转为 int
-        
-        result_msg = get_working_time(date_val, range_val)
-        await bot.send(event=event, message=result_msg)
-        
-    except Exception as e:
-        logger.opt(exception=True).warning("响应错误")
-        await bot.send(event=event, message="响应失败")
-
-
-
-@scheduler.scheduled_job("cron", hour=Config.TIMING_HOUR, minute=Config.TIMING_MINUTE ,second=Config.TIMING_SECOND)
-async def daily_timing():
-    """每天指定时间向指定群发送消息"""
-    bot = get_bot()
-
-    msg = get_working_time()
-    group_ids = Config.GROUP_IDS
-
+async def send_msg_to_group(group_ids: int, bot: Bot, msg: str):
+    """用于发送文本消息的函数"""
     for group_id in group_ids:
         try:
             payload = {
@@ -94,4 +48,112 @@ async def daily_timing():
             }
             await bot.call_api("send_group_msg", **payload)
         except Exception as e:
-            logger.opt(exception=True).warning(f"发送消息到群 {group_id} 失败") 
+            logger.opt(exception=True).warning(f"发送消息到群 {group_id} 失败")
+
+async def is_date_datetime(bot: Bot, event: Union[GroupMessageEvent, PrivateMessageEvent], date_str: str):
+    """判断date参数是否合法, 如果不合法之间返回错误消息"""
+    try:
+        date_val = datetime.strptime(date_str, "%Y-%m-%d")
+        return date_val
+    except ValueError:
+        await bot.send(event=event, message=f"日期格式错误! 请确保数据合法, 并使用了 YYYY-MM-DD 格式(当前: {date_str})")
+        return None
+
+async def is_range_num(bot: Bot, evnet: Union[GroupMessageEvent, PrivateMessageEvent], range_str: str):
+    """判断range参数是否合法, 如果不合法直接返回错误消息"""
+    if not range_str.isdigit():
+        await bot.send(event=evnet, message=f"请确保 range 参数 '{range_str}' 为合法的正整数")
+        return None
+    return int(range_str)
+
+def get_whitelist():
+    data, _ = JsonUtils.read("check_up.json", {
+        "group_whitelist": [],
+        "person_whitelist":[]
+    })
+    return (
+        data.get("group_whitelist", []),
+        data.get("person_whitelist", [])
+    )
+
+@check_up_command.handle()
+async def check_up(bot: Bot, event: Union[GroupMessageEvent, PrivateMessageEvent], args: Message = CommandArg()):
+    try:
+        # 初始化参数变量
+        date_val: datetime = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
+        range_val: int = 1
+
+        # 提取原始参数并分割（参数用空格分隔）
+        raw_args = args.extract_plain_text().strip()
+        params = raw_args.split() if raw_args else []
+
+        # 没有参数时 发送默认消息
+        if not params:
+            await bot.send(event=event, message=plugin_config.DEFAULT_MSG)
+            return
+        
+        # 权限检测
+        group_whitelist, person_whitelist = get_whitelist()
+        if str(event.group_id) not in group_whitelist and str(event.user_id) not in person_whitelist and str(event.user_id) not in superuser:
+            logger.warning(f"用户 {event.user_id} 尝试使用 '考勤' 功能，但没有权限")
+            await check_up_command.finish(f"你没有权限使用 '考勤' 功能")
+
+        # 校验参数数量
+        if len(params) > 2:
+            await bot.send(event=event, message="参数过多！最多支持 2 个参数(date 和 range)")
+            return
+        
+        # 恰有两个变量时
+        if len(params) == 2:
+            # 验证第一个参数
+            date_str = params[0]
+            date_val = await is_date_datetime(bot=bot, event=event, date_str=date_str)
+            if date_val is None:
+                return
+            # 验证第二个参数
+            range_str = params[1]
+            range_val = await is_range_num(bot=bot, evnet=event, range_str=range_str)
+            if range_val is None:
+                return
+        # 恰有一个参数时
+        elif len(params) == 1:
+            range_str = params[0]
+            range_val = await is_range_num(bot=bot, evnet=event, range_str=range_str)
+            if range_val is None:
+                return
+        # region 旧处理逻辑
+        # # 处理 date 参数（字符串转 datetime）
+        # if len(params) >= 1:
+        #     date_str = params[0]
+        #     try:
+        #         # 尝试按指定格式解析日期（如 YYYY-MM-DD）
+        #         date_val = datetime.strptime(date_str, "%Y-%m-%d")
+        #     except ValueError:
+        #         await bot.send(event=event, message=f"日期格式错误! 请确保数据合法, 并使用了 YYYY-MM-DD 格式(当前: {date_str})")
+        #         return
+        # # 处理 range 参数（字符串转 int）
+        # if len(params) == 2:
+        #     range_str = params[1]
+        #     if not range_str.isdigit():
+        #         await bot.send(event=event, message=f"请确保 range 参数 '{range_str}' 为合法的正整数")
+        #         return
+        #     range_val = int(range_str)  # 手动转为 int
+        # endregion
+
+        result_msg = get_working_time(date=date_val, range=range_val)
+        await bot.send(event=event, message=result_msg)
+    except Exception as e:
+        logger.opt(exception=True).warning("[考勤]响应错误")
+
+@scheduler.scheduled_job("cron", hour=plugin_config.TIMING_HOUR, minute=plugin_config.TIMING_MINUTE ,second=plugin_config.TIMING_SECOND, id="send_check_on_work_msg")
+async def daily_timing():
+    """每天指定时间向指定群发送考勤记录"""
+    bot = get_bot()
+    date_val: datetime = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0) - timedelta(hours=24)
+    range_val: int = 1
+
+    # 获取消息
+    msg = get_working_time(date=date_val, range=range_val)
+    group_ids = plugin_config.GROUP_IDS
+
+    await send_msg_to_group(group_ids=group_ids, bot=bot, msg=msg)

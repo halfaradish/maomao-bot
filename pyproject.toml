@@ -10,7 +10,12 @@ adapters = [
     { name = "OneBot V11", module_name = "nonebot.adapters.onebot.v11" }
 ]
 plugins = [
-    "nonebot_plugin_apscheduler"
+    "nonebot_plugin_apscheduler",
+    "nonebot_plugin_prometheus",
+    "nonebot_plugin_alconna"
 ]
 plugin_dirs = ["src/plugins"]
 builtin_plugins = ["echo", "single_session"]
+
+[tool.nonebot.config]
+delay_enabled = true

@@ -4,13 +4,23 @@ from pydantic import BaseModel
 class Config(BaseModel):
     """Plugin Config Here"""
     # 响应优先级
-    priority = 10
+    priority: int = 10
     # 是否阻塞
-    block = True
+    block: bool = True
 
-    user_msg = """/cmd 列出所有命令
-    /赞我 点赞10次"""
+    DEFAULT_MSG: str = (
+        "[cmd/命令/help/帮助]: 列出所有命令\n"
+        "[命令列表]\n"
+    )
 
-    editor_msg = "/考勤 查看考勤情况(yyyy-mm-dd range)"
+    user_msg: list = [
+        "/cmd 列出所有命令",
+        "/赞我 给QQ资料卡点赞"
+    ]
 
-    admin_msg = ''
+    editor_msg: list = [
+        "/考勤 查看考勤情况",
+        "/duel cf推题"
+    ]
+
+    admin_msg: list = []

@@ -1,6 +1,8 @@
-### local test ###
+### local test/data ###
 test/
 test_event.py
+data/*
+docs/locals/*
 
 # Created by https://www.toptal.com/developers/gitignore/api/python
 # Edit at https://www.toptal.com/developers/gitignore?templates=python

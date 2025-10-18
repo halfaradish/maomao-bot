@@ -1,21 +1,62 @@
 import os
-from datetime import datetime
 from dotenv import load_dotenv
 
 load_dotenv()
 
 class Config:
-    HOST = os.getenv('HOST')
-    PORT = os.getenv('PORT')
+    HOST: str = os.getenv('HOST')
+    PORT: str = os.getenv('PORT')
 
 class IcpcDBConfig:
-    ICPC_DB_HOST = os.getenv('ICPC_DB_HOST') or 'localhost'
-    ICPC_DB_USER = os.getenv('ICPC_DB_USER') or 'root'
-    ICPC_DB_PASSWORD = os.getenv('ICPC_DB_PASSWORD') or ''
-    ICPC_DB_NAME = os.getenv('ICPC_DB_NAME') or ''
-    ICPC_DB_PORT = os.getenv('ICPC_DB_PORT') or 3306
+    ICPC_DB_HOST: str = os.getenv('ICPC_DB_HOST') or 'localhost'
+    ICPC_DB_USER: str = os.getenv('ICPC_DB_USER') or 'root'
+    ICPC_DB_PASSWORD: str = os.getenv('ICPC_DB_PASSWORD') or ''
+    ICPC_DB_NAME: str = os.getenv('ICPC_DB_NAME') or ''
+    ICPC_DB_PORT: int = os.getenv('ICPC_DB_PORT') or 3306
 
+class DiTingBotDBConfig:
+    BOT_DB_HOST: str = os.getenv('BOT_DB_HOST') or 'localhost'
+    BOT_DB_USER: str = os.getenv('BOT_DB_USER') or 'root'
+    BOT_DB_PASSWORD: str = os.getenv('BOT_DB_PASSWORD') or ''
+    BOT_DB_NAME: str = os.getenv('BOT_DB_NAME') or ''
+    BOT_DB_PORT: int = os.getenv('BOT_DB_PORT') or 3306
 
 class CheckUpDay:
-    DAY_START = int(os.getenv('DAY_START') or 8) # 表示第一天的八点
-    DAY_END = int(os.getenv('DAY_END') or 2) # 表示第二天的两点
+    # 表示第一天的八点
+    DAY_START: int = int(os.getenv('DAY_START') or 8)
+    # 表示第二天的两点
+    DAY_END: int = int(os.getenv('DAY_END') or 2)
+    # 定时发送的时间
+    TIMING_HOUR: str = str(os.getenv('TIMING_HOUR', 10))
+    TIMING_MINUTE: str = str(os.getenv('TIMING_MINUTE', 30))
+    TIMING_SECOND: str = str(os.getenv('TIMING_SECOND', 00))
+
+class SleepConfig:
+    # 最短睡眠时间
+    MIN_SLEEP_TIME: float = os.getenv('MIN_SLEEP_TIME') or 0.3
+    # 最长睡眠时间
+    MAX_SLEEP_TIME: float = os.getenv('MAX_SLEEP_TIME') or 1.0
+
+class QQControlConfig:
+    # QQ控制的主机地址
+    QQ_CONTROL_HOST: str = os.getenv('QQ_CONTROL_HOST') or 'localhost'
+    # QQ控制的端口
+    QQ_CONTROL_PORT: int = int(os.getenv('QQ_CONTROL_PORT') or 6097)
+    # QQ控制的令牌
+    QQ_CONTROL_TOKEN: str = os.getenv('QQ_CONTROL_TOKEN') or 'default_token'
+
+class DiTingData:
+    NONEBOT_DATA_DIR: str = os.getenv('NONEBOT_DATA_DIR') or '/app/data'
+    DATA_DIR: str = os.getenv('DATA_DIR') or "/app/data"
+    IMAGES_DIR: str = os.getenv('IMAGES_DIR') or "/app/data/tmp/"
+    IMAGES_COMPRESSED_DIR: str = os.getenv('IMAGES_COMPRESSED_DIR') or "/app/data/pictures"
+    # 过题排行数据存放目录
+    SUB_RANKING_DIR: str = os.getenv('SUB_RANKING_DIR') or "/app/data/sub_ranking"
+    # sql语句存放目录
+    SQL_DIR: str = os.getenv('SQL_DIR') or "/app/data/sql"
+
+class RedisConfig:
+    NEW_OJ_HOST: str = os.getenv('NEW_OJ_HOST') or 'localhost'
+    NEW_OJ_PORT: int = os.getenv('NEW_OJ_PORT') or 6379
+    NEW_OJ_PASSWORD: str = os.getenv('NEW_OJ_PASSWORD') or '123456'
+    NEW_OJ_DB: int = os.getenv('NEW_OJ_DB') or 0
