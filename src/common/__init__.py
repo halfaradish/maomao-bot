@@ -1,8 +1,8 @@
-from . import icpc_db_pool
 from .icpc_db_pool import get_icpc_db_connection
 from .json_utils import JsonUtils
 from .compress_pics import CompressPic
 from .send_forward_msg import SendForwardMsg
+from .diting_db_pool import get_diting_db_connection
 from . import utils
 
 __all__ = [
@@ -10,5 +10,6 @@ __all__ = [
     'JsonUtils', 
     'CompressPic', 
     'SendForwardMsg',
-    'utils'
+    'utils',
+    'get_diting_db_connection'
 ]
