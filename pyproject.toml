@@ -15,7 +15,7 @@ plugins = [
     "nonebot_plugin_alconna"
 ]
 plugin_dirs = ["src/plugins"]
-builtin_plugins = ["echo", "single_session"]
+builtin_plugins = ["echo"]
 
 [tool.nonebot.config]
 delay_enabled = true
