@@ -14,7 +14,13 @@ class Config(BaseModel):
     api_port: int = QQControlConfig.QQ_CONTROL_PORT
     api_token: str = 'Bearer ' + QQControlConfig.QQ_CONTROL_TOKEN
 
-    DEFAULT_MSG: str = (
+    forward_groups: str = "forward_groups"
+    banshi_frequency_statistics: str = "banshi_frequency_statistics"
+    postshi_frequency_statistics: str = "postshi_frequency_statistics"
+
+    max_show_cnt: int = 5
+
+    HELP_MSG: str = (
         "[搬史/搬屎/转发/banshi/bs] 命令使用方法\n"
         "[示例]\n"
         "\"/搬史\" - 引用\回复 要搬的合并消息, 同时使用该命令, 即可将消息搬运到转发列表中的群组\n"

@@ -1,7 +1,17 @@
-from nonebot import on_command, logger, get_plugin_config
-from nonebot.adapters.onebot.v11 import GROUP, GroupMessageEvent, Message, Bot
+from nonebot import (
+    on_command,
+    logger,
+    get_plugin_config
+)
+from nonebot.adapters.onebot.v11 import (
+    GROUP,
+    GroupMessageEvent,
+    Message,
+    Bot
+)
 from nonebot.plugin import PluginMetadata
 from nonebot.params import CommandArg
+
 import json
 import http.client
 from typing import List, Dict, Any, Optional
@@ -11,13 +21,13 @@ from .config import Config
 from ...common import JsonUtils
 
 # 加载插件配置
-plugin_config = get_plugin_config(Config)
+config = get_plugin_config(Config)
 
 # 插件元数据
 __plugin_meta__ = PluginMetadata(
     name="搬史小助手",
     description="用于在多个群组间转发消息的插件",
-    usage=plugin_config.DEFAULT_MSG,
+    usage=config.HELP_MSG,
     config=Config,
 )
 
@@ -25,8 +35,8 @@ __plugin_meta__ = PluginMetadata(
 transport_manual = on_command(
     "搬史",
     aliases={"搬屎", "转发", "banshi", "bs"},
-    priority=plugin_config.priority,
-    block=plugin_config.block
+    priority=config.priority,
+    block=config.block
 )
 
 @dataclass
@@ -41,26 +51,41 @@ class TransportService:
     @staticmethod
     def get_forward_groups() -> List[Dict[str, Any]]:
         """获取转发的群列表"""
-        content, _ = JsonUtils.read(plugin_config.data_filename, {"forward_groups": []})
+        content, _ = JsonUtils.read(config.data_filename, {config.forward_groups: []})
         return content.get('forward_groups', [])
     
     @staticmethod
-    def update_frequency_statistics(user_id: str, nickname: str) -> None:
-        """更新用户使用频率统计"""
-        data, _ = JsonUtils.read(plugin_config.data_filename, {
-            "forward_groups": [],
-            "frequency_statistics": {}
+    def update_frequency_statistics(
+        transmit_shit_user_id: str,
+        transmit_shit_nickname: str,
+        post_shit_user_id: str,
+        post_shit_nickname: str
+    ):
+        """搬史插件使用频率统计更新"""
+        data, _ = JsonUtils.read(config.data_filename, {
+            config.forward_groups: [],
+            config.banshi_frequency_statistics: {},
+            config.postshi_frequency_statistics: {}
         })
-        
-        freq: Dict[str, Any] = data.get("frequency_statistics", {})
-        user_stats = freq.get(user_id, {"count": 0})
-        
-        freq[user_id] = {
-            "count": user_stats.get("count", 0) + 1,
-            "nickname": nickname
+
+        transmit_freq: Dict[str, Any] = data.get(config.banshi_frequency_statistics, {})
+        transmit_user_stats = transmit_freq.get(transmit_shit_user_id, {"count": 0})
+        transmit_freq[transmit_shit_user_id] = {
+            "count": transmit_user_stats.get("count", 0) + 1,
+            "nickname": transmit_shit_nickname
         }
-        
-        JsonUtils.update(plugin_config.data_filename, {"frequency_statistics": freq})
+
+        post_freq: Dict[str, Any] = data.get(config.postshi_frequency_statistics, {})
+        post_user_stats = post_freq.get(post_shit_user_id, {"count": 0})
+        post_freq[post_shit_user_id] = {
+            "count": post_user_stats.get("count", 0) + 1,
+            "nickname": post_shit_nickname
+        }
+
+        JsonUtils.update(config.data_filename, {
+            config.banshi_frequency_statistics: transmit_freq,
+            config.postshi_frequency_statistics: post_freq
+        })
     
     @staticmethod
     def forward_group_single_msg(group_id: int, message_id: int) -> bool:
@@ -74,10 +99,10 @@ class TransportService:
             bool: 是否转发成功
         """
         try:
-            conn = http.client.HTTPConnection(plugin_config.api_host, plugin_config.api_port)
+            conn = http.client.HTTPConnection(config.api_host, config.api_port)
             headers = {
                 'Content-Type': 'application/json',
-                'Authorization': plugin_config.api_token
+                'Authorization': config.api_token
             }
             payload = json.dumps({
                 "group_id": group_id,
@@ -122,7 +147,7 @@ class TransportService:
         
         # 添加到转发列表
         forward_groups.append(group_info)
-        JsonUtils.update(plugin_config.data_filename, {"forward_groups": forward_groups})
+        JsonUtils.update(config.data_filename, {config.forward_groups: forward_groups})
         return None
     
     @staticmethod
@@ -140,19 +165,30 @@ class TransportService:
         for i, group in enumerate(forward_groups):
             if group["group_id"] == group_id:
                 del forward_groups[i]
-                JsonUtils.update(plugin_config.data_filename, {"forward_groups": forward_groups})
+                JsonUtils.update(config.data_filename, {config.forward_groups: forward_groups})
                 return None
         
         return f"群 {group_id} 不在转发列表中"
     
     @staticmethod
-    def get_frequency_statistics() -> Dict[str, Any]:
-        """获取使用频率统计数据"""
-        data, _ = JsonUtils.read(plugin_config.data_filename, {
-            "forward_groups": [],
-            "frequency_statistics": {}
+    def get_banshi_frequency_statistics() -> Dict[str, Any]:
+        """获取搬史使用频率统计数据"""
+        data, _ = JsonUtils.read(config.data_filename, {
+            config.forward_groups: [],
+            config.banshi_frequency_statistics: {},
+            config.postshi_frequency_statistics: {}
         })
-        return data.get("frequency_statistics", {})
+        return data.get(config.banshi_frequency_statistics, {})
+    
+    @staticmethod
+    def get_postshi_frequency_statistics() -> Dict[str, Any]:
+        """获取发shi统计"""
+        data, _ = JsonUtils.read(config.data_filename, {
+            config.forward_groups: [],
+            config.banshi_frequency_statistics: {},
+            config.postshi_frequency_statistics: {}
+        })
+        return data.get(config.postshi_frequency_statistics, {})
 
 async def handle_forward_operation(bot: Bot, event: GroupMessageEvent, message_id: int) -> str:
     """处理消息转发操作
@@ -188,10 +224,13 @@ async def handle_forward_operation(bot: Bot, event: GroupMessageEvent, message_i
         else:
             error_groups.append(str(group_id))
     
-    # 更新使用频率统计
+    # 使用频率统计更新
     TransportService.update_frequency_statistics(
-        user_id=str(event.sender.user_id), 
-        nickname=event.sender.nickname
+        transmit_shit_user_id=str(event.sender.user_id), 
+        transmit_shit_nickname=event.sender.nickname,
+        post_shit_user_id=str(event.reply.sender.user_id),
+        post_shit_nickname=event.reply.sender.nickname
+        
     )
     
     # 构建结果消息
@@ -219,25 +258,43 @@ async def handle_list_operation() -> str:
     
     return f"当前配置的转发群组:\n{group_list}"
 
-async def handle_count_operation() -> str:
+async def handle_count_operation(is_show_all: bool) -> str:
     """处理使用次数统计操作
     
     Returns:
         str: 统计结果消息
     """
-    freq = TransportService.get_frequency_statistics()
+    banshi_freq = TransportService.get_banshi_frequency_statistics()
+
+    show_cnt = 0
     
-    res_msg = "搬史插件使用次数统计:"
-    
-    if not freq:
-        return res_msg + "\n无使用记录"
-    
-    # 按使用次数降序排序
-    sorted_items = sorted(freq.items(), key=lambda x: x[1]['count'], reverse=True)
-    
-    for _, user_info in sorted_items:
-        res_msg += f"\n{user_info['nickname']} 搬史 {user_info['count']} 次"
-    
+    res_msg = "搬史插件使用次数统计(使用bs命令的用户)"
+    if not banshi_freq:
+        res_msg += "\n无使用记录"
+    else:
+        # 按使用次数降序排序
+        sorted_items = sorted(banshi_freq.items(), key=lambda x: x[1]['count'], reverse=True)
+        for _, user_info in sorted_items:
+            show_cnt += 1
+            if show_cnt > config.max_show_cnt and not is_show_all:
+                break
+            res_msg += f"\n{user_info['nickname']} 搬史 {user_info['count']} 次"
+
+    show_cnt = 0
+
+    postshi_freq = TransportService.get_postshi_frequency_statistics()
+    res_msg += "\n\n发史数据统计(被bs命名转发消息的用户)"
+    if not postshi_freq:
+        res_msg += "\n无使用记录"
+    else:
+        # 降序排序
+        sorted_items = sorted(postshi_freq.items(), key=lambda x: x[1]['count'], reverse=True)
+        for _, user_info in sorted_items:
+            show_cnt += 1
+            if show_cnt > config.max_show_cnt and not is_show_all:
+                break
+            res_msg += f"\n{user_info['nickname']} 发史 {user_info['count']} 次"
+
     return res_msg
 
 @transport_manual.handle()
@@ -251,7 +308,7 @@ async def handle_transport(bot: Bot, event: GroupMessageEvent, args: Message = C
         if not params:
             # 检查是否有引用消息
             if not event.reply:
-                await bot.send(event=event, message=plugin_config.DEFAULT_MSG)
+                await bot.send(event=event, message=config.HELP_MSG)
                 return
             
             message_id = event.reply.message_id
@@ -266,8 +323,7 @@ async def handle_transport(bot: Bot, event: GroupMessageEvent, args: Message = C
             # 查看转发群组列表
             result_msg = await handle_list_operation()
             await bot.send(event=event, message=result_msg)
-            return
-        
+
         elif command in ["add", "添加", "增加"]:
             # 添加转发群组
             if len(params) < 2 or not params[1].isdigit():
@@ -281,9 +337,7 @@ async def handle_transport(bot: Bot, event: GroupMessageEvent, args: Message = C
                 await bot.send(event=event, message=error_msg)
             else:
                 await bot.send(event=event, message=f"已将群 {group_id} 添加到转发列表")
-            
-            return
-        
+
         elif command in ["remove", "rm", "删除", "移除"]:
             # 删除转发群组
             if len(params) < 2 or not params[1].isdigit():
@@ -297,17 +351,15 @@ async def handle_transport(bot: Bot, event: GroupMessageEvent, args: Message = C
                 await bot.send(event=event, message=error_msg)
             else:
                 await bot.send(event=event, message=f"已将群 {group_id} 从转发列表中移除")
-            
-            return
-        
+                
         elif command in ["count", "计数", "统计"]:
             # 查看使用次数统计
-            result_msg = await handle_count_operation()
+
+            # 是否列出所有消息
+            is_show_all = len(params) >= 2 and params[1] in ["all"]
+            result_msg = await handle_count_operation(is_show_all)
             await bot.send(event=event, message=result_msg)
-            return
-        
-        # 未知命令
-        await bot.send(event=event, message=plugin_config.DEFAULT_MSG)
+
         
     except Exception as e:
         logger.opt(exception=True).error(f"搬史小助手发生错误: {e}")
