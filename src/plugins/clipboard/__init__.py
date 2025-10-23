@@ -7,7 +7,9 @@ from nonebot.plugin import PluginMetadata
 from nonebot.adapters.onebot.v11 import (
     GroupMessageEvent,
     Message,
-    MessageSegment
+    MessageSegment,
+    Bot,
+    PrivateMessageEvent
 )
 from nonebot.exception import FinishedException
 
@@ -63,7 +65,7 @@ async def text_to_image_bytes(text_msg: str) -> Tuple[bool, Union[str, BinaryIO]
         return (False, f"网络请求异常")
 
 @clipboard.handle()
-async def _(event: GroupMessageEvent):
+async def _(bot: Bot, event: Union[GroupMessageEvent, PrivateMessageEvent]):
     try:
         if not event.reply:
             await clipboard.finish(config.DEFAULT_MSG)
@@ -83,12 +85,35 @@ async def _(event: GroupMessageEvent):
 
         img_msg = MessageSegment.image(res)
         # 发送图片
-        logger.debug(f"正在发送图片 -> {event.group_id}")
+        if isinstance(event, GroupMessageEvent):
+            logger.debug(f"正在发送图片 -> 群聊 {event.group_id}")
+        else:
+            logger.debug(f"正在发送图片 -> 私聊 {event.sender.user_id}")
         await clipboard.send(img_msg)
         logger.debug(f"图片发送成功")
+
+        # 只在群聊中执行权限检查和消息删除操作
+        if isinstance(event, GroupMessageEvent):
+            # 检查bot是否有管理员权限
+            member_info = await bot.get_group_member_info(
+                group_id=event.group_id,
+                user_id=bot.self_id
+            )
+            bot_role = member_info.get('role', 'member')
+            if bot_role not in ['owner', 'admin']:
+                logger.debug(f"bot 在群组 {event.group_id} 中没有管理权限，无法撤回消息")
+                return
+
+            # 如果bot有管理员权限，删除原消息
+            await bot.delete_msg(message_id=event.reply.message_id)
+            # 发送提示消息并at发送消息的人
+            at_source_msg_user = MessageSegment.at(user_id=event.reply.sender.user_id)
+            await clipboard.send("图片剪贴板的消息由 " + at_source_msg_user + f"({event.reply.sender.user_id}) 提供")
+
+        return
     except FinishedException:
         # 让 FinishedException 正常传递，不记录为错误
         raise
     except Exception as e:
-        clipboard.finish("获取图片失败")
         logger.error(f"发送图片失败: {e}")
+        await clipboard.finish("发送图片失败")
