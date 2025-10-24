@@ -1,28 +1,32 @@
-import mysql.connector
-from mysql.connector import Error
+from mysql.connector import Error, pooling
 
 from ..config import DiTingBotDBConfig
 
+try:
+    # 连接池配置
+    db_pool = pooling.MySQLConnectionPool(
+        pool_name="diting_bot_pool",  # 连接池名称
+        pool_size=5,  # 默认连接数
+        pool_reset_session=True,  # 归还连接时重置会话
+        host=DiTingBotDBConfig.BOT_DB_HOST,
+        user=DiTingBotDBConfig.BOT_DB_USER,
+        password=DiTingBotDBConfig.BOT_DB_PASSWORD,
+        database=DiTingBotDBConfig.BOT_DB_NAME,
+        port=DiTingBotDBConfig.BOT_DB_PORT
+    )
+except Error as e:
+    print(f"连接池 diting_bot_pool 初始化失败: {e}")
+    raise
+
 class MySQLConnection:
     
-    def __init__(self):
-        self.connection = None
+    def __init__(self, connection):
+        self.connection = connection
         self.cursor = None
 
     def __enter__(self):
-        try:
-            self.connection = mysql.connector.connect(
-                host = DiTingBotDBConfig.BOT_DB_HOST,
-                user = DiTingBotDBConfig.BOT_DB_USER,
-                password = DiTingBotDBConfig.BOT_DB_PASSWORD,
-                database = DiTingBotDBConfig.BOT_DB_NAME,
-                port = DiTingBotDBConfig.BOT_DB_PORT
-            )
-            self.cursor = self.connection.cursor(dictionary=True)
-            return self
-        except Error as e:
-            print(f"数据库(gxuicpc)连接失败: {e}")
-            raise
+        self.cursor = self.connection.cursor(dictionary=True)
+        return self
 
     def __exit__(self, exc_type, exc_val, exc_tb):
         if self.cursor:
@@ -32,7 +36,6 @@ class MySQLConnection:
                 self.connection.rollback()
             else:
                 self.connection.commit()
-            self.connection.close()
 
     def execute(self, query, params=None):
         if params is None:
@@ -45,4 +48,5 @@ class MySQLConnection:
         return self.cursor
     
 def get_diting_db_connection():
-    return MySQLConnection()
+    conn = db_pool.get_connection()
+    return MySQLConnection(conn)

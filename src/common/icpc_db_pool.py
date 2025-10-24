@@ -1,28 +1,33 @@
-import mysql.connector
-from mysql.connector import Error
+from mysql.connector import Error, pooling
 
 from ..config import IcpcDBConfig
 
+try:
+    # 连接池配置
+    db_pool = pooling.MySQLConnectionPool(
+        pool_name="gxuicpc_pool",
+        pool_size=5,
+        pool_reset_session=True,
+        host=IcpcDBConfig.ICPC_DB_HOST,
+        user=IcpcDBConfig.ICPC_DB_USER,
+        password=IcpcDBConfig.ICPC_DB_PASSWORD,
+        database=IcpcDBConfig.ICPC_DB_NAME,
+        port=IcpcDBConfig.ICPC_DB_PORT
+    )
+except Error as e:
+    print(f"连接池 gxuicpc_pool 初始化失败: {e}")
+    raise
+
+
 class MySQLConnection:
     
-    def __init__(self):
-        self.connection = None
+    def __init__(self, connection):
+        self.connection = connection
         self.cursor = None
 
     def __enter__(self):
-        try:
-            self.connection = mysql.connector.connect(
-                host = IcpcDBConfig.ICPC_DB_HOST,
-                user = IcpcDBConfig.ICPC_DB_USER,
-                password = IcpcDBConfig.ICPC_DB_PASSWORD,
-                database = IcpcDBConfig.ICPC_DB_NAME,
-                port = IcpcDBConfig.ICPC_DB_PORT
-            )
-            self.cursor = self.connection.cursor(dictionary=True)
-            return self
-        except Error as e:
-            print(f"数据库(gxuicpc)连接失败: {e}")
-            raise
+        self.cursor = self.connection.cursor(dictionary=True)
+        return self
 
     def __exit__(self, exc_type, exc_val, exc_tb):
         if self.cursor:
@@ -32,7 +37,6 @@ class MySQLConnection:
                 self.connection.rollback()
             else:
                 self.connection.commit()
-            self.connection.close()
 
     def execute(self, query, params=None):
         if params is None:
@@ -45,4 +49,5 @@ class MySQLConnection:
         return self.cursor
     
 def get_icpc_db_connection():
-    return MySQLConnection()
+    conn = db_pool.get_connection()
+    return MySQLConnection(conn)
