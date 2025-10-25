@@ -98,7 +98,7 @@ async def _(bot: Bot, event: Union[GroupMessageEvent, PrivateMessageEvent], args
 
         # 没有参数时 发送默认消息
         if not params:
-            await cf_sub_command.finish("[过题]命令使用方法\n[参数]\n范围(int): 展示从上一日开始，上溯x天的cf过题数据")
+            await cf_sub_command.finish("[过题]命令使用方法\n[参数]\n范围(int): 展示从上一日开始，上溯x天的过题数据")
 
         # 读取需要筛选的数据
         data, _ = JsonUtils.read(

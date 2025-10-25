@@ -1,3 +1,4 @@
+from nonebot import logger
 from mysql.connector import Error, pooling
 
 from ..config import DiTingBotDBConfig
@@ -6,7 +7,7 @@ try:
     # 连接池配置
     db_pool = pooling.MySQLConnectionPool(
         pool_name="diting_bot_pool",  # 连接池名称
-        pool_size=5,  # 默认连接数
+        pool_size=DiTingBotDBConfig.BOT_DB_POOL_SIZE,
         pool_reset_session=True,  # 归还连接时重置会话
         host=DiTingBotDBConfig.BOT_DB_HOST,
         user=DiTingBotDBConfig.BOT_DB_USER,
@@ -48,5 +49,10 @@ class MySQLConnection:
         return self.cursor
     
 def get_diting_db_connection():
-    conn = db_pool.get_connection()
-    return MySQLConnection(conn)
+    try:
+        conn = db_pool.get_connection()
+        return MySQLConnection(conn)
+    except Error as e:
+        if "pool exhausted" in str(e).lower():
+            logger.error(f"数据库连接池耗尽，请检查连接是否正确关闭或考虑增加连接池大小: {e}")
+        raise

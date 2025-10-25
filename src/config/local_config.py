@@ -13,6 +13,7 @@ class IcpcDBConfig:
     ICPC_DB_PASSWORD: str = os.getenv('ICPC_DB_PASSWORD') or ''
     ICPC_DB_NAME: str = os.getenv('ICPC_DB_NAME') or ''
     ICPC_DB_PORT: int = os.getenv('ICPC_DB_PORT') or 3306
+    ICPC_DB_POOL_SIZE: int = os.getenv('ICPC_DB_POOL_SIZE') or 20
 
 class DiTingBotDBConfig:
     BOT_DB_HOST: str = os.getenv('BOT_DB_HOST') or 'localhost'
@@ -20,6 +21,7 @@ class DiTingBotDBConfig:
     BOT_DB_PASSWORD: str = os.getenv('BOT_DB_PASSWORD') or ''
     BOT_DB_NAME: str = os.getenv('BOT_DB_NAME') or ''
     BOT_DB_PORT: int = os.getenv('BOT_DB_PORT') or 3306
+    BOT_DB_POOL_SIZE: int = os.getenv('BOT_DB_POOL_SIZE') or 20
 
 class CheckUpDay:
     # 表示第一天的八点
