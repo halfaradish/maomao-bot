@@ -21,7 +21,7 @@ class DiTingBotDBConfig:
     BOT_DB_PASSWORD: str = os.getenv('BOT_DB_PASSWORD') or ''
     BOT_DB_NAME: str = os.getenv('BOT_DB_NAME') or ''
     BOT_DB_PORT: int = os.getenv('BOT_DB_PORT') or 3306
-    BOT_DB_POOL_SIZE: int = os.getenv('BOT_DB_POOL_SIZE') or 20
+    BOT_DB_POOL_SIZE: int = os.getenv('BOT_DB_POOL_SIZE') or 50
 
 class CheckUpDay:
     # 表示第一天的八点
