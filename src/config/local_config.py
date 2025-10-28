@@ -58,7 +58,11 @@ class DiTingData:
     SQL_DIR: str = os.getenv('SQL_DIR') or "/app/data/sql"
 
 class RedisConfig:
-    NEW_OJ_HOST: str = os.getenv('NEW_OJ_HOST') or 'localhost'
-    NEW_OJ_PORT: int = os.getenv('NEW_OJ_PORT') or 6379
-    NEW_OJ_PASSWORD: str = os.getenv('NEW_OJ_PASSWORD') or '123456'
-    NEW_OJ_DB: int = os.getenv('NEW_OJ_DB') or 0
+    HOST: str = os.getenv('NEW_OJ_REDIS_HOST') or 'localhost'
+    PORT: int = os.getenv('NEW_OJ_REDIS_PORT') or 6379
+    PASSWORD: str = os.getenv('NEW_OJ_REDIS_PASSWORD') or '123456'
+    DB: int = os.getenv('NEW_OJ_REDIS_DB') or 0
+    MAX_CONNECTIONS: int = os.getenv('NEW_OJ_REDIS_MAX_CONNECTIONS') or 20
+    SOCKET_timeout: int = os.getenv('NEW_OJ_REDIS_SOCKET_timeout') or 5
+    SOCKET_CONNECT_TIMEOUT: int = os.getenv('NEW_OJ_REDIS_SOCKET_CONNECT_TIMEOUT') or 5
+    DECODE_RESPONSES: int = os.getenv('NEW_OJ_REDIS_DECODE_RESPONSES') or True
