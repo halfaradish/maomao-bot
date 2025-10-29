@@ -33,10 +33,13 @@ class MySQLConnection:
         if self.cursor:
             self.cursor.close()
         if self.connection:
-            if exc_type:
-                self.connection.rollback()
-            else:
-                self.connection.commit()
+            try:
+                if exc_type:
+                    self.connection.rollback()
+                else:
+                    self.connection.commit()
+            finally:
+                self.connection.close()
 
     def execute(self, query, params=None):
         if params is None:

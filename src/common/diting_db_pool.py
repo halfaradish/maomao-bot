@@ -33,12 +33,14 @@ class MySQLConnection:
         if self.cursor:
             self.cursor.close()
         if self.connection:
-            if exc_type:
-                self.connection.rollback()
-            else:
-                self.connection.commit()
-            # 重要：将连接归还给连接池
-            self.connection.close()
+            try:
+                if exc_type:
+                    self.connection.rollback()
+                else:
+                    self.connection.commit()
+            finally:
+                # 重要：将连接归还给连接池
+                self.connection.close()
 
     def execute(self, query, params=None):
         if params is None:
