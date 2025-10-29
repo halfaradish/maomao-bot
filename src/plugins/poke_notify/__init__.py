@@ -57,6 +57,7 @@ async def _(event: PokeNotifyEvent):
             pipe.incr(redis_user_key)
             pipe.expire(redis_user_key, config.expire_time)
             cur_cnt, _ = pipe.execute()
+            cur_cnt = int(cur_cnt)
 
             # 记录过期时间
             ttl = r.client.ttl(redis_user_key)
