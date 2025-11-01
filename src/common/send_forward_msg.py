@@ -9,7 +9,7 @@ from nonebot.adapters.onebot.v11 import (
 
 class SendForwardMsg:
     @staticmethod
-    async def by_onebot_api(bot: Bot, event: MessageEvent, messges: list[str], group_id: str):
+    async def by_onebot_api(bot: Bot, event: MessageEvent, messges: list, group_id: str, user_id: str):
         """发送合并转发消息"""
         def to_node(name: str, uin: str, message: Message):
             """构建统一的格式"""
@@ -28,7 +28,7 @@ class SendForwardMsg:
         if isinstance(event, GroupMessageEvent):
             await bot.call_api("send_group_forward_msg", group_id=group_id, messages=message_nodes)
         else:
-            await bot.call_api("send_private_forward_msg", user_id=group_id, messages=message_nodes)
+            await bot.call_api("send_private_forward_msg", user_id=user_id, messages=message_nodes)
 
     @staticmethod
     async def by_napcat_api(
@@ -40,4 +40,4 @@ class SendForwardMsg:
     ):
         return
 
-
+send_forword_msg = SendForwardMsg()
