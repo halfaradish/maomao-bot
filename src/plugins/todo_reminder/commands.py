@@ -30,8 +30,12 @@ class TodoCommands:
         try:
             # 解析事件信息
             group_id, user_id, user_name = self._parse_event_info(event)
-            if not group_id or not user_id:
+            if not user_id:
                 return "无法获取用户信息"
+            
+            # 私聊场景下，group_id 可以为 None，使用特殊值 -1 表示个人提醒
+            if group_id is None:
+                group_id = -1
             
             # 解析时间和内容
             time_str, advance_str, reminder_content = self._parse_reminder_content(content)
@@ -66,7 +70,18 @@ class TodoCommands:
             time_display = self.time_parser.format_remind_time(time_result['remind_time'])
             
             # 构建返回消息
+            remind_type = time_result.get('remind_type', 'once')
             message = f"todo创建成功！\nID: {reminder_id}\n时间: {time_display}\n内容: {reminder_content}"
+            
+            # 如果是重复提醒，添加重复类型信息
+            if remind_type in ['daily', 'weekly', 'monthly', 'workday']:
+                repeat_names = {
+                    'daily': '每天重复',
+                    'weekly': '每周重复',
+                    'monthly': '每月重复',
+                    'workday': '工作日重复'
+                }
+                message += f"\n类型: {repeat_names.get(remind_type, '重复提醒')}"
             
             # 如果有提前提醒，添加提前提醒信息
             if time_result.get('advance_remind_minutes', 0) > 0:
@@ -94,16 +109,20 @@ class TodoCommands:
         try:
             # 解析事件信息
             group_id, user_id, user_name = self._parse_event_info(event)
-            if not group_id or not user_id:
+            if not user_id:
                 return "无法获取用户信息"
             
+            # 群组todo必须在群聊中创建
+            if not group_id:
+                return "群组todo只能在群聊中创建"
+            
             # 解析时间和内容
-            time_str, reminder_content = self._parse_reminder_content(content)
+            time_str, advance_str, reminder_content = self._parse_reminder_content(content)
             if not time_str or not reminder_content:
-                return "请提供正确的时间格式，例如：群todo 明天下午3点 开会"
+                return "请提供正确的时间格式，例如：群todo 明天下午3点 开会 或 群todo 30分钟后 -15min 开会"
             
             # 解析时间
-            time_result = self.time_parser.parse_time(time_str)
+            time_result = self.time_parser.parse_time_with_advance(time_str, advance_str)
             if not time_result:
                 return f"无法解析时间格式：{time_str}"
             
@@ -117,7 +136,9 @@ class TodoCommands:
                 'remind_type': time_result['remind_type'],
                 'status': 'pending',
                 'created_by': user_name,
-                'last_modified_by': user_name
+                'last_modified_by': user_name,
+                'advance_remind_minutes': time_result.get('advance_remind_minutes', 0),
+                'advance_reminded': False
             }
             
             # 保存到数据库
@@ -126,7 +147,35 @@ class TodoCommands:
             # 格式化时间显示
             time_display = self.time_parser.format_remind_time(time_result['remind_time'])
             
-            return f"群组todo创建成功！\nID: {reminder_id}\n时间: {time_display}\n内容: {reminder_content}"
+            # 构建返回消息
+            remind_type = time_result.get('remind_type', 'once')
+            message = f"群组todo创建成功！\nID: {reminder_id}\n时间: {time_display}\n内容: {reminder_content}"
+            
+            # 如果是重复提醒，添加重复类型信息
+            if remind_type in ['daily', 'weekly', 'monthly', 'workday']:
+                repeat_names = {
+                    'daily': '每天重复',
+                    'weekly': '每周重复',
+                    'monthly': '每月重复',
+                    'workday': '工作日重复'
+                }
+                message += f"\n类型: {repeat_names.get(remind_type, '重复提醒')}"
+            
+            # 如果有提前提醒，添加提前提醒信息
+            if time_result.get('advance_remind_minutes', 0) > 0:
+                advance_minutes = time_result['advance_remind_minutes']
+                if advance_minutes >= 60:
+                    hours = advance_minutes // 60
+                    minutes = advance_minutes % 60
+                    if minutes > 0:
+                        advance_display = f"{hours}小时{minutes}分钟"
+                    else:
+                        advance_display = f"{hours}小时"
+                else:
+                    advance_display = f"{advance_minutes}分钟"
+                message += f"\n提前提醒: {advance_display}"
+            
+            return message
             
         except Exception as e:
             logger.error(f"创建群组todo失败: {e}")
@@ -137,8 +186,12 @@ class TodoCommands:
         try:
             # 解析事件信息
             group_id, user_id, user_name = self._parse_event_info(event)
-            if not group_id or not user_id:
+            if not user_id:
                 return "无法获取用户信息"
+            
+            # 私聊场景下使用特殊值
+            if group_id is None:
+                group_id = -1
             
             # 获取群组todo列表（群内所有用户共享）
             reminders = self.database.get_group_shared_reminders(group_id, 'pending')
@@ -163,8 +216,12 @@ class TodoCommands:
         try:
             # 解析事件信息
             group_id, user_id, user_name = self._parse_event_info(event)
-            if not group_id or not user_id:
+            if not user_id:
                 return "无法获取用户信息"
+            
+            # 私聊场景下使用特殊值
+            if group_id is None:
+                group_id = -1
             
             # 获取群组已完成的todo列表（群内所有用户共享）
             reminders = self.database.get_group_shared_reminders(group_id, 'completed')
@@ -223,8 +280,11 @@ class TodoCommands:
         try:
             # 解析事件信息
             group_id, user_id, user_name = self._parse_event_info(event)
-            if not group_id or not user_id:
+            if not user_id:
                 return "无法获取用户信息"
+            
+            # 私聊场景下使用特殊值
+            current_group_id = group_id if group_id is not None else -1
             
             # 验证todoID
             try:
@@ -238,7 +298,7 @@ class TodoCommands:
                 return "todo不存在"
             
             # 检查群组权限（只允许取消同群的todo）
-            if reminder['group_id'] != group_id:
+            if reminder['group_id'] != current_group_id:
                 return "只能取消本群的todo"
             
             if reminder['status'] != 'pending':
@@ -260,8 +320,11 @@ class TodoCommands:
         try:
             # 解析事件信息
             group_id, user_id, user_name = self._parse_event_info(event)
-            if not group_id or not user_id:
+            if not user_id:
                 return "无法获取用户信息"
+            
+            # 私聊场景下使用特殊值
+            current_group_id = group_id if group_id is not None else -1
             
             # 验证todoID
             try:
@@ -275,7 +338,7 @@ class TodoCommands:
                 return "todo不存在"
             
             # 检查群组权限（只允许完成同群的todo）
-            if reminder['group_id'] != group_id:
+            if reminder['group_id'] != current_group_id:
                 return "只能完成本群的todo"
             
             if reminder['status'] != 'pending':
@@ -297,8 +360,11 @@ class TodoCommands:
         try:
             # 解析事件信息
             group_id, user_id, user_name = self._parse_event_info(event)
-            if not group_id or not user_id:
+            if not user_id:
                 return "无法获取用户信息"
+            
+            # 私聊场景下使用特殊值
+            current_group_id = group_id if group_id is not None else -1
             
             # 验证todoID
             try:
@@ -312,11 +378,11 @@ class TodoCommands:
                 return "todo不存在"
             
             # 检查群组权限（只允许删除同群的todo）
-            if reminder['group_id'] != group_id:
+            if reminder['group_id'] != current_group_id:
                 return "只能删除本群的todo"
             
             # 删除群组共享todo
-            success = self.database.delete_group_shared_reminder(reminder_id_int, group_id)
+            success = self.database.delete_group_shared_reminder(reminder_id_int, current_group_id)
             if success:
                 return f"todo {todo_id} 已删除"
             else:
@@ -351,7 +417,7 @@ class TodoCommands:
             message += f"ID: {reminder['id']}\n"
             message += f"时间: {time_display}\n"
             message += f"内容: {reminder['content']}\n"
-            message += f"类型: {target_info}\n"
+            message += f"目标: {target_info}\n"
             message += f"类型: {reminder['remind_type']}\n"
             message += f"状态: {reminder['status']}\n"
             message += f"创建者: {reminder['created_by']}\n"
@@ -423,40 +489,33 @@ class TodoCommands:
         """显示支持的时间格式"""
         return """支持的时间格式：
 
- 相对时间：
+ 相对时间（一次性提醒）：
 • X分钟后 (如：30分钟后)
 • X小时后 (如：2小时后)
-• X天后 (如：3天后)
-• X周后 (如：1周后)
-• X个月后 (如：2个月后)
 
- 绝对时间：
-• 明天X点 (如：明天3点)
-• 明天X点Y分 (如：明天3点30分)
-• 明天上午/下午/晚上X点 (如：明天下午3点)
-• 明天上午/下午/晚上X点Y分 (如：明天下午3点30分)
-• 后天X点 (如：后天3点)
-• 后天X点Y分 (如：后天3点30分)
-• 后天上午/下午/晚上X点 (如：后天下午3点)
-• 后天上午/下午/晚上X点Y分 (如：后天下午3点30分)
-• 大后天X点 (如：大后天3点)
-• 大后天X点Y分 (如：大后天3点30分)
-• 大后天上午/下午/晚上X点 (如：大后天下午3点)
-• 大后天上午/下午/晚上X点Y分 (如：大后天下午3点30分)
+ 周几时间（一次性提醒）：
+• 周X点 (如：周一9点，等同于周一9:00，仅本周一次性提醒，支持一二三四五六日天)
+• 周X点Y分 (如：周一9点30分，仅本周一次性提醒)
+• 周X:Y (如：周一9:30，仅本周一次性提醒，支持冒号格式)
+• 下周X点 (如：下周一九点，等同于下周一9:00，仅下周一次性提醒，支持一二三四五六日天)
+• 下周X点Y分 (如：下周一9点30分，仅下周一次性提醒)
+• 下周X:Y (如：下周一9:30，仅下周一次性提醒，支持冒号格式)
 
- 重复时间：
-• 每天X点 (如：每天9点)
-• 每天X点Y分 (如：每天9点30分)
-• 工作日X点 (如：工作日8点)
-• 工作日X点Y分 (如：工作日8点30分)
-• 每周X点 (如：每周一10点，支持一二三四五六日天)
-• 每周X点Y分 (如：每周一10点30分)
+ 具体日期时间（一次性提醒）：
+• X月X日-X点-X分 (如：1月15日-9点-30分，当年，如果已过则为明年)
+• X月X日-X点 (如：1月15日-9点，等同于1月15日-9点-0分，当年，如果已过则为明年)
+• X-X-X-X (如：2-5-8-30，表示2月5日8点30分，当年，如果已过则为明年)
+• X-X-X (如：2-5-8，表示2月5日8点，等同于2月5日8点0分，当年，如果已过则为明年)
 
- 具体日期：
-• YYYY-MM-DD HH:MM (如：2024-01-15 14:30)
-• MM-DD HH:MM (如：01-15 14:30)
-• X月X日 HH:MM (如：1月15日 14:30)
-• HH:MM (如：14:30，今天或明天)
+ 重复提醒：
+• 每天X点 (如：每天9点，每天重复)
+• 每天X点X分 (如：每天9点30分，每天重复)
+• 工作日X点 (如：工作日8点，工作日重复，跳过周末)
+• 工作日X点X分 (如：工作日8点30分，工作日重复)
+• 每周X点 (如：每周一10点，每周的指定星期重复，支持一二三四五六日天)
+• 每周X点X分 (如：每周一10点30分，每周的指定星期重复)
+• 每月X号X点 (如：每月1号9点，每月的指定日期重复)
+• 每月X号X点X分 (如：每月1号9点30分，每月的指定日期重复)
 
  提前提醒：
 • 支持在时间后添加提前时间参数
@@ -464,12 +523,18 @@ class TodoCommands:
 • 也可以使用中文：-X分钟, -X小时, -X天
 
  使用示例：
-• todo add 明天下午3点 开会
-• todo add 明天下午3点 -30min 开会 (提前30分钟提醒)
-• todo add 30分钟后 提醒我休息
-• todo add 每天上午9点 晨会
-• todo add 2024-01-15 14:30 重要会议
-• todo add 2024-01-15 14:30 -1h 重要会议 (提前1小时提醒)"""
+• todo 30分钟后 提醒我休息
+• todo 2小时后 开会
+• todo 周一9点 周会
+• todo 周一9:30 周会
+• todo 下周一九点 重要会议
+• todo 1月15日-9点-30分 会议
+• todo 2-5-8-30 会议 (2月5日8点30分)
+• todo 每天9点 每日打卡
+• todo 工作日8点 上班提醒
+• todo 每周一10点 周会
+• todo 每月1号9点 月度会议
+• todo 30分钟后 -15min 提醒我休息 (提前15分钟提醒)"""
 
 
     async def create_group_at_all_todo(self, bot: Bot, event: Event, content: str) -> str:
@@ -477,8 +542,12 @@ class TodoCommands:
         try:
             # 解析事件信息
             group_id, user_id, user_name = self._parse_event_info(event)
-            if not group_id or not user_id:
+            if not user_id:
                 return "无法获取用户信息"
+            
+            # 群组@全体成员提醒必须在群聊中创建
+            if not group_id:
+                return "群组@全体成员提醒只能在群聊中创建"
             
             # 解析时间和内容
             time_str, advance_str, reminder_content = self._parse_reminder_content(content)
@@ -512,7 +581,18 @@ class TodoCommands:
             time_display = self.time_parser.format_remind_time(time_result['remind_time'])
             
             # 构建返回消息
+            remind_type = time_result.get('remind_type', 'once')
             message = f"群组@全体成员todo创建成功！\nID: {reminder_id}\n时间: {time_display}\n内容: {reminder_content}"
+            
+            # 如果是重复提醒，添加重复类型信息
+            if remind_type in ['daily', 'weekly', 'monthly', 'workday']:
+                repeat_names = {
+                    'daily': '每天重复',
+                    'weekly': '每周重复',
+                    'monthly': '每月重复',
+                    'workday': '工作日重复'
+                }
+                message += f"\n类型: {repeat_names.get(remind_type, '重复提醒')}"
             
             # 如果有提前提醒，添加提前提醒信息
             if time_result.get('advance_remind_minutes', 0) > 0:
@@ -621,7 +701,18 @@ class TodoCommands:
             time_display = self.time_parser.format_remind_time(time_result['remind_time'])
             
             # 构建返回消息
+            remind_type = time_result.get('remind_type', 'once')
             message = f"@用户提醒创建成功！\nID: {reminder_id}\n提醒对象: {target_user_name}\n时间: {time_display}\n内容: {reminder_content}"
+            
+            # 如果是重复提醒，添加重复类型信息
+            if remind_type in ['daily', 'weekly', 'monthly', 'workday']:
+                repeat_names = {
+                    'daily': '每天重复',
+                    'weekly': '每周重复',
+                    'monthly': '每月重复',
+                    'workday': '工作日重复'
+                }
+                message += f"\n类型: {repeat_names.get(remind_type, '重复提醒')}"
             
             # 如果有提前提醒，添加提前提醒信息
             if time_result.get('advance_remind_minutes', 0) > 0:

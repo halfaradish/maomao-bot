@@ -81,14 +81,8 @@ class ReminderScheduler:
                     await self._execute_reminder(reminder)
                 except Exception as e:
                     logger.error(f"执行提醒失败 {reminder['id']}: {e}")
-                    # 标记为失败
-                    self.database.update_reminder_status(
-                        reminder['id'], 'failed', str(e)
-                    )
-                    # 记录执行日志
-                    self.database.log_reminder_execution(
-                        reminder['id'], 'failed', str(e)
-                    )
+                    # 尝试重试失败的提醒
+                    await self._handle_failed_reminder(reminder, str(e))
                     
         except Exception as e:
             logger.error(f"检查提醒时发生错误: {e}")
@@ -144,7 +138,7 @@ class ReminderScheduler:
     
     def _build_advance_reminder_message(self, reminder: Dict[str, Any]) -> str:
         """构建提前提醒消息"""
-        remind_time_str = reminder['remind_time'].strftime("%Y-%m-%d %H:%M:%S")
+        remind_time_str = self.time_parser.format_remind_time(reminder['remind_time'])
         advance_minutes = reminder.get('advance_remind_minutes', 0)
         
         # 格式化提前时间显示
@@ -184,6 +178,46 @@ class ReminderScheduler:
             message += f"提醒ID：{reminder['id']}"
         
         return message
+    
+    async def _handle_failed_reminder(self, reminder: Dict[str, Any], error_message: str):
+        """处理失败的提醒，决定是否重试"""
+        try:
+            # 获取当前执行次数
+            execution_count = reminder.get('execution_count', 0) or 0
+            
+            # 检查配置（从 Config 类获取，这里使用默认值）
+            max_retry_attempts = 3  # 可以从 config 获取
+            retry_failed_reminders = True  # 可以从 config 获取
+            
+            if not retry_failed_reminders:
+                # 如果配置不允许重试，直接标记为失败
+                self.database.update_reminder_status(
+                    reminder['id'], 'failed', error_message
+                )
+                self.database.log_reminder_execution(
+                    reminder['id'], 'failed', error_message
+                )
+                return
+            
+            if execution_count < max_retry_attempts:
+                # 还可以重试，重新设置为 pending 状态，等待下次执行
+                # 注意：这里不更新 execution_count，让下次执行时再更新
+                logger.info(f"提醒 {reminder['id']} 执行失败，将重试 (第 {execution_count + 1}/{max_retry_attempts} 次)")
+                # 保持 pending 状态，等待下次执行
+                self.database.log_reminder_execution(
+                    reminder['id'], 'failed', error_message, execution_duration=None
+                )
+            else:
+                # 超过最大重试次数，标记为失败
+                logger.error(f"提醒 {reminder['id']} 超过最大重试次数，标记为失败")
+                self.database.update_reminder_status(
+                    reminder['id'], 'failed', error_message
+                )
+                self.database.log_reminder_execution(
+                    reminder['id'], 'failed', error_message
+                )
+        except Exception as e:
+            logger.error(f"处理失败提醒时发生错误: {e}")
     
     async def _execute_reminder(self, reminder: Dict[str, Any]):
         """执行单个提醒"""
@@ -231,7 +265,7 @@ class ReminderScheduler:
     
     def _build_reminder_message(self, reminder: Dict[str, Any], is_user_mention: bool = False, is_at_all: bool = False) -> str:
         """构建提醒消息"""
-        remind_time_str = reminder['remind_time'].strftime("%Y-%m-%d %H:%M:%S")
+        remind_time_str = self.time_parser.format_remind_time(reminder['remind_time'])
         
         if is_at_all:
             # @全体成员提醒格式
@@ -331,8 +365,26 @@ class ReminderScheduler:
         elif remind_type == 'weekly':
             return current_time + timedelta(weeks=1)
         elif remind_type == 'monthly':
-            # 简单的月份计算
-            return current_time + timedelta(days=30)
+            # 准确的月份计算，考虑月份天数差异
+            try:
+                from dateutil.relativedelta import relativedelta
+                return current_time + relativedelta(months=1)
+            except ImportError:
+                # 如果 dateutil 不可用，使用简化版本
+                # 添加一个月，考虑月末情况
+                if current_time.month == 12:
+                    next_year = current_time.year + 1
+                    next_month = 1
+                else:
+                    next_year = current_time.year
+                    next_month = current_time.month + 1
+                
+                # 处理日期超出月份天数的情况（如 1月31日 -> 2月28/29日）
+                from calendar import monthrange
+                last_day = monthrange(next_year, next_month)[1]
+                next_day = min(current_time.day, last_day)
+                
+                return current_time.replace(year=next_year, month=next_month, day=next_day)
         elif remind_type == 'workday':
             return self._get_next_workday_time(current_time)
         

@@ -4,8 +4,6 @@ Todo提醒插件数据库操作类
 
 from typing import Dict, List, Optional, Any, Tuple
 from datetime import datetime, timedelta
-import json
-from mysql.connector import Error
 from nonebot import logger
 
 from ...common.diting_db_pool import get_diting_db_connection
@@ -124,31 +122,21 @@ class TodoDatabase:
         """更新提醒状态"""
         try:
             with self.connection_func() as conn:
-                update_data = {
-                    'status': status,
-                    'updated_at': datetime.now()
-                }
+                update_fields = ["status = %s", "updated_at = %s"]
+                params = [status, datetime.now()]
                 
                 if status == 'completed':
-                    update_data['executed_at'] = datetime.now()
-                    update_data['execution_count'] = 'execution_count + 1'
-                elif status == 'failed' and error_message:
-                    update_data['error_message'] = error_message
+                    update_fields.append("executed_at = %s")
+                    params.append(datetime.now())
+                    update_fields.append("execution_count = execution_count + 1")
                 
-                if 'execution_count' in update_data:
-                    conn.execute("""
-                        UPDATE todo_reminders 
-                        SET status = %s, updated_at = %s, executed_at = %s, 
-                            execution_count = execution_count + 1, error_message = %s
-                        WHERE id = %s
-                    """, (status, update_data['updated_at'], update_data['executed_at'], 
-                          error_message, reminder_id))
-                else:
-                    conn.execute("""
-                        UPDATE todo_reminders 
-                        SET status = %s, updated_at = %s, error_message = %s
-                        WHERE id = %s
-                    """, (status, update_data['updated_at'], error_message, reminder_id))
+                if status == 'failed' and error_message:
+                    update_fields.append("error_message = %s")
+                    params.append(error_message)
+                
+                params.append(reminder_id)
+                query = f"UPDATE todo_reminders SET {', '.join(update_fields)} WHERE id = %s"
+                conn.execute(query, tuple(params))
                 
                 return True
         except Exception as e:
@@ -228,15 +216,38 @@ class TodoDatabase:
         """获取需要发送提前提醒的提醒列表"""
         try:
             with self.connection_func() as conn:
+                # 获取所有符合条件的提醒，然后在 Python 中过滤，避免时区问题
                 cursor = conn.execute("""
                     SELECT * FROM todo_reminders 
                     WHERE status = 'pending' 
                     AND advance_remind_minutes > 0 
                     AND advance_reminded = FALSE
-                    AND DATE_SUB(remind_time, INTERVAL advance_remind_minutes MINUTE) <= %s
                     AND remind_time > %s
-                """, (current_time, current_time))
-                return cursor.fetchall()
+                """, (current_time,))
+                reminders = cursor.fetchall()
+                
+                # 在 Python 中计算提前提醒时间，避免时区问题
+                result = []
+                for reminder in reminders:
+                    advance_minutes = reminder.get('advance_remind_minutes', 0)
+                    remind_time = reminder['remind_time']
+                    
+                    # 如果 remind_time 是字符串，转换为 datetime
+                    if isinstance(remind_time, str):
+                        remind_time = datetime.fromisoformat(remind_time.replace('Z', '+00:00'))
+                    elif remind_time.tzinfo is None:
+                        # 如果数据库返回的时间没有时区信息，假设是本地时区
+                        from datetime import timezone
+                        remind_time = remind_time.replace(tzinfo=timezone.utc)
+                    
+                    # 计算提前提醒时间
+                    advance_time = remind_time - timedelta(minutes=advance_minutes)
+                    
+                    # 如果当前时间已经达到或超过提前提醒时间，且尚未到提醒时间
+                    if advance_time <= current_time:
+                        result.append(reminder)
+                
+                return result
         except Exception as e:
             logger.error(f"获取提前提醒列表失败: {e}")
             return []

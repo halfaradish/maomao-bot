@@ -15,17 +15,8 @@ import time
 from typing import Optional, Dict, List
 
 from .commands import TodoCommands
-from .database import TodoDatabase
-from .time_parser import TimeParser
-from .reminder_scheduler import ReminderScheduler
-from .config import Config
-
-# 初始化组件
-config = Config()
-database = TodoDatabase()
-time_parser = TimeParser()
-scheduler = ReminderScheduler(database, time_parser)
-commands = TodoCommands(database, time_parser, scheduler, config)
+# 从 __init__.py 导入已初始化的组件，避免重复初始化
+from . import config, db as database, time_parser, scheduler, commands
 
 # 调度器启动状态
 scheduler_started = False
@@ -89,12 +80,15 @@ def get_todo_help_text():
 /todo time (显示支持的时间格式)
 
 时间格式示例：
-• 明天下午3点
-• 30分钟后
-• 2024-01-15 14:30
-• 每天上午9点
-• 工作日早上8点
-• 每周一上午10点
+• 30分钟后 提醒我休息
+• 2小时后 开会
+• 周一9点 周会
+• 下周一九点 重要会议
+• 1月15日-9点-30分 会议
+• 每天9点 每日打卡（重复提醒）
+• 工作日8点 上班提醒（重复提醒）
+• 每周一10点 周会（重复提醒）
+• 每月1号9点 月度会议（重复提醒）
 
 使用说明：
 • 不指定用户时，默认为个人提醒
