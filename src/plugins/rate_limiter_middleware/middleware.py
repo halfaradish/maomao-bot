@@ -43,8 +43,11 @@ limiter = GroupRateLimiter(
     refill_rate=RATE_LIMIT_CONFIG["refill_rate"]
 )
 
-# 跟踪每个群的消息计数和时间
+# 跟踪每个群的消息计数和时间（用于按群限速模式）
 group_message_tracker: dict[int, dict] = defaultdict(lambda: {"count": 0, "first_msg_time": None})
+
+# 全局消息计数和时间（用于全局限速模式）
+global_message_tracker: dict = {"count": 0, "first_msg_time": None}
 
 
 def check_if_would_exceed_threshold(group_id: Optional[int]) -> bool:
@@ -63,7 +66,14 @@ def check_if_would_exceed_threshold(group_id: Optional[int]) -> bool:
         return False  # 不是群消息，不检查
     
     now = time.time()
-    tracker = group_message_tracker[group_id]
+    
+    # 根据限速模式选择使用全局计数还是按群计数
+    if RATE_LIMIT_CONFIG["per_group"]:
+        # 按群限速模式：使用群级别的计数
+        tracker = group_message_tracker[group_id]
+    else:
+        # 全局限速模式：使用全局计数
+        tracker = global_message_tracker
     
     # 检查时间窗口
     if tracker["first_msg_time"] is None:
@@ -85,7 +95,7 @@ def check_if_would_exceed_threshold(group_id: Optional[int]) -> bool:
 
 async def check_and_update_group_message_count(group_id: Optional[int], bot: Bot, event: Optional[GroupMessageEvent] = None):
     """
-    检查并更新群消息计数，如果超过阈值则自动触发紧急停止
+    检查并更新消息计数，如果超过阈值则自动触发紧急停止
     
     Args:
         group_id: 群组ID
@@ -96,7 +106,18 @@ async def check_and_update_group_message_count(group_id: Optional[int], bot: Bot
         return  # 不是群消息，不处理
     
     now = time.time()
-    tracker = group_message_tracker[group_id]
+    
+    # 根据限速模式选择使用全局计数还是按群计数
+    if RATE_LIMIT_CONFIG["per_group"]:
+        # 按群限速模式：使用群级别的计数
+        tracker = group_message_tracker[group_id]
+        tracker_name = f"群 {group_id}"
+        trigger_location = f"群 {group_id}"
+    else:
+        # 全局限速模式：使用全局计数
+        tracker = global_message_tracker
+        tracker_name = "全局"
+        trigger_location = "所有群（全局）"
     
     # 检查时间窗口，如果超出窗口则重置计数
     if tracker["first_msg_time"] is None:
@@ -113,11 +134,11 @@ async def check_and_update_group_message_count(group_id: Optional[int], bot: Bot
             # 在时间窗口内，增加计数
             tracker["count"] += 1
     
-    logger.debug(f"[限速器] 群 {group_id} 连续消息计数: {tracker['count']}/{RATE_LIMIT_CONFIG['auto_stop_threshold']}")
+    logger.debug(f"[限速器] {tracker_name} 连续消息计数: {tracker['count']}/{RATE_LIMIT_CONFIG['auto_stop_threshold']}")
     
     # 检查是否超过阈值
     if tracker["count"] >= RATE_LIMIT_CONFIG["auto_stop_threshold"]:
-        logger.warning(f"[限速器] ⚠️ 群 {group_id} 在 {RATE_LIMIT_CONFIG['auto_stop_time_window']} 秒内发送了 {tracker['count']} 条消息，超过阈值 {RATE_LIMIT_CONFIG['auto_stop_threshold']}，自动触发紧急停止！")
+        logger.warning(f"[限速器] ⚠️ {trigger_location} 在 {RATE_LIMIT_CONFIG['auto_stop_time_window']} 秒内发送了 {tracker['count']} 条消息，超过阈值 {RATE_LIMIT_CONFIG['auto_stop_threshold']}，自动触发紧急停止！")
         
         # 自动触发紧急停止
         RATE_LIMIT_CONFIG["emergency_stop"] = True
@@ -125,7 +146,7 @@ async def check_and_update_group_message_count(group_id: Optional[int], bot: Bot
         # 尝试发送通知消息
         try:
             original_send = getattr(bot, '_original_send', None)
-            notification_msg = f"🛑 自动紧急停止已触发！\n检测到群内 {RATE_LIMIT_CONFIG['auto_stop_time_window']} 秒内连续发送了 {tracker['count']} 条消息（阈值: {RATE_LIMIT_CONFIG['auto_stop_threshold']} 条）。\n使用「限速恢复」命令可以恢复。"
+            notification_msg = f"🛑 自动紧急停止已触发！\n检测到{trigger_location}在 {RATE_LIMIT_CONFIG['auto_stop_time_window']} 秒内连续发送了 {tracker['count']} 条消息（阈值: {RATE_LIMIT_CONFIG['auto_stop_threshold']} 条）。\n使用「限速恢复」命令可以恢复。"
             
             # 优先使用event发送（通过bot.send）
             if original_send and event:
@@ -138,10 +159,17 @@ async def check_and_update_group_message_count(group_id: Optional[int], bot: Bot
 
 
 def reset_group_message_count(group_id: Optional[int]):
-    """重置群消息计数"""
-    if group_id is not None:
-        group_message_tracker[group_id] = {"count": 0, "first_msg_time": None}
-        logger.info(f"[限速器] 群 {group_id} 的消息计数已重置")
+    """重置消息计数（根据限速模式选择重置全局或群级计数）"""
+    if RATE_LIMIT_CONFIG["per_group"]:
+        # 按群限速模式：重置指定群的消息计数
+        if group_id is not None:
+            group_message_tracker[group_id] = {"count": 0, "first_msg_time": None}
+            logger.info(f"[限速器] 群 {group_id} 的消息计数已重置")
+    else:
+        # 全局限速模式：重置全局计数
+        global global_message_tracker
+        global_message_tracker = {"count": 0, "first_msg_time": None}
+        logger.info(f"[限速器] 全局消息计数已重置")
 
 
 def setup_rate_limiter_for_bot(bot: Bot):
@@ -238,15 +266,21 @@ def setup_rate_limiter_for_bot(bot: Bot):
             if group_id is not None:
                 if check_if_would_exceed_threshold(group_id):
                     # 如果发送后会超过阈值，立即触发紧急停止并拒绝请求
-                    logger.warning(f"[限速器] ⚠️ 预计发送后会超过阈值，立即触发紧急停止并拒绝请求（群号: {group_id}）")
+                    mode_str = "全局" if not RATE_LIMIT_CONFIG["per_group"] else f"群 {group_id}"
+                    logger.warning(f"[限速器] ⚠️ 预计发送后会超过阈值，立即触发紧急停止并拒绝请求（{mode_str}）")
                     
                     # 先触发紧急停止（防止其他请求继续）
                     RATE_LIMIT_CONFIG["emergency_stop"] = True
                     
                     # 发送通知消息（需要绕过限速器）
                     try:
-                        tracker = group_message_tracker[group_id]
-                        notification_msg = f"🛑 自动紧急停止已触发！\n检测到即将超过阈值，已阻止消息发送（当前计数: {tracker['count']}/{RATE_LIMIT_CONFIG['auto_stop_threshold']} 条）。\n使用「限速恢复」命令可以恢复。"
+                        if RATE_LIMIT_CONFIG["per_group"]:
+                            tracker = group_message_tracker[group_id]
+                            location_str = f"群 {group_id}"
+                        else:
+                            tracker = global_message_tracker
+                            location_str = "全局（所有群）"
+                        notification_msg = f"🛑 自动紧急停止已触发！\n检测到{location_str}即将超过阈值，已阻止消息发送（当前计数: {tracker['count']}/{RATE_LIMIT_CONFIG['auto_stop_threshold']} 条）。\n使用「限速恢复」命令可以恢复。"
                         if getattr(bot, '_original_call_api', None):
                             await bot._original_call_api('send_group_msg', group_id=group_id, message=notification_msg)
                     except Exception as e:
@@ -277,7 +311,8 @@ def setup_rate_limiter_for_bot(bot: Bot):
                 
                 # 再次检查预计数（可能在等待令牌期间，其他请求已经发送了消息）
                 if check_if_would_exceed_threshold(group_id):
-                    logger.warning(f"[限速器] ⚠️ 在等待令牌期间，预计数已超过阈值，拒绝发送（群号: {group_id}）")
+                    mode_str = "全局" if not RATE_LIMIT_CONFIG["per_group"] else f"群 {group_id}"
+                    logger.warning(f"[限速器] ⚠️ 在等待令牌期间，预计数已超过阈值，拒绝发送（{mode_str}）")
                     # 触发紧急停止
                     RATE_LIMIT_CONFIG["emergency_stop"] = True
                     raise RuntimeError(f"紧急停止：消息发送已被阻止（预计发送后会超过阈值 {RATE_LIMIT_CONFIG['auto_stop_threshold']} 条）")
@@ -379,16 +414,17 @@ async def resume_rate_limit(bot: Bot, event: GroupMessageEvent):
     RATE_LIMIT_CONFIG["emergency_stop"] = False
     RATE_LIMIT_CONFIG["enabled"] = True
     
-    # 重置当前群的消息计数
+    # 重置消息计数（根据限速模式自动选择重置全局或群级计数）
     reset_group_message_count(event.group_id)
     
     # 发送恢复消息（现在可以正常发送了）
+    mode_str = "全局" if not RATE_LIMIT_CONFIG["per_group"] else "群"
     try:
         original_send = getattr(bot, '_original_send', None)
         if original_send:
-            await original_send(event=event, message="✅ 限速器已恢复！\n紧急停止已取消，消息计数已重置，消息发送恢复正常。")
+            await original_send(event=event, message=f"✅ 限速器已恢复！\n紧急停止已取消，{mode_str}消息计数已重置，消息发送恢复正常。")
         else:
-            await bot.send(event=event, message="✅ 限速器已恢复！\n紧急停止已取消，消息计数已重置，消息发送恢复正常。")
+            await bot.send(event=event, message=f"✅ 限速器已恢复！\n紧急停止已取消，{mode_str}消息计数已重置，消息发送恢复正常。")
     except Exception as e:
         logger.error(f"[限速器] ⚠️ 无法发送恢复确认消息: {e}")
     
@@ -403,8 +439,15 @@ async def rate_limit_status(bot: Bot, event: GroupMessageEvent):
     stop = "是" if RATE_LIMIT_CONFIG["emergency_stop"] else "否"
     mode = "按群限速" if RATE_LIMIT_CONFIG["per_group"] else "全局限速"
 
-    # 显示当前群的计数信息
-    current_count = group_message_tracker.get(event.group_id, {}).get("count", 0)
+    # 根据限速模式显示相应的计数信息
+    if RATE_LIMIT_CONFIG["per_group"]:
+        # 按群限速模式：显示当前群的计数
+        current_count = group_message_tracker.get(event.group_id, {}).get("count", 0)
+        count_info = f"当前群计数: {current_count}/{RATE_LIMIT_CONFIG['auto_stop_threshold']}"
+    else:
+        # 全局限速模式：显示全局计数
+        current_count = global_message_tracker.get("count", 0)
+        count_info = f"全局计数: {current_count}/{RATE_LIMIT_CONFIG['auto_stop_threshold']}"
     
     msg = f"""📊 限速器状态
 状态: {status}
@@ -413,7 +456,7 @@ async def rate_limit_status(bot: Bot, event: GroupMessageEvent):
 桶容量: {RATE_LIMIT_CONFIG['capacity']} 条
 限速速率: {RATE_LIMIT_CONFIG['refill_rate']} 条/秒
 自动停止阈值: {RATE_LIMIT_CONFIG['auto_stop_threshold']} 条/{RATE_LIMIT_CONFIG['auto_stop_time_window']} 秒
-当前群计数: {current_count}/{RATE_LIMIT_CONFIG['auto_stop_threshold']}"""
+{count_info}"""
 
     await rate_limit_status_cmd.finish(msg)
 
@@ -422,14 +465,20 @@ async def rate_limit_status(bot: Bot, event: GroupMessageEvent):
 async def switch_global_mode(bot: Bot, event: GroupMessageEvent):
     """切换到全局限速模式"""
     RATE_LIMIT_CONFIG["per_group"] = False
-    await switch_global_mode_cmd.finish("✅ 已切换到全局限速模式\n所有群共享同一个限速桶")
+    # 切换模式时重置全局计数
+    global global_message_tracker
+    global_message_tracker = {"count": 0, "first_msg_time": None}
+    await switch_global_mode_cmd.finish("✅ 已切换到全局限速模式\n所有群共享同一个限速桶和全局消息计数")
 
 
 @switch_group_mode_cmd.handle()
 async def switch_group_mode(bot: Bot, event: GroupMessageEvent):
     """切换到按群限速模式"""
     RATE_LIMIT_CONFIG["per_group"] = True
-    await switch_group_mode_cmd.finish("✅ 已切换到按群限速模式\n每个群使用独立的限速桶")
+    # 切换模式时重置全局计数（虽然不再使用，但保持清洁）
+    global global_message_tracker
+    global_message_tracker = {"count": 0, "first_msg_time": None}
+    await switch_group_mode_cmd.finish("✅ 已切换到按群限速模式\n每个群使用独立的限速桶和消息计数")
 
 
 @rate_help_cmd.handle()
