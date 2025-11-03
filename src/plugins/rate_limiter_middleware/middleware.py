@@ -47,6 +47,42 @@ limiter = GroupRateLimiter(
 group_message_tracker: dict[int, dict] = defaultdict(lambda: {"count": 0, "first_msg_time": None})
 
 
+def check_if_would_exceed_threshold(group_id: Optional[int]) -> bool:
+    """
+    检查如果发送这条消息，是否会超过阈值
+    这是一个预计数检查，在实际发送前进行，避免已经通过检查的请求继续执行
+    
+    Args:
+        group_id: 群组ID
+        
+    Returns:
+        True: 如果发送后会超过阈值
+        False: 如果发送后不会超过阈值
+    """
+    if group_id is None:
+        return False  # 不是群消息，不检查
+    
+    now = time.time()
+    tracker = group_message_tracker[group_id]
+    
+    # 检查时间窗口
+    if tracker["first_msg_time"] is None:
+        # 第一次发送消息，发送后计数为1，不会超过阈值（假设阈值>=1）
+        return False
+    else:
+        elapsed = now - tracker["first_msg_time"]
+        if elapsed > RATE_LIMIT_CONFIG["auto_stop_time_window"]:
+            # 超出时间窗口，发送后计数为1，不会超过阈值
+            return False
+        else:
+            # 在时间窗口内，预计计数为当前计数+1
+            predicted_count = tracker["count"] + 1
+            # 如果预计计数 > 阈值，则会超过阈值
+            # 例如：阈值20，当前计数19，预计20，允许发送（最多20条）
+            #       阈值20，当前计数20，预计21，拒绝发送（已到上限）
+            return predicted_count > RATE_LIMIT_CONFIG["auto_stop_threshold"]
+
+
 async def check_and_update_group_message_count(group_id: Optional[int], bot: Bot, event: Optional[GroupMessageEvent] = None):
     """
     检查并更新群消息计数，如果超过阈值则自动触发紧急停止
@@ -197,6 +233,28 @@ def setup_rate_limiter_for_bot(bot: Bot):
             elif api in ['send_group_msg', 'send_group_forward_msg']:
                 logger.debug(f"[限速器] 检测到转发消息（群）或群消息，但未找到有效的 group_id")
 
+            # 🔴 关键改进：在获取令牌之前先进行预计数检查
+            # 这样可以避免已经通过检查的请求在队列中等待，导致超过阈值
+            if group_id is not None:
+                if check_if_would_exceed_threshold(group_id):
+                    # 如果发送后会超过阈值，立即触发紧急停止并拒绝请求
+                    logger.warning(f"[限速器] ⚠️ 预计发送后会超过阈值，立即触发紧急停止并拒绝请求（群号: {group_id}）")
+                    
+                    # 先触发紧急停止（防止其他请求继续）
+                    RATE_LIMIT_CONFIG["emergency_stop"] = True
+                    
+                    # 发送通知消息（需要绕过限速器）
+                    try:
+                        tracker = group_message_tracker[group_id]
+                        notification_msg = f"🛑 自动紧急停止已触发！\n检测到即将超过阈值，已阻止消息发送（当前计数: {tracker['count']}/{RATE_LIMIT_CONFIG['auto_stop_threshold']} 条）。\n使用「限速恢复」命令可以恢复。"
+                        if getattr(bot, '_original_call_api', None):
+                            await bot._original_call_api('send_group_msg', group_id=group_id, message=notification_msg)
+                    except Exception as e:
+                        logger.error(f"[限速器] ⚠️ 无法发送自动紧急停止通知: {e}")
+                    
+                    # 拒绝这个请求
+                    raise RuntimeError(f"紧急停止：消息发送已被阻止（预计发送后会超过阈值 {RATE_LIMIT_CONFIG['auto_stop_threshold']} 条）")
+
             # 获取令牌
             logger.debug(f"[限速器] ⏳ 等待令牌... (模式: {'按群' if RATE_LIMIT_CONFIG['per_group'] else '全局'})")
             try:
@@ -208,6 +266,21 @@ def setup_rate_limiter_for_bot(bot: Bot):
             except Exception as e:
                 logger.error(f"[限速器] ❌ 获取令牌时出错: {e}")
                 raise
+
+            # 🔴 双重检查：在获取令牌后再次检查（处理并发情况）
+            # 因为在等待令牌的过程中，可能已经有其他消息发送了
+            if group_id is not None:
+                # 再次检查紧急停止状态（可能在等待令牌期间被其他请求触发）
+                if RATE_LIMIT_CONFIG["emergency_stop"]:
+                    logger.warning(f"[限速器] ⚠️ 在等待令牌期间，紧急停止已触发，拒绝发送（群号: {group_id}）")
+                    raise RuntimeError("紧急停止：消息发送已被阻止")
+                
+                # 再次检查预计数（可能在等待令牌期间，其他请求已经发送了消息）
+                if check_if_would_exceed_threshold(group_id):
+                    logger.warning(f"[限速器] ⚠️ 在等待令牌期间，预计数已超过阈值，拒绝发送（群号: {group_id}）")
+                    # 触发紧急停止
+                    RATE_LIMIT_CONFIG["emergency_stop"] = True
+                    raise RuntimeError(f"紧急停止：消息发送已被阻止（预计发送后会超过阈值 {RATE_LIMIT_CONFIG['auto_stop_threshold']} 条）")
 
             result = await original_call_api(api, **data)
             logger.debug(f"[限速器] ✅ API调用完成")
