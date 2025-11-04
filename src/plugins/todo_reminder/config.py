@@ -36,6 +36,7 @@ class Config(BaseModel):
         "supported_formats": [
             "明天{hour}点",
             "后天{hour}点",
+            "{hours}小时{minutes}分钟后",
             "{minutes}分钟后",
             "{hours}小时后",
             "{days}天后",

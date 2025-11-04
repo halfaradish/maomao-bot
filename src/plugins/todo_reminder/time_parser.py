@@ -35,8 +35,9 @@ class TimeParser:
                 (r"每月(\d+)号(\d+)点(\d+)分", self._parse_monthly_recurring_with_minute),
                 (r"每月(\d+)号(\d+)点", self._parse_monthly_recurring_hour_only),
             ],
-            # 相对时间模式
+            # 相对时间模式（注意：更具体的模式要放在前面）
             "relative": [
+                (r"(\d+)小时(\d+)分钟后", self._parse_hours_minutes_later),
                 (r"(\d+)分钟后", self._parse_minutes_later),
                 (r"(\d+)小时后", self._parse_hours_later),
             ],
@@ -46,6 +47,7 @@ class TimeParser:
                 (r"(\d+)-(\d+)-(\d+)", self._parse_numeric_month_day_hour_only),
                 (r"(\d+)月(\d+)日-(\d+)点-(\d+)分", self._parse_month_day_hour_minute),
                 (r"(\d+)月(\d+)日-(\d+)点", self._parse_month_day_hour_only),
+                (r"(\d+)小时(\d+)分(?!后)", self._parse_hours_minutes_today),  # 当天时间点，如：5小时40分
             ],
             # 周几+几点模式（注意：下周的模式要放在"周"模式之前，因为更具体）
             "weekday_time": [
@@ -115,11 +117,39 @@ class TimeParser:
             "repeat_type": None
         }
     
+    def _parse_hours_minutes_later(self, match) -> Optional[Dict[str, Any]]:
+        """解析X小时Y分钟后"""
+        hours = int(match.group(1))
+        minutes = int(match.group(2))
+        now = self._get_current_time()
+        remind_time = now + timedelta(hours=hours, minutes=minutes)
+        return {
+            "remind_time": remind_time,
+            "remind_type": "once",
+            "repeat_type": None
+        }
+    
     def _parse_hours_later(self, match) -> Optional[Dict[str, Any]]:
         """解析X小时后"""
         hours = int(match.group(1))
         now = self._get_current_time()
         remind_time = now + timedelta(hours=hours)
+        return {
+            "remind_time": remind_time,
+            "remind_type": "once",
+            "repeat_type": None
+        }
+    
+    def _parse_hours_minutes_today(self, match) -> Optional[Dict[str, Any]]:
+        """解析X小时Y分（当天时间点），如：5小时40分表示当天5点40分"""
+        hours = int(match.group(1))
+        minutes = int(match.group(2))
+        
+        # 验证时间有效性
+        if not (0 <= hours < 24 and 0 <= minutes < 60):
+            return None
+        
+        remind_time = self._get_today_time(hours, minutes)
         return {
             "remind_time": remind_time,
             "remind_type": "once",
@@ -361,6 +391,19 @@ class TimeParser:
             "remind_type": "once",
             "repeat_type": None
         }
+    
+    def _get_today_time(self, hour: int, minute: int) -> datetime:
+        """获取当天指定时间（如果已过则为明天）"""
+        now = self._get_current_time()
+        # 设置为今天的时间
+        today_time = now.replace(hour=hour, minute=minute, second=0, microsecond=0)
+        
+        # 如果时间已过，则设置为明天
+        if today_time < now:
+            tomorrow = now + timedelta(days=1)
+            return tomorrow.replace(hour=hour, minute=minute, second=0, microsecond=0)
+        
+        return today_time
     
     def _get_month_day_time(self, month: int, day: int, hour: int, minute: int) -> Optional[datetime]:
         """获取指定月份和日期的指定时间（当年，如果已过则为明年）"""
