@@ -71,8 +71,10 @@ def get_todo_help_text():
 /todo ls (列出未完成的todo)
 /todo done (列出已完成的todo)
 /todo add 时间 内容 (添加个人todo)
-/todo 群提醒 时间 内容 (群组@全体成员提醒)
-/todo @用户 时间 内容 (创建@指定用户的提醒)
+/todo 我 时间 内容 (@自己的提醒，如：todo 我 2分钟后 吃饭 或 todo 我 现在 提醒内容)
+/todo 群提醒 时间 内容 (群组@全体成员提醒，如：todo 群提醒 现在 提醒内容)
+/todo @用户 时间 内容 (创建@指定用户的提醒，如：todo @用户 现在 提醒内容)
+/todo 时间 内容 (普通提醒，如：todo 现在 提醒我喝水 或 todo 2分钟后 提醒我休息)
 /todo cancel ID (取消todo)
 /todo complete ID (完成todo)
 /todo delete ID (删除todo)
@@ -87,8 +89,10 @@ def get_todo_help_text():
 
 使用说明：
 • 不指定用户时，默认为个人提醒
-• 使用"群提醒"命令会@全体成员
-• 使用 "@用户 时间 内容" 需要加 todo 前缀，如：todo @某人 2分钟后 开会"""
+• 使用"我"命令会@自己（如：todo 我 2分钟后 吃饭 或 todo 我 现在 提醒内容）
+• 使用"现在"、"立刻"、"立即"、"now"作为时间会立即执行提醒（如：todo 现在 提醒我喝水）
+• 使用"群提醒"命令会@全体成员（如：todo 群提醒 现在 提醒内容）
+• 使用 "@用户 时间 内容" 需要加 todo 前缀，如：todo @某人 现在 提醒内容 或 todo @某人 2分钟后 开会"""
 
 # 使用插件启动钩子
 from nonebot import get_driver
@@ -209,6 +213,13 @@ async def handle_todo(bot: Bot, event: Event, args: Message = CommandArg()):
                 await todo_cmd.finish("请提供时间和内容，例如：todo 群提醒 明天下午3点 开会")
             content = f"todo {' '.join(operation_params)}"
             result = await commands.create_group_at_all_todo(bot, event, content)
+            await todo_cmd.finish(result)
+        elif operation in ["我", "自己"]:
+            # @自己的提醒
+            if len(operation_params) < 2:
+                await todo_cmd.finish("请提供时间和内容，例如：todo 我 2分钟后 吃饭 或 todo 我 现在 提醒内容")
+            content = f"todo {' '.join(operation_params)}"
+            result = await commands.create_self_mention_todo(bot, event, content)
             await todo_cmd.finish(result)
         else:
             # 默认行为：创建todo

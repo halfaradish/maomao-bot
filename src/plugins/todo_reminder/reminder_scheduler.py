@@ -5,10 +5,11 @@ Todo提醒插件调度器
 
 import asyncio
 from datetime import datetime, timedelta
-from typing import Dict, Any, List, Optional
+from typing import Dict, Any, List, Optional, Tuple
 
 from nonebot import logger, get_bot
 from nonebot.adapters.onebot.v11 import Bot, MessageSegment
+from nonebot.adapters.onebot.v11.exception import ActionFailed
 
 from .database import TodoDatabase
 from .time_parser import TimeParser
@@ -315,17 +316,114 @@ class ReminderScheduler:
             logger.error(f"发送群组@用户提醒失败: {e}")
             raise
     
+    async def _check_bot_permission(self, bot: Bot, group_id: int) -> Tuple[bool, str]:
+        """检查Bot是否有@全体成员的权限
+        
+        Returns:
+            tuple[bool, str]: (是否有权限, 错误信息)
+        """
+        try:
+            member_info = await bot.get_group_member_info(
+                group_id=group_id,
+                user_id=bot.self_id
+            )
+            bot_role = member_info.get('role', 'member')
+            if bot_role not in ['owner', 'admin']:
+                return False, f"Bot不是群主或管理员（当前角色：{bot_role}），无法@全体成员"
+            return True, ""
+        except Exception as e:
+            logger.warning(f"检查Bot权限时出错: {e}")
+            # 如果检查权限失败，仍然尝试发送，让平台返回具体错误
+            return True, ""
+    
     async def _send_group_at_all_reminder(self, bot: Bot, reminder: Dict[str, Any], message: str):
         """发送群组@全体成员提醒"""
+        group_id = reminder['group_id']
+        
         try:
+            # 发送前检查Bot权限
+            has_permission, error_msg = await self._check_bot_permission(bot, group_id)
+            if not has_permission:
+                logger.warning(f"提醒 {reminder['id']} @全体成员失败: {error_msg}")
+                # 权限不足时，降级为普通群消息（不@全体成员）
+                logger.info(f"提醒 {reminder['id']} 降级为普通群消息发送")
+                fallback_message = f"[注意：Bot权限不足，无法@全体成员]\n{message}"
+                await bot.send_group_msg(
+                    group_id=group_id,
+                    message=fallback_message
+                )
+                return
+            
             # 构建@全体成员的消息
             at_all_message = MessageSegment.at("all") + "\n" + message
             await bot.send_group_msg(
-                group_id=reminder['group_id'],
+                group_id=group_id,
                 message=at_all_message
             )
+            logger.info(f"提醒 {reminder['id']} @全体成员发送成功")
+            
+        except ActionFailed as e:
+            # 处理NT-QQ特定的错误
+            error_str = str(e)
+            
+            # 获取详细的错误信息
+            retcode = getattr(e, 'retcode', None)
+            error_info = getattr(e, 'info', None)
+            error_message = getattr(e, 'message', '')
+            error_wording = getattr(e, 'wording', '')
+            
+            # 记录详细的错误信息用于调试
+            logger.warning(f"提醒 {reminder['id']} @全体成员失败详情: retcode={retcode}, info={error_info}, message={error_message}, wording={error_wording}, error_str={error_str}")
+            
+            # 检查是否是 121 错误（权限不足或频率限制）
+            # 可能的情况：
+            # 1. retcode == 121
+            # 2. error_str 中包含 "121" 或 "result: 121" 或 "retcode: 121"
+            # 3. error_message 或 error_wording 中包含相关的错误描述
+            is_121_error = False
+            error_detail = ""
+            
+            if retcode == 121:
+                is_121_error = True
+                error_detail = "权限不足或触发@全体成员频率限制"
+            elif "121" in error_str or (error_info and "121" in str(error_info)):
+                is_121_error = True
+                error_detail = "权限不足或触发@全体成员频率限制（检测到错误码121）"
+            elif any(keyword in error_str.lower() for keyword in ["@全体成员", "at all", "频率限制", "frequency", "权限不足", "permission"]):
+                # 检查是否是与@全体成员相关的错误
+                is_121_error = True
+                error_detail = "@全体成员发送失败（可能是权限或频率限制）"
+            
+            if is_121_error:
+                logger.warning(f"提醒 {reminder['id']} @全体成员失败 ({error_detail}): retcode={retcode}, error={error_str}")
+                
+                # 尝试降级为普通群消息
+                try:
+                    fallback_message = f"[注意：@全体成员失败（{error_detail}），已降级为普通消息]\n{message}"
+                    await bot.send_group_msg(
+                        group_id=group_id,
+                        message=fallback_message
+                    )
+                    logger.info(f"提醒 {reminder['id']} 已降级为普通群消息发送")
+                    return
+                except Exception as fallback_error:
+                    logger.error(f"提醒 {reminder['id']} 降级发送也失败: {fallback_error}")
+                    # 如果降级发送也失败，抛出原始错误
+                    raise ActionFailed(
+                        status='failed',
+                        retcode=1200,
+                        data=None,
+                        message=f"@全体成员失败（{error_detail}），且降级发送也失败",
+                        wording=f"@全体成员失败（{error_detail}），且降级发送也失败",
+                        echo=e.echo if hasattr(e, 'echo') else None
+                    )
+            else:
+                # 其他 ActionFailed 错误，记录详细信息
+                logger.error(f"提醒 {reminder['id']} @全体成员失败 (ActionFailed): retcode={retcode}, info={error_info}, message={error_message}, wording={error_wording}, error={error_str}")
+                raise
+                
         except Exception as e:
-            logger.error(f"发送群组@全体成员提醒失败: {e}")
+            logger.error(f"提醒 {reminder['id']} 发送群组@全体成员提醒失败: {e}")
             raise
     
     async def _create_next_recurring_reminder(self, original_reminder: Dict[str, Any]):

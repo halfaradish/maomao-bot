@@ -37,6 +37,7 @@ class TimeParser:
             ],
             # 相对时间模式（注意：更具体的模式要放在前面）
             "relative": [
+                (r"^(现在|立刻|立即|now)$", self._parse_immediate),  # 立即提醒，放在最前面
                 (r"(\d+)小时(\d+)分钟后", self._parse_hours_minutes_later),
                 (r"(\d+)分钟后", self._parse_minutes_later),
                 (r"(\d+)小时后", self._parse_hours_later),
@@ -89,9 +90,10 @@ class TimeParser:
                         if result:
                             result["original_string"] = time_str
                             result["pattern_type"] = pattern_type
+                            logger.debug(f"时间解析成功: {time_str} -> {pattern_type}: {pattern}")
                             return result
                     except Exception as e:
-                        logger.warning(f"时间解析失败: {time_str}, 错误: {e}")
+                        logger.warning(f"时间解析失败: {time_str}, 模式: {pattern}, 错误: {e}")
                         continue
         
         # 如果所有模式都失败，尝试直接解析
@@ -105,6 +107,15 @@ class TimeParser:
         """
         # TODO: 实现你的直接解析逻辑
         return None
+    
+    def _parse_immediate(self, match) -> Optional[Dict[str, Any]]:
+        """解析立即提醒（现在、立刻、立即、now）"""
+        now = self._get_current_time()
+        return {
+            "remind_time": now,
+            "remind_type": "immediate",  # 特殊标记，表示立即提醒
+            "repeat_type": None
+        }
     
     def _parse_minutes_later(self, match) -> Optional[Dict[str, Any]]:
         """解析X分钟后"""
@@ -584,8 +595,10 @@ class TimeParser:
             解析结果字典，包含remind_time, advance_remind_minutes等信息
         """
         # 解析主时间
+        logger.debug(f"parse_time_with_advance: 开始解析 time_str={repr(time_str)}, advance_str={advance_str}")
         time_result = self.parse_time(time_str)
         if not time_result:
+            logger.warning(f"parse_time_with_advance: parse_time 返回 None, time_str={repr(time_str)}")
             return None
         
         # 解析提前时间

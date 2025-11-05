@@ -25,6 +25,67 @@ class TodoCommands:
         self.scheduler = scheduler
         self.config = config
     
+    async def _send_immediate_reminder(self, bot: Bot, event: Event, reminder_content: str, remind_type: str = "normal", target_user_id: Optional[int] = None) -> str:
+        """发送立即提醒"""
+        try:
+            message = f"【立即提醒】\n{reminder_content}"
+            
+            if isinstance(event, GroupMessageEvent):
+                group_id = event.group_id
+                
+                if remind_type == "at_all":
+                    # @全体成员
+                    try:
+                        from nonebot.adapters.onebot.v11.exception import ActionFailed
+                        # 检查权限
+                        try:
+                            member_info = await bot.get_group_member_info(
+                                group_id=group_id,
+                                user_id=bot.self_id
+                            )
+                            bot_role = member_info.get('role', 'member')
+                            if bot_role not in ['owner', 'admin']:
+                                # 权限不足，降级为普通消息
+                                await bot.send_group_msg(group_id=group_id, message=message)
+                                return f"立即提醒已发送（Bot权限不足，无法@全体成员）\n内容: {reminder_content}"
+                        except:
+                            pass
+                        
+                        # 构建@全体成员的消息
+                        at_all_message = MessageSegment.at("all") + "\n" + message
+                        await bot.send_group_msg(group_id=group_id, message=at_all_message)
+                        return f"立即提醒已发送（@全体成员）\n内容: {reminder_content}"
+                    except Exception as e:
+                        # 如果@全体成员失败，降级为普通消息
+                        logger.warning(f"@全体成员失败，降级为普通消息: {e}")
+                        await bot.send_group_msg(group_id=group_id, message=message)
+                        return f"立即提醒已发送（@全体成员失败，已降级为普通消息）\n内容: {reminder_content}"
+                
+                elif remind_type == "at_user" and target_user_id:
+                    # @指定用户
+                    mention_message = MessageSegment.at(target_user_id) + "\n" + message
+                    await bot.send_group_msg(group_id=group_id, message=mention_message)
+                    return f"立即提醒已发送（@用户）\n内容: {reminder_content}"
+                
+                elif remind_type == "at_self" and target_user_id:
+                    # @自己
+                    mention_message = MessageSegment.at(target_user_id) + "\n" + message
+                    await bot.send_group_msg(group_id=group_id, message=mention_message)
+                    return f"立即提醒已发送（@自己）\n内容: {reminder_content}"
+                
+                else:
+                    # 普通群消息
+                    await bot.send_group_msg(group_id=group_id, message=message)
+                    return f"立即提醒已发送！\n内容: {reminder_content}"
+            else:
+                # 私聊消息
+                await bot.send_private_msg(user_id=event.user_id, message=message)
+                return f"立即提醒已发送！\n内容: {reminder_content}"
+                
+        except Exception as e:
+            logger.error(f"发送立即提醒失败: {e}")
+            return f"立即提醒发送失败: {str(e)}"
+    
     async def create_todo(self, bot: Bot, event: Event, content: str) -> str:
         """创建todo"""
         try:
@@ -47,6 +108,9 @@ class TodoCommands:
             if not time_result:
                 return f"无法解析时间格式：{time_str}"
             
+            # 检查是否是立即提醒
+            if time_result.get('remind_type') == 'immediate':
+                return await self._send_immediate_reminder(bot, event, reminder_content, "normal")
             
             # 创建todo数据
             reminder_data = {
@@ -452,15 +516,17 @@ class TodoCommands:
     
     def _parse_reminder_content(self, content: str) -> Tuple[Optional[str], Optional[str], Optional[str]]:
         """解析todo内容，提取时间、提前时间和内容"""
-        # 匹配格式：todo 时间 [-提前时间] 内容
-        # 支持两种格式：
+        # 匹配格式：todo [我|自己] 时间 [-提前时间] 内容
+        # 支持格式：
         # 1. todo 时间 内容 (无提前时间)
         # 2. todo 时间 -提前时间 内容 (有提前时间，以-开头)
+        # 3. todo 我 时间 内容 (@自己的提醒，无提前时间)
+        # 4. todo 我 时间 -提前时间 内容 (@自己的提醒，有提前时间)
         
         content = content.strip()
         
         # 先尝试匹配带提前时间的格式（提前时间以-开头）
-        pattern_with_advance = r'^todo\s+(.+?)\s+(-.+?)\s+(.+)$'
+        pattern_with_advance = r'^todo\s+(?:我|自己)?\s*(.+?)\s+(-.+?)\s+(.+)$'
         match_with_advance = re.match(pattern_with_advance, content)
         
         if match_with_advance:
@@ -473,13 +539,14 @@ class TodoCommands:
             if advance_minutes is not None:
                 return time_str, advance_str, reminder_content
         
-        # 如果没有提前时间或解析失败，尝试普通格式
-        pattern_normal = r'^todo\s+(.+?)\s+(.+)$'
+        # 如果没有提前时间或解析失败，尝试普通格式（支持"我"关键字）
+        pattern_normal = r'^todo\s+(?:我|自己)?\s*(.+?)\s+(.+)$'
         match_normal = re.match(pattern_normal, content)
         
         if match_normal:
             time_str = match_normal.group(1).strip()
             reminder_content = match_normal.group(2).strip()
+            logger.debug(f"_parse_reminder_content: 匹配成功, content={repr(content)}, time_str={repr(time_str)}, reminder_content={repr(reminder_content)}")
             return time_str, None, reminder_content
         
         return None, None, None
@@ -488,6 +555,9 @@ class TodoCommands:
     async def show_time_formats(self, bot: Bot, event: Event) -> str:
         """显示支持的时间格式"""
         return """支持的时间格式：
+
+ 立即提醒：
+• 现在/立刻/立即/now (立即执行提醒)
 
  相对时间（一次性提醒）：
 • X小时Y分钟后 (如：5小时45分钟后)
@@ -527,6 +597,10 @@ class TodoCommands:
 • 也可以使用中文：-X分钟, -X小时, -X天
 
  使用示例：
+• todo 现在 提醒我喝水 (立即提醒)
+• todo 我 现在 提醒内容 (@自己，立即提醒)
+• todo 群提醒 现在 提醒内容 (@全体成员，立即提醒)
+• todo @用户 现在 提醒内容 (@用户，立即提醒)
 • todo 5小时45分钟后 重要会议
 • todo 5小时40分 当天会议 (当天5点40分)
 • todo 30分钟后 提醒我休息
@@ -558,12 +632,16 @@ class TodoCommands:
             # 解析时间和内容
             time_str, advance_str, reminder_content = self._parse_reminder_content(content)
             if not time_str or not reminder_content:
-                return "请提供正确的时间格式，例如：群提醒 明天下午3点 开会 或 群提醒 明天下午3点 -30min 开会"
+                return "请提供正确的时间格式，例如：群提醒 明天下午3点 开会 或 群提醒 现在 提醒内容"
             
             # 解析时间
             time_result = self.time_parser.parse_time_with_advance(time_str, advance_str)
             if not time_result:
                 return f"无法解析时间格式：{time_str}"
+            
+            # 检查是否是立即提醒
+            if time_result.get('remind_type') == 'immediate':
+                return await self._send_immediate_reminder(bot, event, reminder_content, "at_all")
             
             # 创建todo数据，使用特殊标记表示@全体成员
             reminder_data = {
@@ -685,6 +763,10 @@ class TodoCommands:
             if not time_result:
                 return f"无法解析时间格式：{time_str}"
             
+            # 检查是否是立即提醒
+            if time_result.get('remind_type') == 'immediate':
+                return await self._send_immediate_reminder(bot, event, reminder_content, "at_user", target_user_id)
+            
             # 创建todo数据
             reminder_data = {
                 'group_id': group_id,
@@ -754,5 +836,123 @@ class TodoCommands:
         except Exception as e:
             logger.error(f"提取@用户失败: {e}")
         return at_users
+
+    async def create_self_mention_todo(self, bot: Bot, event: Event, content: str) -> str:
+        """创建@自己的提醒"""
+        try:
+            # 解析事件信息
+            group_id, user_id, user_name = self._parse_event_info(event)
+            if not user_id:
+                return "无法获取用户信息"
+            
+            # @自己的提醒必须在群聊中创建
+            if not group_id:
+                return "@自己的提醒只能在群聊中使用"
+            
+            # 解析时间和内容
+            time_str, advance_str, reminder_content = self._parse_reminder_content(content)
+            logger.debug(f"解析结果: time_str={time_str}, advance_str={advance_str}, reminder_content={reminder_content}")
+            if not time_str or not reminder_content:
+                return "请提供正确的时间格式，例如：todo 我 2分钟后 吃饭"
+            
+            # 解析时间
+            logger.debug(f"正在解析时间: time_str={time_str}, advance_str={advance_str}")
+            time_result = self.time_parser.parse_time_with_advance(time_str, advance_str)
+            if not time_result:
+                logger.warning(f"无法解析时间格式: time_str={time_str}, advance_str={advance_str}, content={content}")
+                return f"无法解析时间格式：{time_str}"
+            
+            # 检查是否是立即提醒
+            if time_result.get('remind_type') == 'immediate':
+                return await self._send_immediate_reminder(bot, event, reminder_content, "at_self", user_id)
+            
+            # 创建todo数据，target_user_id设为自己的user_id
+            reminder_data = {
+                'group_id': group_id,
+                'user_id': user_id,
+                'target_user_id': user_id,  # @自己
+                'content': reminder_content,
+                'remind_time': time_result['remind_time'],
+                'remind_type': time_result['remind_type'],
+                'status': 'pending',
+                'created_by': user_name,
+                'last_modified_by': user_name,
+                'advance_remind_minutes': time_result.get('advance_remind_minutes', 0),
+                'advance_reminded': False
+            }
+            
+            # 保存到数据库
+            reminder_id = self.database.create_reminder(reminder_data)
+            
+            # 格式化时间显示
+            time_display = self.time_parser.format_remind_time(time_result['remind_time'])
+            
+            # 构建返回消息
+            remind_type = time_result.get('remind_type', 'once')
+            message = f"@自己的提醒创建成功！\nID: {reminder_id}\n时间: {time_display}\n内容: {reminder_content}"
+            
+            # 如果是重复提醒，添加重复类型信息
+            if remind_type in ['daily', 'weekly', 'monthly', 'workday']:
+                repeat_names = {
+                    'daily': '每天重复',
+                    'weekly': '每周重复',
+                    'monthly': '每月重复',
+                    'workday': '工作日重复'
+                }
+                message += f"\n类型: {repeat_names.get(remind_type, '重复提醒')}"
+            
+            # 如果有提前提醒，添加提前提醒信息
+            if time_result.get('advance_remind_minutes', 0) > 0:
+                advance_minutes = time_result['advance_remind_minutes']
+                if advance_minutes >= 60:
+                    hours = advance_minutes // 60
+                    minutes = advance_minutes % 60
+                    if minutes > 0:
+                        advance_display = f"{hours}小时{minutes}分钟"
+                    else:
+                        advance_display = f"{hours}小时"
+                else:
+                    advance_display = f"{advance_minutes}分钟"
+                message += f"\n提前提醒: {advance_display}"
+            
+            return message
+            
+        except Exception as e:
+            logger.error(f"创建@自己的提醒失败: {e}")
+            return f"创建@自己的提醒失败: {str(e)}"
+
+    async def create_immediate_todo(self, bot: Bot, event: Event, content: str) -> str:
+        """创建并立即执行提醒"""
+        try:
+            # 解析事件信息
+            group_id, user_id, user_name = self._parse_event_info(event)
+            if not user_id:
+                return "无法获取用户信息"
+            
+            # 解析内容（"现在"命令不需要时间，只需要内容）
+            reminder_content = content.strip()
+            if not reminder_content:
+                return "请提供提醒内容，例如：todo 现在 提醒我喝水"
+            
+            # 直接发送提醒消息（不通过数据库和调度器）
+            message = f"【立即提醒】\n{reminder_content}"
+            
+            try:
+                # 根据事件类型发送消息
+                if isinstance(event, GroupMessageEvent):
+                    # 群聊中发送群消息
+                    await bot.send_group_msg(group_id=event.group_id, message=message)
+                else:
+                    # 私聊中发送私聊消息
+                    await bot.send_private_msg(user_id=event.user_id, message=message)
+                
+                return f"立即提醒已发送！\n内容: {reminder_content}"
+            except Exception as send_error:
+                logger.error(f"发送立即提醒失败: {send_error}")
+                return f"立即提醒发送失败: {str(send_error)}"
+            
+        except Exception as e:
+            logger.error(f"创建立即提醒失败: {e}")
+            return f"创建立即提醒失败: {str(e)}"
 
 
