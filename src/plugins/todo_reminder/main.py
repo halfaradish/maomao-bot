@@ -106,6 +106,14 @@ async def startup():
 todo_cmd = on_command("todo", aliases={"提醒"}, priority=10)
 
 
+async def safe_finish(result: str = ""):
+    """安全地结束命令，如果result为空则不发送消息"""
+    if result and result.strip():
+        await todo_cmd.finish(result)
+    else:
+        await todo_cmd.finish()
+
+
 @todo_cmd.handle()
 async def handle_todo(bot: Bot, event: Event, args: Message = CommandArg()):
     """处理todo命令 - 参考PRD插件格式"""
@@ -121,7 +129,7 @@ async def handle_todo(bot: Bot, event: Event, args: Message = CommandArg()):
             # 这是@用户提醒，需要特殊处理
             try:
                 result = await commands.create_user_mention_todo(bot, event, raw_args)
-                await todo_cmd.finish(result)
+                await safe_finish(result)
             except FinishedException:
                 raise
             except Exception as e:
@@ -171,31 +179,31 @@ async def handle_todo(bot: Bot, event: Event, args: Message = CommandArg()):
             # 构造符合解析器期望的格式：todo 时间 内容
             content = f"todo {' '.join(operation_params)}"
             result = await commands.create_todo(bot, event, content)
-            await todo_cmd.finish(result)
+            await safe_finish(result)
         elif operation in ["cancel"]:
             # 取消todo
             if not operation_params:
                 await todo_cmd.finish("请提供todo ID，例如：todo cancel 123")
             result = await commands.cancel_todo(bot, event, operation_params[0])
-            await todo_cmd.finish(result)
+            await safe_finish(result)
         elif operation in ["complete", "finish"]:
             # 完成todo
             if not operation_params:
                 await todo_cmd.finish("请提供todo ID，例如：todo complete 123")
             result = await commands.complete_todo(bot, event, operation_params[0])
-            await todo_cmd.finish(result)
+            await safe_finish(result)
         elif operation in ["delete", "rm"]:
             # 删除todo
             if not operation_params:
                 await todo_cmd.finish("请提供todo ID，例如：todo delete 123")
             result = await commands.delete_todo(bot, event, operation_params[0])
-            await todo_cmd.finish(result)
+            await safe_finish(result)
         elif operation in ["info", "detail"]:
             # 查看todo详情
             if not operation_params:
                 await todo_cmd.finish("请提供todo ID，例如：todo info 123")
             result = await commands.get_todo_info(bot, event, operation_params[0])
-            await todo_cmd.finish(result)
+            await safe_finish(result)
         elif operation in ["help"]:
             # help命令显示帮助信息
             help_text = get_todo_help_text()
@@ -213,19 +221,19 @@ async def handle_todo(bot: Bot, event: Event, args: Message = CommandArg()):
                 await todo_cmd.finish("请提供时间和内容，例如：todo 群提醒 明天下午3点 开会")
             content = f"todo {' '.join(operation_params)}"
             result = await commands.create_group_at_all_todo(bot, event, content)
-            await todo_cmd.finish(result)
+            await safe_finish(result)
         elif operation in ["我", "自己"]:
             # @自己的提醒
             if len(operation_params) < 2:
                 await todo_cmd.finish("请提供时间和内容，例如：todo 我 2分钟后 吃饭 或 todo 我 现在 提醒内容")
             content = f"todo {' '.join(operation_params)}"
             result = await commands.create_self_mention_todo(bot, event, content)
-            await todo_cmd.finish(result)
+            await safe_finish(result)
         else:
             # 默认行为：创建todo
             content = raw_args
             result = await commands.create_todo(bot, event, content)
-            await todo_cmd.finish(result)
+            await safe_finish(result)
     except FinishedException:
         # 让 FinishedException 正常传递，不记录为错误
         raise

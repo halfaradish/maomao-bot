@@ -28,7 +28,11 @@ class TodoCommands:
     async def _send_immediate_reminder(self, bot: Bot, event: Event, reminder_content: str, remind_type: str = "normal", target_user_id: Optional[int] = None) -> str:
         """发送立即提醒"""
         try:
-            message = f"【立即提醒】\n{reminder_content}"
+            # 解析事件信息，获取发起人
+            group_id, user_id, user_name = self._parse_event_info(event)
+            
+            # 构建消息，包含发起人信息
+            message = f"【立即提醒】\n发起人: {user_name}\n{reminder_content}"
             
             if isinstance(event, GroupMessageEvent):
                 group_id = event.group_id
@@ -54,7 +58,7 @@ class TodoCommands:
                         # 构建@全体成员的消息
                         at_all_message = MessageSegment.at("all") + "\n" + message
                         await bot.send_group_msg(group_id=group_id, message=at_all_message)
-                        return f"立即提醒已发送（@全体成员）\n内容: {reminder_content}"
+                        return ""  # 不发送确认消息，避免冗余
                     except Exception as e:
                         # 如果@全体成员失败，降级为普通消息
                         logger.warning(f"@全体成员失败，降级为普通消息: {e}")
@@ -65,22 +69,22 @@ class TodoCommands:
                     # @指定用户
                     mention_message = MessageSegment.at(target_user_id) + "\n" + message
                     await bot.send_group_msg(group_id=group_id, message=mention_message)
-                    return f"立即提醒已发送（@用户）\n内容: {reminder_content}"
+                    return ""  # 不发送确认消息，避免冗余
                 
                 elif remind_type == "at_self" and target_user_id:
                     # @自己
                     mention_message = MessageSegment.at(target_user_id) + "\n" + message
                     await bot.send_group_msg(group_id=group_id, message=mention_message)
-                    return f"立即提醒已发送（@自己）\n内容: {reminder_content}"
+                    return ""  # 不发送确认消息，避免冗余
                 
                 else:
                     # 普通群消息
                     await bot.send_group_msg(group_id=group_id, message=message)
-                    return f"立即提醒已发送！\n内容: {reminder_content}"
+                    return ""  # 不发送确认消息，避免冗余
             else:
                 # 私聊消息
                 await bot.send_private_msg(user_id=event.user_id, message=message)
-                return f"立即提醒已发送！\n内容: {reminder_content}"
+                return ""  # 不发送确认消息，避免冗余
                 
         except Exception as e:
             logger.error(f"发送立即提醒失败: {e}")
@@ -935,7 +939,7 @@ class TodoCommands:
                 return "请提供提醒内容，例如：todo 现在 提醒我喝水"
             
             # 直接发送提醒消息（不通过数据库和调度器）
-            message = f"【立即提醒】\n{reminder_content}"
+            message = f"【立即提醒】\n发起人: {user_name}\n{reminder_content}"
             
             try:
                 # 根据事件类型发送消息
@@ -946,7 +950,7 @@ class TodoCommands:
                     # 私聊中发送私聊消息
                     await bot.send_private_msg(user_id=event.user_id, message=message)
                 
-                return f"立即提醒已发送！\n内容: {reminder_content}"
+                return ""
             except Exception as send_error:
                 logger.error(f"发送立即提醒失败: {send_error}")
                 return f"立即提醒发送失败: {str(send_error)}"
