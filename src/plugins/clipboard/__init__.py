@@ -104,20 +104,38 @@ async def _(bot: Bot, event: Union[GroupMessageEvent, PrivateMessageEvent]):
         if isinstance(event, GroupMessageEvent):
             try:
                 # 检查bot是否有管理员权限
-                member_info = await bot.get_group_member_info(
+                bot_member_info = await bot.get_group_member_info(
                     group_id=event.group_id,
                     user_id=bot.self_id
                 )
-                bot_role = member_info.get('role', 'member')
+                bot_role = bot_member_info.get('role', 'member')
                 if bot_role not in ['owner', 'admin']:
                     logger.debug(f"bot 在群组 {event.group_id} 中没有管理权限，无法撤回消息")
                     return
 
-                # 如果bot有管理员权限，删除原消息
+                # 获取被回复消息发送者的群名片信息
+                source_user_id = event.reply.sender.user_id
+                source_user_card = None
+                try:
+                    source_member_info = await bot.get_group_member_info(
+                        group_id=event.group_id,
+                        user_id=source_user_id
+                    )
+                    source_user_card = source_member_info.get('card', '')
+                except Exception as e:
+                    logger.warning(f"获取群成员信息失败: {e}，将不显示群名片")
+
+                # 如果bot有管理员权限，删除原消息和当前命令消息
                 await bot.delete_msg(message_id=event.reply.message_id)
-                # 发送提示消息并at发送消息的人
-                at_source_msg_user = MessageSegment.at(user_id=event.reply.sender.user_id)
-                await clipboard.send("图片剪贴板的消息由 " + at_source_msg_user + f"({event.reply.sender.user_id}) 提供")
+                # 撤回发送 "cv" 命令的消息本身
+                await bot.delete_msg(message_id=event.message_id)
+                
+                # 发送提示消息，只显示群名片（不显示QQ号，不@用户）
+                # 如果有群名片，显示群名片；否则不显示用户信息
+                if source_user_card and source_user_card.strip():
+                    await clipboard.send(f"图片剪贴板的消息由 {source_user_card} 提供")
+                else:
+                    await clipboard.send("图片剪贴板的消息已添加")
             except Exception as e:
                 # 后续操作失败不影响主流程，只记录日志
                 logger.warning(f"群聊后续操作失败（图片已发送成功）: {e}")
