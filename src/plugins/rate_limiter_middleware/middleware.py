@@ -5,10 +5,13 @@
 from typing import TYPE_CHECKING, Any, Optional
 from collections import defaultdict
 import time
+import random
+import asyncio
 from nonebot import get_driver, get_plugin_config, logger
 from nonebot.adapters.onebot.v11 import Bot, GroupMessageEvent
 from ...common.rate_limiter import GroupRateLimiter
 from .config import Config
+from ...config import SleepConfig
 
 if TYPE_CHECKING:
     from nonebot.adapters.onebot.v11 import Message, MessageSegment
@@ -235,6 +238,12 @@ def setup_rate_limiter_for_bot(bot: Bot):
             if RATE_LIMIT_CONFIG["emergency_stop"]:
                 logger.warning("[限速器] ⚠️ 紧急停止已启用，API调用被阻止")
                 raise RuntimeError("紧急停止：消息发送已被阻止")
+            
+            # 延迟回复
+            if SleepConfig.DELAY_ENABLED:
+                delay_time = random.uniform(SleepConfig.MIN_SLEEP_TIME, SleepConfig.MAX_SLEEP_TIME)
+                await asyncio.sleep(delay_time)
+                logger.debug(f"随机延迟{delay_time:.2f}秒回复")
 
             # 提取群组ID
             # send_group_msg 和 send_group_forward_msg 直接有 group_id

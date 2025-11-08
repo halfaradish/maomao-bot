@@ -34,10 +34,13 @@ class CheckUpDay:
     TIMING_SECOND: str = str(os.getenv('TIMING_SECOND', 00))
 
 class SleepConfig:
-    # 最短睡眠时间
-    MIN_SLEEP_TIME: float = os.getenv('MIN_SLEEP_TIME') or 0.3
-    # 最长睡眠时间
-    MAX_SLEEP_TIME: float = os.getenv('MAX_SLEEP_TIME') or 1.0
+    # 是否启动延迟回复（处理布尔值：环境变量设为"False"或"0"时为False，否则用默认值True）
+    delay_env = os.getenv('DELAY_ENABLED')
+    DELAY_ENABLED: bool = False if delay_env in ("False", "0") else (True if delay_env else True)
+    # 最短睡眠时间（转换为float，默认0.3）
+    MIN_SLEEP_TIME: float = float(os.getenv('MIN_SLEEP_TIME', 0.3))
+    # 最长睡眠时间（转换为float，默认1.0）
+    MAX_SLEEP_TIME: float = float(os.getenv('MAX_SLEEP_TIME', 1.0))
 
 class QQControlConfig:
     # QQ控制的主机地址
