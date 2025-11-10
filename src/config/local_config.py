@@ -71,3 +71,7 @@ class RedisConfig:
     DECODE_RESPONSES: int = os.getenv('NEW_OJ_REDIS_DECODE_RESPONSES') or True
     RETRY_ON_TIME: bool = os.getenv('NEW_OJ_REDIS_RETRY_ON_TIME') or True
     HEALTH_CHECK_INTERVAL: int = int(os.getenv('NEW_OJ_REDIS_HEALTH_CHECK_INTERVAL') or 30)
+
+class NoneBotToken:
+    ONEBOT_ACCESS_TOKEN: str = str(os.getenv('ONEBOT_ACCESS_TOKEN') or '')
+    DITING_API_ACCESS_TOKEN: str = str(os.getenv('DITING_API_ACCESS_TOKEN') or '')

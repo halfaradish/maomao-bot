@@ -7,6 +7,7 @@ python-dotenv==1.1.1
 redis==6.4.0
 Requests==2.32.5
 ddddocr
+python-multipart
 pipx
 mysql-connector-python
 nonebot-adapter-onebot
