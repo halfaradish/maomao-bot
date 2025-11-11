@@ -1,0 +1,20 @@
+aiohttp==3.12.15
+html2image==2.0.7
+Pillow==11.3.0
+playwright==1.55.0
+pydantic==2.11.9
+python-dotenv==1.1.1
+redis==6.4.0
+Requests==2.32.5
+ddddocr==1.5.6
+python-multipart
+pytz
+pipx
+mysql-connector-python==9.3.0
+nonebot-adapter-onebot
+nonebot-plugin-apscheduler
+nonebot-adapter-console
+nonebot-plugin-prometheus
+nonebot2[fastapi]
+Django==4.2.16
+tzdata; sys_platform == "win32"

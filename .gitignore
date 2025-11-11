@@ -3,6 +3,9 @@ test/
 test_event.py
 data/*
 docs/locals/*
+poetry.toml
+activate_env.bat
+activate_env.sh
 
 # Created by https://www.toptal.com/developers/gitignore/api/python
 # Edit at https://www.toptal.com/developers/gitignore?templates=python

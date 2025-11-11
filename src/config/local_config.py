@@ -12,7 +12,7 @@ class IcpcDBConfig:
     ICPC_DB_USER: str = os.getenv('ICPC_DB_USER') or 'root'
     ICPC_DB_PASSWORD: str = os.getenv('ICPC_DB_PASSWORD') or ''
     ICPC_DB_NAME: str = os.getenv('ICPC_DB_NAME') or ''
-    ICPC_DB_PORT: int = os.getenv('ICPC_DB_PORT') or 3306
+    ICPC_DB_PORT: int = int(os.getenv('ICPC_DB_PORT') or 3306)
     ICPC_DB_POOL_SIZE: int = int(os.getenv('ICPC_DB_POOL_SIZE') or 20)
 
 class DiTingBotDBConfig:
@@ -20,7 +20,7 @@ class DiTingBotDBConfig:
     BOT_DB_USER: str = os.getenv('BOT_DB_USER') or 'root'
     BOT_DB_PASSWORD: str = os.getenv('BOT_DB_PASSWORD') or ''
     BOT_DB_NAME: str = os.getenv('BOT_DB_NAME') or ''
-    BOT_DB_PORT: int = os.getenv('BOT_DB_PORT') or 3306
+    BOT_DB_PORT: int = int(os.getenv('BOT_DB_PORT') or 3306)
     BOT_DB_POOL_SIZE: int = int(os.getenv('BOT_DB_POOL_SIZE') or 20)
 
 class CheckUpDay:
@@ -71,3 +71,7 @@ class RedisConfig:
     DECODE_RESPONSES: int = os.getenv('NEW_OJ_REDIS_DECODE_RESPONSES') or True
     RETRY_ON_TIME: bool = os.getenv('NEW_OJ_REDIS_RETRY_ON_TIME') or True
     HEALTH_CHECK_INTERVAL: int = int(os.getenv('NEW_OJ_REDIS_HEALTH_CHECK_INTERVAL') or 30)
+
+class NoneBotToken:
+    ONEBOT_ACCESS_TOKEN: str = str(os.getenv('ONEBOT_ACCESS_TOKEN') or '')
+    DITING_API_ACCESS_TOKEN: str = str(os.getenv('DITING_API_ACCESS_TOKEN') or '')
