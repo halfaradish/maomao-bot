@@ -120,7 +120,9 @@ class ReminderScheduler:
         """发送提前提醒"""
         try:
             # 构建提前提醒消息
-            message = self._build_advance_reminder_message(reminder)
+            creator_user_id = int(reminder.get('user_id') or reminder.get('created_by'))
+            creator_name = await self._get_creator_display_name(bot, reminder['group_id'], creator_user_id)
+            message = self._build_advance_reminder_message(reminder, creator_name)
             
             # 根据提醒类型发送消息
             if reminder['target_user_id'] == -1:
@@ -137,7 +139,21 @@ class ReminderScheduler:
             logger.error(f"发送提前提醒失败: {e}")
             raise
     
-    def _build_advance_reminder_message(self, reminder: Dict[str, Any]) -> str:
+    async def _get_creator_display_name(self, bot: Bot, group_id: int, user_id: int) -> str:
+        """获取创建者在群里的展示名：优先群名片，其次昵称，最后QQ号"""
+        try:
+            member = await bot.get_group_member_info(group_id=group_id, user_id=user_id)
+            card = (member.get("card") or "").strip()
+            nickname = (member.get("nickname") or "").strip()
+            if card:
+                return card
+            if nickname:
+                return nickname
+        except Exception as e:
+            logger.debug(f"获取成员展示名失败 user_id={user_id}, group_id={group_id}: {e}")
+        return str(user_id)
+    
+    def _build_advance_reminder_message(self, reminder: Dict[str, Any], creator_name: str) -> str:
         """构建提前提醒消息"""
         remind_time_str = self.time_parser.format_remind_time(reminder['remind_time'])
         advance_minutes = reminder.get('advance_remind_minutes', 0)
@@ -159,7 +175,7 @@ class ReminderScheduler:
             message += f"还有 {advance_display} 就到时间了！\n"
             message += f"提醒时间：{remind_time_str}\n"
             message += f"内容：{reminder['content']}\n"
-            message += f"创建者：{reminder['created_by']}\n"
+            message += f"创建者：{creator_name}\n"
             message += f"提醒ID：{reminder['id']}"
         elif reminder['target_user_id']:
             # @用户提前提醒格式
@@ -167,7 +183,7 @@ class ReminderScheduler:
             message += f"还有 {advance_display} 就到时间了！\n"
             message += f"提醒时间：{remind_time_str}\n"
             message += f"内容：{reminder['content']}\n"
-            message += f"创建者：{reminder['created_by']}\n"
+            message += f"创建者：{creator_name}\n"
             message += f"提醒ID：{reminder['id']}"
         else:
             # 普通提前提醒格式
@@ -175,7 +191,7 @@ class ReminderScheduler:
             message += f"还有 {advance_display} 就到时间了！\n"
             message += f"提醒时间：{remind_time_str}\n"
             message += f"内容：{reminder['content']}\n"
-            message += f"创建者：{reminder['created_by']}\n"
+            message += f"创建者：{creator_name}\n"
             message += f"提醒ID：{reminder['id']}"
         
         return message
@@ -234,15 +250,21 @@ class ReminderScheduler:
             # 根据提醒类型发送消息
             if reminder['target_user_id'] == -1:
                 # @全体成员提醒
-                message = self._build_reminder_message(reminder, is_at_all=True)
+                creator_user_id = int(reminder.get('user_id') or reminder.get('created_by'))
+                creator_name = await self._get_creator_display_name(bot, reminder['group_id'], creator_user_id)
+                message = self._build_reminder_message(reminder, creator_name, is_at_all=True)
                 await self._send_group_at_all_reminder(bot, reminder, message)
             elif reminder['target_user_id']:
                 # 指定用户提醒 - 发送到群组并@用户
-                message = self._build_reminder_message(reminder, is_user_mention=True)
+                creator_user_id = int(reminder.get('user_id') or reminder.get('created_by'))
+                creator_name = await self._get_creator_display_name(bot, reminder['group_id'], creator_user_id)
+                message = self._build_reminder_message(reminder, creator_name, is_user_mention=True)
                 await self._send_group_mention_reminder(bot, reminder, message)
             else:
                 # 群组提醒 - 发送到群组
-                message = self._build_reminder_message(reminder, is_user_mention=False)
+                creator_user_id = int(reminder.get('user_id') or reminder.get('created_by'))
+                creator_name = await self._get_creator_display_name(bot, reminder['group_id'], creator_user_id)
+                message = self._build_reminder_message(reminder, creator_name, is_user_mention=False)
                 await self._send_group_reminder(bot, reminder, message)
             
             # 更新提醒状态为已完成
@@ -264,7 +286,7 @@ class ReminderScheduler:
             logger.error(f"执行提醒失败: {e}")
             raise
     
-    def _build_reminder_message(self, reminder: Dict[str, Any], is_user_mention: bool = False, is_at_all: bool = False) -> str:
+    def _build_reminder_message(self, reminder: Dict[str, Any], creator_name: str, is_user_mention: bool = False, is_at_all: bool = False) -> str:
         """构建提醒消息"""
         remind_time_str = self.time_parser.format_remind_time(reminder['remind_time'])
         
@@ -273,21 +295,21 @@ class ReminderScheduler:
             message = f"群组提醒通知\n"
             message += f"时间：{remind_time_str}\n"
             message += f"内容：{reminder['content']}\n"
-            message += f"创建者：{reminder['created_by']}\n"
+            message += f"创建者：{creator_name}\n"
             message += f"提醒ID：{reminder['id']}"
         elif is_user_mention:
             # @用户提醒格式
             message = f"提醒通知\n"
             message += f"时间：{remind_time_str}\n"
             message += f"内容：{reminder['content']}\n"
-            message += f"创建者：{reminder['created_by']}\n"
+            message += f"创建者：{creator_name}\n"
             message += f"提醒ID：{reminder['id']}"
         else:
             # 普通提醒格式
             message = f"提醒通知\n"
             message += f"时间：{remind_time_str}\n"
             message += f"内容：{reminder['content']}\n"
-            message += f"创建者：{reminder['created_by']}\n"
+            message += f"创建者：{creator_name}\n"
             message += f"提醒ID：{reminder['id']}"
         
         return message
