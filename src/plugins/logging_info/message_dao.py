@@ -14,51 +14,51 @@ class MessageDAO:
     消息数据访问对象（DAO），用于操作 messages_event_logs 表
     """
 
-    @staticmethod
-    def create_table():
-        """创建表（首次运行时调用）"""
-        create_table_sql = """
-        CREATE TABLE IF NOT EXISTS messages_event_logs (
-            id BIGINT AUTO_INCREMENT PRIMARY KEY,
-            message_id INT NOT NULL UNIQUE,
-            self_id BIGINT NOT NULL,
-            user_id BIGINT NOT NULL,
-            message_type VARCHAR(10) NOT NULL,
-            group_id BIGINT DEFAULT NULL,
-            sub_type VARCHAR(20) NOT NULL,
-            post_type VARCHAR(20) NOT NULL DEFAULT 'message',
-            time INT NOT NULL,
-            raw_message TEXT NOT NULL,
-            message_json JSON NOT NULL,
-            to_me BOOLEAN NOT NULL DEFAULT FALSE,
-            reply_json JSON DEFAULT NULL,
-            sender_nickname VARCHAR(100) NOT NULL,
-            sender_card VARCHAR(100) DEFAULT NULL,
-            sender_sex ENUM('male', 'female', 'unknown') DEFAULT 'unknown',
-            sender_age TINYINT DEFAULT NULL,
-            sender_role ENUM('owner', 'admin', 'member') DEFAULT 'member',
-            anonymous_flag VARCHAR(100) DEFAULT NULL,
-            anonymous_name VARCHAR(50) DEFAULT NULL,
-            anonymous_id INT DEFAULT NULL,
-            created_at DATETIME(6) DEFAULT CURRENT_TIMESTAMP(6),
-            updated_at DATETIME(6) DEFAULT CURRENT_TIMESTAMP(6) ON UPDATE CURRENT_TIMESTAMP(6),
+    # @staticmethod
+    # def create_table():
+    #     """创建表（首次运行时调用）"""
+    #     create_table_sql = """
+    #     CREATE TABLE IF NOT EXISTS messages_event_logs (
+    #         id BIGINT AUTO_INCREMENT PRIMARY KEY,
+    #         message_id INT NOT NULL UNIQUE,
+    #         self_id BIGINT NOT NULL,
+    #         user_id BIGINT NOT NULL,
+    #         message_type VARCHAR(10) NOT NULL,
+    #         group_id BIGINT DEFAULT NULL,
+    #         sub_type VARCHAR(20) NOT NULL,
+    #         post_type VARCHAR(20) NOT NULL DEFAULT 'message',
+    #         time INT NOT NULL,
+    #         raw_message TEXT NOT NULL,
+    #         message_json JSON NOT NULL,
+    #         to_me BOOLEAN NOT NULL DEFAULT FALSE,
+    #         reply_json JSON DEFAULT NULL,
+    #         sender_nickname VARCHAR(100) NOT NULL,
+    #         sender_card VARCHAR(100) DEFAULT NULL,
+    #         sender_sex ENUM('male', 'female', 'unknown') DEFAULT 'unknown',
+    #         sender_age TINYINT DEFAULT NULL,
+    #         sender_role ENUM('owner', 'admin', 'member') DEFAULT 'member',
+    #         anonymous_flag VARCHAR(100) DEFAULT NULL,
+    #         anonymous_name VARCHAR(50) DEFAULT NULL,
+    #         anonymous_id INT DEFAULT NULL,
+    #         created_at DATETIME(6) DEFAULT CURRENT_TIMESTAMP(6),
+    #         updated_at DATETIME(6) DEFAULT CURRENT_TIMESTAMP(6) ON UPDATE CURRENT_TIMESTAMP(6),
 
-            INDEX idx_user_id (user_id),
-            INDEX idx_group_id (group_id),
-            INDEX idx_time (time),
-            INDEX idx_to_me (to_me),
-            INDEX idx_type_group (message_type, group_id),
-            INDEX idx_created_at (created_at),
-            INDEX idx_raw_message (raw_message(100))
-        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
-        """
-        try:
-            with get_diting_db_connection() as conn:
-                conn.execute(create_table_sql)
-            logger.info("表 `messages_event_logs` 创建/检查完成")
-        except Error as e:
-            logger.error(f"创建表 messages_event_logs 失败: {e}")
-            raise
+    #         INDEX idx_user_id (user_id),
+    #         INDEX idx_group_id (group_id),
+    #         INDEX idx_time (time),
+    #         INDEX idx_to_me (to_me),
+    #         INDEX idx_type_group (message_type, group_id),
+    #         INDEX idx_created_at (created_at),
+    #         INDEX idx_raw_message (raw_message(100))
+    #     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+    #     """
+    #     try:
+    #         with get_diting_db_connection() as conn:
+    #             conn.execute(create_table_sql)
+    #         logger.info("表 `messages_event_logs` 创建/检查完成")
+    #     except Error as e:
+    #         logger.error(f"创建表 messages_event_logs 失败: {e}")
+    #         raise
 
     @staticmethod
     def save_message(event_data: Dict) -> bool:
@@ -176,4 +176,4 @@ class MessageDAO:
         
 
 message_dao = MessageDAO()
-message_dao.create_table()
+# message_dao.create_table()

@@ -12,7 +12,7 @@ class IcpcDBConfig:
     ICPC_DB_USER: str = os.getenv('ICPC_DB_USER') or 'root'
     ICPC_DB_PASSWORD: str = os.getenv('ICPC_DB_PASSWORD') or ''
     ICPC_DB_NAME: str = os.getenv('ICPC_DB_NAME') or ''
-    ICPC_DB_PORT: int = os.getenv('ICPC_DB_PORT') or 3306
+    ICPC_DB_PORT: int = int(os.getenv('ICPC_DB_PORT') or 3306)
     ICPC_DB_POOL_SIZE: int = int(os.getenv('ICPC_DB_POOL_SIZE') or 20)
 
 class DiTingBotDBConfig:
@@ -20,7 +20,7 @@ class DiTingBotDBConfig:
     BOT_DB_USER: str = os.getenv('BOT_DB_USER') or 'root'
     BOT_DB_PASSWORD: str = os.getenv('BOT_DB_PASSWORD') or ''
     BOT_DB_NAME: str = os.getenv('BOT_DB_NAME') or ''
-    BOT_DB_PORT: int = os.getenv('BOT_DB_PORT') or 3306
+    BOT_DB_PORT: int = int(os.getenv('BOT_DB_PORT') or 3306)
     BOT_DB_POOL_SIZE: int = int(os.getenv('BOT_DB_POOL_SIZE') or 20)
 
 class CheckUpDay:
