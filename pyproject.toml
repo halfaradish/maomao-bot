@@ -3,7 +3,7 @@ name = "DiTing-NoneBot"
 version = "0.1.0"
 description = "DiTing-NoneBot"
 readme = "README.md"
-requires-python = ">=3.9, <4.0"
+requires-python = ">=3.9, <3.13"
 
 [tool.nonebot]
 adapters = [
@@ -19,3 +19,29 @@ builtin_plugins = ["echo"]
 
 [tool.nonebot.config]
 delay_enabled = true
+
+[tool.poetry]
+name = "diting-nonebot"
+version = "0.1.0"
+description = "DiTing-NoneBot"
+readme = "README.md"
+packages = [{ include = "src", from = "." }]
+[tool.poetry.dependencies]
+aiohttp = "3.12.15"
+html2image = "2.0.7"
+pillow = "11.3.0"
+playwright = "1.55.0"
+pydantic = "2.11.9"
+python-dotenv = "1.1.1"
+redis = "6.4.0"
+requests = "2.32.5"
+ddddocr = "1.5.6"
+python-multipart = "^0.0.20"
+pipx = "^1.8.0"
+mysql-connector-python = "9.3.0"
+nonebot-adapter-onebot = "^2.4.6"
+nonebot-plugin-apscheduler = "^0.5.0"
+nonebot-adapter-console = "^0.9.0"
+nonebot-plugin-prometheus = "^0.4.1"
+nonebot2 = {extras = ["fastapi"], version = "^2.4.4"}
+pytz = "^2025.2"
