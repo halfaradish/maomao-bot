@@ -4,6 +4,11 @@ version = "0.1.0"
 description = "DiTing-NoneBot"
 readme = "README.md"
 requires-python = ">=3.9, <4.0"
+dependencies = [
+    "Django>=4.2,<5.0",
+    "mysqlclient>=2.2.0; platform_system != 'Windows'",
+    "PyMySQL>=1.0.3; platform_system == 'Windows'",
+]
 
 [tool.nonebot]
 adapters = [

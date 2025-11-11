@@ -71,7 +71,7 @@ class ReminderScheduler:
             await self._check_and_send_advance_reminders(current_time)
             
             # 2. 获取待执行的提醒
-            pending_reminders = self.database.get_pending_reminders(limit=100)
+            pending_reminders = await self.database.get_pending_reminders(limit=100)
             if not pending_reminders:
                 return
             
@@ -92,7 +92,7 @@ class ReminderScheduler:
         """检查并发送提前提醒"""
         try:
             # 获取需要发送提前提醒的提醒列表
-            advance_reminders = self.database.get_advance_reminders(current_time)
+            advance_reminders = await self.database.get_advance_reminders(current_time)
             if not advance_reminders:
                 return
             
@@ -108,7 +108,7 @@ class ReminderScheduler:
                 try:
                     await self._send_advance_reminder(bot, reminder)
                     # 标记提前提醒已发送
-                    self.database.mark_advance_reminded(reminder['id'])
+                    await self.database.mark_advance_reminded(reminder['id'])
                     logger.info(f"提前提醒发送成功: {reminder['id']}")
                 except Exception as e:
                     logger.error(f"发送提前提醒失败 {reminder['id']}: {e}")
@@ -192,10 +192,10 @@ class ReminderScheduler:
             
             if not retry_failed_reminders:
                 # 如果配置不允许重试，直接标记为失败
-                self.database.update_reminder_status(
+                await self.database.update_reminder_status(
                     reminder['id'], 'failed', error_message
                 )
-                self.database.log_reminder_execution(
+                await self.database.log_reminder_execution(
                     reminder['id'], 'failed', error_message
                 )
                 return
@@ -205,16 +205,16 @@ class ReminderScheduler:
                 # 注意：这里不更新 execution_count，让下次执行时再更新
                 logger.info(f"提醒 {reminder['id']} 执行失败，将重试 (第 {execution_count + 1}/{max_retry_attempts} 次)")
                 # 保持 pending 状态，等待下次执行
-                self.database.log_reminder_execution(
+                await self.database.log_reminder_execution(
                     reminder['id'], 'failed', error_message, execution_duration=None
                 )
             else:
                 # 超过最大重试次数，标记为失败
                 logger.error(f"提醒 {reminder['id']} 超过最大重试次数，标记为失败")
-                self.database.update_reminder_status(
+                await self.database.update_reminder_status(
                     reminder['id'], 'failed', error_message
                 )
-                self.database.log_reminder_execution(
+                await self.database.log_reminder_execution(
                     reminder['id'], 'failed', error_message
                 )
         except Exception as e:
@@ -246,11 +246,11 @@ class ReminderScheduler:
                 await self._send_group_reminder(bot, reminder, message)
             
             # 更新提醒状态为已完成
-            self.database.update_reminder_status(reminder['id'], 'completed')
+            await self.database.update_reminder_status(reminder['id'], 'completed')
             
             # 记录执行日志
             execution_duration = int((datetime.now() - start_time).total_seconds() * 1000)
-            self.database.log_reminder_execution(
+            await self.database.log_reminder_execution(
                 reminder['id'], 'success', execution_duration=execution_duration
             )
             
@@ -447,7 +447,7 @@ class ReminderScheduler:
             }
             
             # 保存新提醒
-            reminder_id = self.database.create_reminder(new_reminder_data)
+            reminder_id = await self.database.create_reminder(new_reminder_data)
             logger.info(f"创建下一个重复提醒: {reminder_id}")
             
         except Exception as e:
@@ -499,7 +499,7 @@ class ReminderScheduler:
     async def execute_reminder_now(self, reminder_id: int) -> bool:
         """立即执行指定提醒"""
         try:
-            reminder = self.database.get_reminder(reminder_id)
+            reminder = await self.database.get_reminder(reminder_id)
             if not reminder:
                 logger.error(f"提醒不存在: {reminder_id}")
                 return False
@@ -518,7 +518,7 @@ class ReminderScheduler:
     async def cleanup_old_reminders(self, days: int = 30) -> int:
         """清理旧的已完成提醒"""
         try:
-            cleaned_count = self.database.cleanup_old_reminders(days)
+            cleaned_count = await self.database.cleanup_old_reminders(days)
             logger.info(f"清理了 {cleaned_count} 个旧提醒")
             return cleaned_count
         except Exception as e:

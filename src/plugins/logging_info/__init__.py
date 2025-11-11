@@ -37,7 +37,7 @@ async def listen(event: Union[PrivateMessageEvent, GroupMessageEvent]):
     """存储消息"""
     event_dict = event.dict()
 
-    success = message_dao.save_message(event_data=event_dict)
+    success = await message_dao.save_message(event_data=event_dict)
 
     if success:
         logger.info(f"已保存消息：{event.message_id}")

@@ -1,12 +1,50 @@
 # dao/message_dao.py
 from nonebot import logger
 from typing import List, Dict
-from contextlib import contextmanager
-
-from mysql.connector import Error
 import json
+from datetime import datetime
+import pytz
+from django.db import IntegrityError
+from django.utils import timezone
+from ...common.django_crud import async_create_record, async_get_many, init_django_if_needed
 
-from ...common import get_diting_db_connection
+init_django_if_needed()
+from botdb.models import MessageEventLog
+
+# 北京时区
+BEIJING_TZ = pytz.timezone("Asia/Shanghai")
+
+
+def _convert_to_beijing_time(dt) -> datetime:
+    """
+    将 datetime 对象转换为北京时间
+    :param dt: datetime 对象（可能是 timezone-aware 或 naive）
+    :return: 北京时间的 datetime 对象（timezone-aware）
+    """
+    if dt is None:
+        return None
+    if timezone.is_aware(dt):
+        # 如果是 timezone-aware，转换为北京时间
+        return dt.astimezone(BEIJING_TZ)
+    else:
+        # 如果是 naive datetime，当 USE_TZ = False 时，它已经是北京时区的时间
+        # 直接将其标记为北京时区
+        return BEIJING_TZ.localize(dt)
+
+
+def _format_datetime(dt: datetime, include_microseconds: bool = False) -> str:
+    """
+    格式化 datetime 为字符串
+    :param dt: datetime 对象
+    :param include_microseconds: 是否包含微秒
+    :return: 格式化的时间字符串
+    """
+    if dt is None:
+        return None
+    if include_microseconds:
+        return dt.strftime("%Y-%m-%d %H:%M:%S.%f")
+    else:
+        return dt.strftime("%Y-%m-%d %H:%M:%S")
 
 
 class MessageDAO:
@@ -16,79 +54,25 @@ class MessageDAO:
 
     @staticmethod
     def create_table():
-        """创建表（首次运行时调用）"""
-        create_table_sql = """
-        CREATE TABLE IF NOT EXISTS messages_event_logs (
-            id BIGINT AUTO_INCREMENT PRIMARY KEY,
-            message_id INT NOT NULL UNIQUE,
-            self_id BIGINT NOT NULL,
-            user_id BIGINT NOT NULL,
-            message_type VARCHAR(10) NOT NULL,
-            group_id BIGINT DEFAULT NULL,
-            sub_type VARCHAR(20) NOT NULL,
-            post_type VARCHAR(20) NOT NULL DEFAULT 'message',
-            time INT NOT NULL,
-            raw_message TEXT NOT NULL,
-            message_json JSON NOT NULL,
-            to_me BOOLEAN NOT NULL DEFAULT FALSE,
-            reply_json JSON DEFAULT NULL,
-            sender_nickname VARCHAR(100) NOT NULL,
-            sender_card VARCHAR(100) DEFAULT NULL,
-            sender_sex ENUM('male', 'female', 'unknown') DEFAULT 'unknown',
-            sender_age TINYINT DEFAULT NULL,
-            sender_role ENUM('owner', 'admin', 'member') DEFAULT 'member',
-            anonymous_flag VARCHAR(100) DEFAULT NULL,
-            anonymous_name VARCHAR(50) DEFAULT NULL,
-            anonymous_id INT DEFAULT NULL,
-            created_at DATETIME(6) DEFAULT CURRENT_TIMESTAMP(6),
-            updated_at DATETIME(6) DEFAULT CURRENT_TIMESTAMP(6) ON UPDATE CURRENT_TIMESTAMP(6),
-
-            INDEX idx_user_id (user_id),
-            INDEX idx_group_id (group_id),
-            INDEX idx_time (time),
-            INDEX idx_to_me (to_me),
-            INDEX idx_type_group (message_type, group_id),
-            INDEX idx_created_at (created_at),
-            INDEX idx_raw_message (raw_message(100))
-        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
-        """
-        try:
-            with get_diting_db_connection() as conn:
-                conn.execute(create_table_sql)
-            logger.info("表 `messages_event_logs` 创建/检查完成")
-        except Error as e:
-            logger.error(f"创建表 messages_event_logs 失败: {e}")
-            raise
+        """由 Django 迁移管理，无需手动建表"""
+        logger.info("由 Django 迁移管理 `messages_event_logs` 表结构")
 
     @staticmethod
-    def save_message(event_data: Dict) -> bool:
+    async def save_message(event_data: Dict) -> bool:
         """
         保存一条消息事件
         :param event_data: 从 MessageEvent.dict() 得到的数据
         :return: 是否成功
         """
-        insert_sql = """
-        INSERT INTO messages_event_logs (
-            message_id, self_id, user_id, message_type, group_id, sub_type,
-            post_type, time, raw_message, message_json, to_me, reply_json,
-            sender_nickname, sender_card, sender_sex, sender_age, sender_role,
-            anonymous_flag, anonymous_name, anonymous_id
-        ) VALUES (
-            %(message_id)s, %(self_id)s, %(user_id)s, %(message_type)s, %(group_id)s, %(sub_type)s,
-            %(post_type)s, %(time)s, %(raw_message)s, %(message_json)s, %(to_me)s, %(reply_json)s,
-            %(sender_nickname)s, %(sender_card)s, %(sender_sex)s, %(sender_age)s, %(sender_role)s,
-            %(anonymous_flag)s, %(anonymous_name)s, %(anonymous_id)s
-        ) ON DUPLICATE KEY UPDATE 
-            updated_at = CURRENT_TIMESTAMP(6)
-        """
-
-        params = MessageDAO._extract_params(event_data)
-
         try:
-            with get_diting_db_connection() as conn:
-                conn.execute(insert_sql, params)
+            params = MessageDAO._extract_params(event_data)
+            # 存在唯一约束 message_id，重复则忽略更新 updated_at 由 ORM 维护
+            await async_create_record(MessageEventLog, **params)
             return True
-        except Error as e:
+        except IntegrityError:
+            # 已存在同 message_id 记录，忽略
+            return True
+        except Exception as e:
             logger.error(f"保存消息失败 (message_id={event_data.get('message_id')}): {e}")
             return False
 
@@ -98,20 +82,6 @@ class MessageDAO:
         sender = event_data.get("sender", {}) or {}
         anonymous = event_data.get("anonymous", {}) or {}
 
-        message_json_str = json.dumps(
-            event_data["message"], 
-            ensure_ascii=False, 
-            default=str  # 防止无法序列化的对象报错
-        )
-
-        reply_json_str = None
-        if event_data.get("reply"):
-            reply_json_str = json.dumps(
-                event_data["reply"], 
-                ensure_ascii=False, 
-                default=str
-        )
-            
         return {
             "message_id": event_data["message_id"],
             "self_id": event_data["self_id"],
@@ -122,9 +92,9 @@ class MessageDAO:
             "post_type": event_data["post_type"],
             "time": event_data["time"],
             "raw_message": event_data["raw_message"],
-            "message_json": message_json_str,
+            "message_json": event_data.get("message"),
             "to_me": event_data["to_me"],
-            "reply_json": reply_json_str,
+            "reply_json": event_data.get("reply"),
 
             # sender 字段
             "sender_nickname": sender.get("nickname", ""),
@@ -140,37 +110,88 @@ class MessageDAO:
         }
 
     @staticmethod
-    def get_recent_messages(limit: int = 100) -> List[Dict]:
+    async def get_recent_messages(limit: int = 100) -> List[Dict]:
         """获取最近 N 条消息"""
-        sql = """
-        SELECT message_id, user_id, group_id, raw_message, time, sender_nickname, sender_card
-        FROM messages_event_logs
-        ORDER BY time DESC
-        LIMIT %s
-        """
         try:
-            with get_diting_db_connection() as conn:
-                cursor = conn.execute(sql, (limit,))
-                return cursor.fetchall()
-        except Error as e:
+            rows = await async_get_many(
+                MessageEventLog,
+                filters=None,
+                order_by=["-time"],
+                limit=limit,
+            )
+            result = []
+            for r in rows:
+                # 转换 created_at 和 updated_at 为北京时间
+                created_at_beijing = _convert_to_beijing_time(r.created_at)
+                updated_at_beijing = _convert_to_beijing_time(r.updated_at)
+                
+                # 将 time 字段（Unix 时间戳，UTC）转换为北京时间字符串
+                time_str = None
+                if r.time:
+                    # OneBot 的 time 字段是 UTC 时间戳，先转换为 UTC datetime，再转换为北京时间
+                    dt_utc = datetime.fromtimestamp(r.time, tz=pytz.UTC)
+                    dt_beijing = dt_utc.astimezone(BEIJING_TZ)
+                    time_str = _format_datetime(dt_beijing, include_microseconds=False)
+                
+                result.append({
+                    "message_id": r.message_id,
+                    "user_id": r.user_id,
+                    "group_id": r.group_id,
+                    "raw_message": r.raw_message,
+                    "time": r.time,
+                    "time_str": time_str,  # 添加可读的时间字符串（北京时间）
+                    "created_at": _format_datetime(created_at_beijing, include_microseconds=False),
+                    "updated_at": _format_datetime(updated_at_beijing, include_microseconds=False),
+                    "sender_nickname": r.sender_nickname,
+                    "sender_card": r.sender_card,
+                })
+            return result
+        except Exception as e:
             logger.error(f"查询最近消息失败: {e}")
             return []
 
     @staticmethod
-    def search_messages_by_keyword(keyword: str, limit: int = 50) -> List[Dict]:
+    async def search_messages_by_keyword(keyword: str, limit: int = 50) -> List[Dict]:
         """根据关键词模糊搜索消息"""
-        sql = """
-        SELECT message_id, user_id, group_id, raw_message, time, sender_nickname
-        FROM messages_event_logs
-        WHERE raw_message LIKE %s
-        ORDER BY time DESC
-        LIMIT %s
-        """
         try:
-            with get_diting_db_connection() as conn:
-                cursor = conn.execute(sql, (f"%{keyword}%", limit))
-                return cursor.fetchall()
-        except Error as e:
+            from django.db.models import Q
+            from asgiref.sync import sync_to_async
+            
+            def _search_sync():
+                return list(
+                    MessageEventLog.objects.filter(
+                        Q(raw_message__icontains=keyword)
+                    ).order_by("-time")[:limit]
+                )
+            
+            rows = await sync_to_async(_search_sync)()
+            result = []
+            for r in rows:
+                # 转换 created_at 和 updated_at 为北京时间
+                created_at_beijing = _convert_to_beijing_time(r.created_at)
+                updated_at_beijing = _convert_to_beijing_time(r.updated_at)
+                
+                # 将 time 字段（Unix 时间戳，UTC）转换为北京时间字符串
+                time_str = None
+                if r.time:
+                    # OneBot 的 time 字段是 UTC 时间戳，先转换为 UTC datetime，再转换为北京时间
+                    dt_utc = datetime.fromtimestamp(r.time, tz=pytz.UTC)
+                    dt_beijing = dt_utc.astimezone(BEIJING_TZ)
+                    time_str = _format_datetime(dt_beijing, include_microseconds=False)
+                
+                result.append({
+                    "message_id": r.message_id,
+                    "user_id": r.user_id,
+                    "group_id": r.group_id,
+                    "raw_message": r.raw_message,
+                    "time": r.time,
+                    "time_str": time_str,  # 添加可读的时间字符串（北京时间）
+                    "created_at": _format_datetime(created_at_beijing, include_microseconds=False),
+                    "updated_at": _format_datetime(updated_at_beijing, include_microseconds=False),
+                    "sender_nickname": r.sender_nickname,
+                })
+            return result
+        except Exception as e:
             logger.error(f"搜索消息失败 (keyword={keyword}): {e}")
             return []
         

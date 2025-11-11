@@ -132,7 +132,7 @@ class TodoCommands:
             }
             
             # 保存到数据库
-            reminder_id = self.database.create_reminder(reminder_data)
+            reminder_id = await self.database.create_reminder(reminder_data)
             
             # 格式化时间显示
             time_display = self.time_parser.format_remind_time(time_result['remind_time'])
@@ -210,7 +210,7 @@ class TodoCommands:
             }
             
             # 保存到数据库
-            reminder_id = self.database.create_reminder(reminder_data)
+            reminder_id = await self.database.create_reminder(reminder_data)
             
             # 格式化时间显示
             time_display = self.time_parser.format_remind_time(time_result['remind_time'])
@@ -262,7 +262,7 @@ class TodoCommands:
                 group_id = -1
             
             # 获取群组todo列表（群内所有用户共享）
-            reminders = self.database.get_group_shared_reminders(group_id, 'pending')
+            reminders = await self.database.get_group_shared_reminders(group_id, 'pending')
             if not reminders:
                 return "暂无待办事项"
             
@@ -292,7 +292,7 @@ class TodoCommands:
                 group_id = -1
             
             # 获取群组已完成的todo列表（群内所有用户共享）
-            reminders = self.database.get_group_shared_reminders(group_id, 'completed')
+            reminders = await self.database.get_group_shared_reminders(group_id, 'completed')
             if not reminders:
                 return "暂无已完成的todo事项"
             
@@ -323,7 +323,7 @@ class TodoCommands:
                 return "无法获取群组信息"
             
             # 获取群组todo列表
-            reminders = self.database.get_group_reminders(group_id, 'pending')
+            reminders = await self.database.get_group_reminders(group_id, 'pending')
             if not reminders:
                 return "群组暂无待办事项"
             
@@ -361,7 +361,7 @@ class TodoCommands:
                 return "todoID格式错误"
             
             # 获取todo信息
-            reminder = self.database.get_reminder(reminder_id_int)
+            reminder = await self.database.get_reminder(reminder_id_int)
             if not reminder:
                 return "todo不存在"
             
@@ -373,7 +373,7 @@ class TodoCommands:
                 return f"todo状态为{reminder['status']}，无法取消"
             
             # 更新状态
-            success = self.database.update_reminder_status(reminder_id_int, 'cancelled')
+            success = await self.database.update_reminder_status(reminder_id_int, 'cancelled')
             if success:
                 return f"todo {todo_id} 已取消"
             else:
@@ -401,7 +401,7 @@ class TodoCommands:
                 return "todoID格式错误"
             
             # 获取todo信息
-            reminder = self.database.get_reminder(reminder_id_int)
+            reminder = await self.database.get_reminder(reminder_id_int)
             if not reminder:
                 return "todo不存在"
             
@@ -413,7 +413,7 @@ class TodoCommands:
                 return f"todo状态为{reminder['status']}，无法完成"
             
             # 更新状态
-            success = self.database.update_reminder_status(reminder_id_int, 'completed')
+            success = await self.database.update_reminder_status(reminder_id_int, 'completed')
             if success:
                 return f"todo {todo_id} 已标记为完成"
             else:
@@ -450,7 +450,7 @@ class TodoCommands:
                 return "只能删除本群的todo"
             
             # 删除群组共享todo
-            success = self.database.delete_group_shared_reminder(reminder_id_int, current_group_id)
+            success = await self.database.delete_group_shared_reminder(reminder_id_int, current_group_id)
             if success:
                 return f"todo {todo_id} 已删除"
             else:
@@ -470,7 +470,7 @@ class TodoCommands:
                 return "todoID格式错误"
             
             # 获取todo信息
-            reminder = self.database.get_reminder(reminder_id_int)
+            reminder = await self.database.get_reminder(reminder_id_int)
             if not reminder:
                 return "todo不存在"
             
@@ -663,7 +663,7 @@ class TodoCommands:
             }
             
             # 保存到数据库
-            reminder_id = self.database.create_reminder(reminder_data)
+            reminder_id = await self.database.create_reminder(reminder_data)
             
             # 格式化时间显示
             time_display = self.time_parser.format_remind_time(time_result['remind_time'])
@@ -787,7 +787,7 @@ class TodoCommands:
             }
             
             # 保存到数据库
-            reminder_id = self.database.create_reminder(reminder_data)
+            reminder_id = await self.database.create_reminder(reminder_data)
             
             # 格式化时间显示
             time_display = self.time_parser.format_remind_time(time_result['remind_time'])
@@ -886,7 +886,7 @@ class TodoCommands:
             }
             
             # 保存到数据库
-            reminder_id = self.database.create_reminder(reminder_data)
+            reminder_id = await self.database.create_reminder(reminder_data)
             
             # 格式化时间显示
             time_display = self.time_parser.format_remind_time(time_result['remind_time'])
