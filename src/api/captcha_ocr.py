@@ -21,12 +21,6 @@ class UrlItem(BaseModel):
     token: str | None = None
     url: str
 
-@router.get('/hello')
-async def hello(request: Request):
-    return success(
-        request=request
-    )
-
 @router.post('/url')
 async def recognize_from_url_server(
     *,
