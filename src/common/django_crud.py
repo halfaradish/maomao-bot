@@ -7,11 +7,12 @@ from asgiref.sync import sync_to_async
 
 
 BASE_DIR = Path(__file__).resolve().parents[2]
-PROJECT_DIR = BASE_DIR / "django_project"
-if PROJECT_DIR.exists():
-    project_path = str(PROJECT_DIR)
-    if project_path not in sys.path:
-        sys.path.insert(0, project_path)
+# After moving Django project under src/, ensure src is in sys.path
+SRC_DIR = BASE_DIR / "src"
+if SRC_DIR.exists():
+    src_path = str(SRC_DIR)
+    if src_path not in sys.path:
+        sys.path.insert(0, src_path)
 
 _django_initialized = False
 _init_lock = threading.Lock()
