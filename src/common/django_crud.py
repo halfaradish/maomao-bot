@@ -13,6 +13,15 @@ if SRC_DIR.exists():
     src_path = str(SRC_DIR)
     if src_path not in sys.path:
         sys.path.insert(0, src_path)
+    # Ensure django_project package (containing settings.py) is importable as 'django_project'
+    django_proj_pkg_parent = SRC_DIR / "django_project"
+    django_proj_pkg_inner = django_proj_pkg_parent / "django_project"
+    # Typical Django layout: <root>/django_project/manage.py alongside inner package 'django_project'
+    # We need the parent of the inner package on sys.path so that 'django_project.settings' resolves
+    if django_proj_pkg_parent.exists() and django_proj_pkg_inner.exists():
+        parent_path = str(django_proj_pkg_parent)
+        if parent_path not in sys.path:
+            sys.path.insert(0, parent_path)
 
 _django_initialized = False
 _init_lock = threading.Lock()
