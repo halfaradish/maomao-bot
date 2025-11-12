@@ -17,4 +17,5 @@ nonebot-adapter-console
 nonebot-plugin-prometheus
 nonebot2[fastapi]
 Django==4.2.16
-tzdata; sys_platform == "win32"
+tzdata
+mysqlclient

@@ -46,4 +46,5 @@ nonebot-plugin-prometheus = "^0.4.1"
 nonebot2 = {extras = ["fastapi"], version = "^2.4.4"}
 pytz = "^2025.2"
 django = "4.2.16"
-tzdata = {version = "^2025.1", markers = "sys_platform == 'win32'"}
+tzdata = "^2025.1"
+mysqlclient = "^2.2.7"
