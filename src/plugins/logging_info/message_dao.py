@@ -9,7 +9,7 @@ from django.utils import timezone
 from ...common.django_crud import async_create_record, async_get_many, init_django_if_needed
 
 init_django_if_needed()
-from botdb.models import MessageEventLog
+from  ...django_project.botdb.models import MessageEventLog
 
 # 北京时区
 BEIJING_TZ = pytz.timezone("Asia/Shanghai")
