@@ -7,7 +7,14 @@ import re
 from typing import Any, Dict, List, Optional, Tuple
 
 from nonebot import on_notice, on_regex
-from nonebot.adapters.onebot.v11 import Bot, Event, GroupMessageEvent, NoticeEvent, MessageSegment
+from nonebot.adapters.onebot.v11 import (
+    Bot,
+    Event,
+    GroupMessageEvent,
+    Message,
+    MessageSegment,
+    NoticeEvent,
+)
 from nonebot.adapters.onebot.v11.exception import ActionFailed
 from nonebot.log import logger
 from nonebot.params import RegexGroup
@@ -17,6 +24,35 @@ from . import database
 
 def _normalize_whitespace(text: str) -> str:
     return re.sub(r"\s+", " ", text).strip()
+
+
+CQ_AT_PATTERN = re.compile(r"\[CQ:at,qq=[^\]]+\]")
+
+
+def _strip_cq_at_segments(text: str) -> str:
+    """移除消息中的CQ at片段文本，避免重复@"""
+    return CQ_AT_PATTERN.sub("", text)
+
+
+def _extract_target_user_ids(event: GroupMessageEvent, bot_uin: int) -> List[int]:
+    """从消息中提取被@的成员（排除@全体/机器人自身）"""
+    target_ids: List[int] = []
+    seen: set[int] = set()
+    for segment in event.get_message():
+        if segment.type != "at":
+            continue
+        qq = segment.data.get("qq")
+        if not qq or qq in {"all", "here"}:
+            continue
+        try:
+            user_id = int(qq)
+        except Exception:
+            continue
+        if user_id == bot_uin or user_id in seen:
+            continue
+        seen.add(user_id)
+        target_ids.append(user_id)
+    return target_ids
 
 
 ack_command = on_regex(r"^!ACK\s+(.+)", flags=re.IGNORECASE, priority=8, block=True)
@@ -33,13 +69,15 @@ async def handle_ack_command(
     if not isinstance(event, GroupMessageEvent):
         await ack_command.finish("全员确认指令目前仅支持群聊使用。")
 
-    content = _normalize_whitespace(groups[0] if groups else "")
+    raw_content = groups[0] if groups else ""
+    content = _normalize_whitespace(_strip_cq_at_segments(raw_content))
     if not content:
         await ack_command.finish("请在 !ACK 指令后提供需要公告的内容。")
 
     group_id = event.group_id
     command_sender = event.user_id
     bot_uin = int(bot.self_id)
+    target_user_ids: List[int] = _extract_target_user_ids(event, bot_uin)
 
     try:
         members_raw = await bot.get_group_member_list(group_id=group_id)
@@ -47,7 +85,8 @@ async def handle_ack_command(
         logger.warning("获取群成员列表失败: %s", exc)
         members_raw = []
 
-    member_snapshot: List[Dict[str, Any]] = []
+    member_snapshot_all: List[Dict[str, Any]] = []
+    members_by_uin: Dict[int, Dict[str, Any]] = {}
     for info in members_raw:
         user_id = info.get("user_id")
         if user_id is None:
@@ -58,28 +97,54 @@ async def handle_ack_command(
             continue
         if user_int == bot_uin:
             continue
-        member_snapshot.append(
-            {
-                "uin": user_int,
-                "nickname": info.get("card") or info.get("nickname"),
-                "role": info.get("role"),
-            }
+        entry = {
+            "uin": user_int,
+            "nickname": info.get("card") or info.get("nickname"),
+            "role": info.get("role"),
+        }
+        member_snapshot_all.append(entry)
+        members_by_uin[user_int] = entry
+
+    if target_user_ids:
+        target_members: List[Dict[str, Any]] = []
+        for user_id in target_user_ids:
+            member_info = members_by_uin.get(user_id)
+            if member_info is None:
+                member_info = {"uin": user_id, "nickname": None, "role": None}
+            target_members.append(member_info)
+        if not target_members:
+            # 所有@成员均无效，回退到全体
+            target_user_ids = []
+            target_members = member_snapshot_all
+    else:
+        target_members = member_snapshot_all
+
+    if target_user_ids:
+        ack_text = "{}\n请通过任意表情确认收到。".format(content)
+
+    if target_user_ids:
+        targeted_message = Message(
+            [MessageSegment.at(user_id) for user_id in target_user_ids]
+            + [MessageSegment.text("\n" + ack_text)]
         )
-
-    ack_text = "[全员确认]\n{}\n请通过任意表情确认收到。".format(content)
-
-    # 尝试@全体成员（如果有权限）
-    try:
-        at_all_message = MessageSegment.at("all") + "\n" + ack_text
-        send_result = await bot.send_group_msg(group_id=group_id, message=at_all_message)
-    except ActionFailed:
-        # 权限不足，降级为普通消息
-        logger.debug("Bot无@全体权限，发送普通消息")
-        send_result = await bot.send_group_msg(group_id=group_id, message=ack_text)
-    except Exception as exc:
-        # 其他错误，也降级为普通消息
-        logger.warning("发送@全体消息失败，降级为普通消息: %s", exc)
-        send_result = await bot.send_group_msg(group_id=group_id, message=ack_text)
+        try:
+            send_result = await bot.send_group_msg(group_id=group_id, message=targeted_message)
+        except Exception as exc:
+            logger.warning("发送定向确认消息失败，降级为普通消息: %s", exc)
+            send_result = await bot.send_group_msg(group_id=group_id, message=ack_text)
+    else:
+        # 尝试@全体成员（如果有权限）
+        try:
+            at_all_message = Message([MessageSegment.at("all"), MessageSegment.text("\n" + ack_text)])
+            send_result = await bot.send_group_msg(group_id=group_id, message=at_all_message)
+        except ActionFailed:
+            # 权限不足，降级为普通消息
+            logger.debug("Bot无@全体权限，发送普通消息")
+            send_result = await bot.send_group_msg(group_id=group_id, message=ack_text)
+        except Exception as exc:
+            # 其他错误，也降级为普通消息
+            logger.warning("发送@全体消息失败，降级为普通消息: %s", exc)
+            send_result = await bot.send_group_msg(group_id=group_id, message=ack_text)
     raw_msg_id = send_result.get("message_id")
     msg_id = str(raw_msg_id) if raw_msg_id is not None else None
     msg_seq: Optional[int] = None
@@ -102,13 +167,15 @@ async def handle_ack_command(
         "command_event_id": event.message_id,
         "command_content": event.get_plaintext(),
         "message_detail": message_detail,
+        "target_user_ids": target_user_ids,
+        "target_scope": "custom" if target_user_ids else "all",
     }
 
     await database.create_ack_message_record(
         bot_uin=bot_uin,
         scene_type="group",
         content=ack_text,
-        target_members=member_snapshot,
+        target_members=target_members,
         group_id=group_id,
         msg_seq=msg_seq,
         msg_id=msg_id,
@@ -277,7 +344,7 @@ async def handle_reaction_notice(bot: Bot, event: NoticeEvent):
         try:
             await bot.send_group_msg(
                 group_id=int(group_id),
-                message="[全员确认] 已收到全部表情确认，感谢配合。",
+                message="[全员确认]已收到全部表情确认，感谢配合。",
             )
         except Exception as exc:
             logger.warning("发送完成通知失败: %s", exc)
