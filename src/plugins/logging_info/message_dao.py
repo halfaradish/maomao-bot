@@ -9,7 +9,7 @@ from django.utils import timezone
 from ...common.django_crud import async_create_record, async_get_many, init_django_if_needed
 
 init_django_if_needed()
-from  ...django_project.botdb.models import MessageEventLog
+from  botdb.models import MessageEventLog
 
 # 北京时区
 BEIJING_TZ = pytz.timezone("Asia/Shanghai")
@@ -69,9 +69,9 @@ class MessageDAO:
             # 存在唯一约束 message_id，重复则忽略更新 updated_at 由 ORM 维护
             await async_create_record(MessageEventLog, **params)
             return True
-        except IntegrityError:
-            # 已存在同 message_id 记录，忽略
-            return True
+        # except IntegrityError:
+        #     # 已存在同 message_id 记录，忽略
+        #     return True
         except Exception as e:
             logger.error(f"保存消息失败 (message_id={event_data.get('message_id')}): {e}")
             return False
