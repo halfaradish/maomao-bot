@@ -51,7 +51,7 @@ class ContestInfo(BaseModel):
             f"url: {self.href}\n"
             f"开始时间: {start_str}\n"
             f"结束时间: {end_str}\n"
-            f"持续时间: {duration_minutes:.2f} 小时 | 题目数: {self.n_problems or '未知'}"
+            f"持续时间: {duration_minutes:.1f} 分钟 | 题目数: {self.n_problems or '未知'}"
         )
 
 class ContestFetcher:

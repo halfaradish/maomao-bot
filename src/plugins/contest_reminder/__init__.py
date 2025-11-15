@@ -42,10 +42,8 @@ get_contest_info = on_command(
 async def _(args: Message = CommandArg()):
     raw_args: str = args.extract_plain_text().strip()
     # 获取偏移时间
-    hours_ahead: int = config.clist_hours_ahead
-    if raw_args == '':
-        pass
-    elif raw_args.isdigit():
+    hours_ahead: int
+    if raw_args and raw_args.isdigit():
         hours_ahead = int(raw_args)
         # 验证小时数是否在合理范围内
         max_hours = getattr(config, 'clist_max_hours_ahead', 720)
