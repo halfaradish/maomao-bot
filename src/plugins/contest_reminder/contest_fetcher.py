@@ -28,10 +28,16 @@ class ContestInfo(BaseModel):
     start: datetime
 
     @field_validator('start', 'end', 'parsed_at', mode='before')
-    @classmethod
     def parse_datetime(cls, v: Any) -> Any:
         if isinstance(v, str):
-            return datetime.fromisoformat(v.replace('Z', '+00:00'))
+            # 解析为朴素时间（无tzinfo）
+            naive_dt = datetime.fromisoformat(v)
+            
+            # 关键：明确指定这是UTC时间，不是本地时间！
+            utc_zone = ZoneInfo("UTC")
+            utc_dt = naive_dt.replace(tzinfo=utc_zone)
+            
+            return utc_dt
         return v
 
     def to_string(self) -> str:
@@ -73,7 +79,7 @@ class ContestFetcher:
             'yandex': 67,
         }
 
-    def fetch_contests(self, platform_names: Optional[List[int]] = None, params: Optional[Dict] = None, hours_ahead: Optional[int] = None):
+    def fetch_contests(self, platform_names: Optional[List[str]] = None, params: Optional[Dict] = None, hours_ahead: Optional[int] = None):
 
         if platform_names is None:
             platform_names = []
@@ -100,7 +106,7 @@ class ContestFetcher:
 
         # 添加平台筛选
         if platform_names:
-            resource_ids = [self.platforms.get(name) for name in platform_names]
+            resource_ids = [self.platforms.get(name) for name in platform_names if name in self.platforms]
             if resource_ids:
                 default_params['resource_id__in'] = ','.join(map(str, resource_ids))
 
