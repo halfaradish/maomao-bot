@@ -41,7 +41,7 @@ class ContestInfo(BaseModel):
         return v
 
     def to_string(self) -> str:
-        duration_hours = self.duration / 3600
+        duration_minutes = self.duration / 60
         # 将datetime对象转化为字符串
         start_str = self.start.strftime('%Y-%m-%d %H:%M:%S')
         end_str = self.end.strftime('%Y-%m-%d %H:%M:%S')
@@ -51,7 +51,7 @@ class ContestInfo(BaseModel):
             f"url: {self.href}\n"
             f"开始时间: {start_str}\n"
             f"结束时间: {end_str}\n"
-            f"持续时间: {duration_hours:.2f} 小时 | 题目数: {self.n_problems or '未知'}"
+            f"持续时间: {duration_minutes:.2f} 小时 | 题目数: {self.n_problems or '未知'}"
         )
 
 class ContestFetcher:
