@@ -41,17 +41,16 @@ class ContestInfo(BaseModel):
         return v
 
     def to_string(self) -> str:
-        duration_minutes = self.duration / 60
+        duration_hours: int = self.duration // 3600
+        duration_minutes: int = self.duration % 60
         # 将datetime对象转化为字符串
-        start_str = self.start.strftime('%Y-%m-%d %H:%M:%S')
-        end_str = self.end.strftime('%Y-%m-%d %H:%M:%S')
+        start_str: str = self.start.strftime('%Y-%m-%d(%A) %H:%M:%S')
+
         return (
-            f"赛事: {self.event}\n"
-            f"平台: {self.resource}\n"
-            f"url: {self.href}\n"
-            f"开始时间: {start_str}\n"
-            f"结束时间: {end_str}\n"
-            f"持续时间: {duration_minutes:.1f} 分钟 | 题目数: {self.n_problems or '未知'}"
+            f"{self.event}\n"
+            f"duration: {duration_hours}h{duration_minutes}min\n"
+            f"{start_str}\n"
+            f"{self.href}"
         )
 
 class ContestFetcher:
@@ -93,14 +92,14 @@ class ContestFetcher:
 
         # 转化为utc时间
         now_utc = now_local.astimezone(self.utc_zone)
-        future_utc = now_utc + timedelta(hours=self.hours_ahead)
+        future_utc = now_utc + timedelta(hours=hours_ahead)
 
         # 定义默认参数
         default_params = {
             'username': self.username,
             'api_key': self.api_key,
             'start__gte': now_utc.isoformat(),  # 添加Z表示UTC时间
-            'start__lt': future_utc.isoformat(),
+            'end__lt': future_utc.isoformat(),
             'order_by': 'start'
         }
 
