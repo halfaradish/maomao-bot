@@ -158,10 +158,23 @@ async def _resolve_message(identifier: TrackedMessageIdentifier) -> Optional[QQR
             logger.info("通过msg_id找到消息: msg_id=%s, record_id=%s, record.msg_id=%s", msg_id, record.id, record.msg_id)
             return record
         else:
-            logger.debug("通过msg_id未找到消息: msg_id=%s，尝试其他匹配方式", msg_id)
-            # 如果精确匹配失败，尝试查询所有相关消息以便调试
+            logger.debug("通过msg_id未找到消息: msg_id=%s，尝试在提醒消息中查找", msg_id)
+            # 如果精确匹配失败，尝试在所有消息的metadata中查找提醒消息的msg_id
+            # 这样可以支持对提醒消息回复表情时也能识别为收到
+            search_filters = {}
             if group_id:
-                all_records = await async_get_many(QQRobotMessage, filters={"group_id": group_id})
+                search_filters["group_id"] = group_id
+            
+            all_records = await async_get_many(QQRobotMessage, filters=search_filters)
+            for record in all_records:
+                metadata = record.metadata or {}
+                reminder_msg_ids = metadata.get("reminder_msg_ids", [])
+                if isinstance(reminder_msg_ids, list) and msg_id in reminder_msg_ids:
+                    logger.info("通过提醒消息msg_id找到原始消息: reminder_msg_id=%s, original_msg_id=%s, record_id=%s", 
+                               msg_id, record.msg_id, record.id)
+                    return record
+            
+            if group_id:
                 logger.debug(
                     "群组 %s 中的消息记录: 共 %s 条, msg_ids=%s",
                     group_id, len(all_records), [r.msg_id for r in all_records[:10]]
