@@ -22,7 +22,7 @@ from .commands import TodoCommands
 __plugin_meta__ = PluginMetadata(
     name="Todo提醒插件",
     description="支持个人提醒、群组提醒、指定用户提醒等功能",
-    usage="提醒 明天下午3点 开会",
+    usage="todo 30分钟后 开会",
     type="application",
     homepage="https://github.com/your-repo/todo-reminder",
     supported_adapters={"~onebot.v11"},

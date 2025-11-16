@@ -104,12 +104,15 @@ class TodoCommands:
             
             # 解析时间和内容
             time_str, advance_str, reminder_content = self._parse_reminder_content(content)
+            logger.debug(f"create_todo: content={repr(content)}, time_str={repr(time_str)}, advance_str={repr(advance_str)}, reminder_content={repr(reminder_content)}")
             if not time_str or not reminder_content:
-                return "请提供正确的时间格式，例如：todo 明天下午3点 开会 或 todo 明天下午3点 -30min 开会"
+                logger.warning(f"create_todo: 解析失败, content={repr(content)}, time_str={repr(time_str)}, reminder_content={repr(reminder_content)}")
+                return "请提供正确的时间格式，例如：todo 30分钟后 开会 或 todo 2小时后 -30min 开会"
             
             # 解析时间
             time_result = self.time_parser.parse_time_with_advance(time_str, advance_str)
             if not time_result:
+                logger.warning(f"create_todo: 时间解析失败, time_str={repr(time_str)}")
                 return f"无法解析时间格式：{time_str}"
             
             # 检查是否是立即提醒
@@ -187,7 +190,7 @@ class TodoCommands:
             # 解析时间和内容
             time_str, advance_str, reminder_content = self._parse_reminder_content(content)
             if not time_str or not reminder_content:
-                return "请提供正确的时间格式，例如：群todo 明天下午3点 开会 或 群todo 30分钟后 -15min 开会"
+                return "请提供正确的时间格式，例如：群todo 30分钟后 开会 或 群todo 2小时后 -15min 开会"
             
             # 解析时间
             time_result = self.time_parser.parse_time_with_advance(time_str, advance_str)
@@ -441,7 +444,7 @@ class TodoCommands:
                 return "todoID格式错误"
             
             # 获取todo信息检查群组权限
-            reminder = self.database.get_reminder(reminder_id_int)
+            reminder = await self.database.get_reminder(reminder_id_int)
             if not reminder:
                 return "todo不存在"
             
@@ -553,6 +556,7 @@ class TodoCommands:
             logger.debug(f"_parse_reminder_content: 匹配成功, content={repr(content)}, time_str={repr(time_str)}, reminder_content={repr(reminder_content)}")
             return time_str, None, reminder_content
         
+        logger.warning(f"_parse_reminder_content: 正则匹配失败, content={repr(content)}, pattern_normal={pattern_normal}")
         return None, None, None
     
     
@@ -575,7 +579,7 @@ class TodoCommands:
 • 周X点 (如：周一9点，等同于周一9:00，仅本周一次性提醒，支持一二三四五六日天)
 • 周X点Y分 (如：周一9点30分，仅本周一次性提醒)
 • 周X:Y (如：周一9:30，仅本周一次性提醒，支持冒号格式)
-• 下周X点 (如：下周一九点，等同于下周一9:00，仅下周一次性提醒，支持一二三四五六日天)
+• 下周X点 (如：下周一9:00，仅下周一次性提醒，支持一二三四五六日天)
 • 下周X点Y分 (如：下周一9点30分，仅下周一次性提醒)
 • 下周X:Y (如：下周一9:30，仅下周一次性提醒，支持冒号格式)
 
@@ -636,7 +640,7 @@ class TodoCommands:
             # 解析时间和内容
             time_str, advance_str, reminder_content = self._parse_reminder_content(content)
             if not time_str or not reminder_content:
-                return "请提供正确的时间格式，例如：群提醒 明天下午3点 开会 或 群提醒 现在 提醒内容"
+                return "请提供正确的时间格式，例如：群提醒 30分钟后 开会 或 群提醒 现在 提醒内容"
             
             # 解析时间
             time_result = self.time_parser.parse_time_with_advance(time_str, advance_str)
@@ -726,7 +730,7 @@ class TodoCommands:
                     text_parts.append(segment.data.get("text", ""))
             
             if not at_users:
-                return "请@要提醒的用户，例如：@张三 明天下午3点 开会"
+                return "请@要提醒的用户，例如：@张三 30分钟后 开会"
             
             # 获取第一个@的用户（暂时只支持@一个用户）
             target_user_id = at_users[0]
@@ -735,13 +739,13 @@ class TodoCommands:
             text_content = " ".join(text_parts).strip()
             
             if not text_content:
-                return "请提供时间和内容，例如：@用户 明天下午3点 开会"
+                return "请提供时间和内容，例如：@用户 30分钟后 开会"
             
             # 去掉可能存在的 "todo " 前缀（因为从消息中提取的文本可能包含命令前缀）
             text_content = text_content.lstrip("todo ").strip()
             
             if not text_content:
-                return "请提供时间和内容，例如：@用户 明天下午3点 开会"
+                return "请提供时间和内容，例如：@用户 30分钟后 开会"
             
             # 获取目标用户信息
             try:
@@ -756,11 +760,11 @@ class TodoCommands:
             # 添加 "todo " 前缀以符合解析器期望的格式
             parsed = self._parse_reminder_content(f"todo {text_content}")
             if not parsed:
-                return "请提供正确的时间格式，例如：@用户 明天下午3点 开会"
+                return "请提供正确的时间格式，例如：@用户 30分钟后 开会"
             
             time_str, advance_str, reminder_content = parsed
             if not time_str or not reminder_content:
-                return "请提供时间和内容，例如：@用户 明天下午3点 开会"
+                return "请提供时间和内容，例如：@用户 30分钟后 开会"
             
             # 解析时间
             time_result = self.time_parser.parse_time_with_advance(time_str, advance_str)

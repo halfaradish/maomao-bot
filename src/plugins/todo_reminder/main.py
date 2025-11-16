@@ -103,7 +103,7 @@ async def startup():
     await start_scheduler()
 
 # 主命令注册 - 参考PRD插件格式
-todo_cmd = on_command("todo", aliases={"提醒"}, priority=10)
+todo_cmd = on_command("todo", priority=10)
 
 
 async def safe_finish(result: str = ""):
@@ -175,7 +175,7 @@ async def handle_todo(bot: Bot, event: Event, args: Message = CommandArg()):
         elif operation in ["add"]:
             # 添加todo
             if len(operation_params) < 2:
-                await todo_cmd.finish("请提供时间和内容，例如：todo add 明天下午3点 开会")
+                await todo_cmd.finish("请提供时间和内容，例如：todo add 30分钟后 开会")
             # 构造符合解析器期望的格式：todo 时间 内容
             content = f"todo {' '.join(operation_params)}"
             result = await commands.create_todo(bot, event, content)
@@ -218,7 +218,7 @@ async def handle_todo(bot: Bot, event: Event, args: Message = CommandArg()):
         elif operation in ["群提醒", "group"]:
             # 群组@全体成员提醒
             if len(operation_params) < 2:
-                await todo_cmd.finish("请提供时间和内容，例如：todo 群提醒 明天下午3点 开会")
+                await todo_cmd.finish("请提供时间和内容，例如：todo 群提醒 30分钟后 开会")
             content = f"todo {' '.join(operation_params)}"
             result = await commands.create_group_at_all_todo(bot, event, content)
             await safe_finish(result)
@@ -231,7 +231,8 @@ async def handle_todo(bot: Bot, event: Event, args: Message = CommandArg()):
             await safe_finish(result)
         else:
             # 默认行为：创建todo
-            content = raw_args
+            # 构造符合解析器期望的格式：todo 时间 内容
+            content = f"todo {raw_args}"
             result = await commands.create_todo(bot, event, content)
             await safe_finish(result)
     except FinishedException:

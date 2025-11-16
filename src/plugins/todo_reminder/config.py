@@ -34,16 +34,35 @@ class Config(BaseModel):
     time_parser_config: Dict[str, Any] = {
         "default_timezone": "Asia/Shanghai",
         "supported_formats": [
-            "明天{hour}点",
-            "后天{hour}点",
+            # 立即提醒
+            "现在/立刻/立即/now",
+            # 相对时间
             "{hours}小时{minutes}分钟后",
             "{minutes}分钟后",
             "{hours}小时后",
-            "{days}天后",
-            "{year}-{month}-{day} {hour}:{minute}",
+            # 当天时间点
+            "{hours}小时{minutes}分",
+            # 周几时间
+            "周{weekday}{hour}点",
+            "周{weekday}{hour}点{minute}分",
+            "周{weekday}:{hour}:{minute}",
+            "下周{weekday}{hour}点",
+            "下周{weekday}{hour}点{minute}分",
+            "下周{weekday}:{hour}:{minute}",
+            # 具体日期时间
+            "{month}月{day}日-{hour}点-{minute}分",
+            "{month}月{day}日-{hour}点",
+            "{month}-{day}-{hour}-{minute}",
+            "{month}-{day}-{hour}",
+            # 重复提醒
             "每天{hour}点",
+            "每天{hour}点{minute}分",
             "工作日{hour}点",
-            "每周{weekday}{hour}点"
+            "工作日{hour}点{minute}分",
+            "每周{weekday}{hour}点",
+            "每周{weekday}{hour}点{minute}分",
+            "每月{day}号{hour}点",
+            "每月{day}号{hour}点{minute}分"
         ]
     }
     
