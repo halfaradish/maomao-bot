@@ -26,3 +26,8 @@ class Config(BaseModel):
     clist_contest_fetch_base_url: str
     # 要查询的比赛平台列表
     clist_platforms: List[str]
+
+    # 配置文件名
+    clist_filename: str
+    # 定时提醒每天的运行时间
+    clist_remind_run_time_hour: int
