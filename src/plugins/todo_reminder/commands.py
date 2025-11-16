@@ -157,15 +157,7 @@ class TodoCommands:
             # 如果有提前提醒，添加提前提醒信息
             if time_result.get('advance_remind_minutes', 0) > 0:
                 advance_minutes = time_result['advance_remind_minutes']
-                if advance_minutes >= 60:
-                    hours = advance_minutes // 60
-                    minutes = advance_minutes % 60
-                    if minutes > 0:
-                        advance_display = f"{hours}小时{minutes}分钟"
-                    else:
-                        advance_display = f"{hours}小时"
-                else:
-                    advance_display = f"{advance_minutes}分钟"
+                advance_display = self._format_advance_time(advance_minutes)
                 message += f"\n提前提醒: {advance_display}"
             
             return message
@@ -235,15 +227,7 @@ class TodoCommands:
             # 如果有提前提醒，添加提前提醒信息
             if time_result.get('advance_remind_minutes', 0) > 0:
                 advance_minutes = time_result['advance_remind_minutes']
-                if advance_minutes >= 60:
-                    hours = advance_minutes // 60
-                    minutes = advance_minutes % 60
-                    if minutes > 0:
-                        advance_display = f"{hours}小时{minutes}分钟"
-                    else:
-                        advance_display = f"{hours}小时"
-                else:
-                    advance_display = f"{advance_minutes}分钟"
+                advance_display = self._format_advance_time(advance_minutes)
                 message += f"\n提前提醒: {advance_display}"
             
             return message
@@ -501,6 +485,28 @@ class TodoCommands:
             return f"获取todo详情失败: {str(e)}"
     
     
+    def _format_advance_time(self, advance_minutes: int) -> str:
+        """格式化提前提醒时间显示（支持天、小时、分钟）"""
+        if advance_minutes < 60:
+            return f"{advance_minutes}分钟"
+        
+        # 计算天、小时、分钟
+        total_minutes = advance_minutes
+        days = total_minutes // (24 * 60)
+        remaining_minutes = total_minutes % (24 * 60)
+        hours = remaining_minutes // 60
+        minutes = remaining_minutes % 60
+        
+        parts = []
+        if days > 0:
+            parts.append(f"{days}天")
+        if hours > 0:
+            parts.append(f"{hours}小时")
+        if minutes > 0:
+            parts.append(f"{minutes}分钟")
+        
+        return "".join(parts)
+    
     def _parse_event_info(self, event: Event) -> Tuple[Optional[int], Optional[int], str]:
         """解析事件信息"""
         try:
@@ -568,6 +574,9 @@ class TodoCommands:
 • 现在/立刻/立即/now (立即执行提醒)
 
  相对时间（一次性提醒）：
+• X天Y小时Z分钟后 (如：3天5小时45分钟后)
+• X天Y小时后 (如：2天3小时后)
+• X天后 (如：3天后)
 • X小时Y分钟后 (如：5小时45分钟后)
 • X小时后 (如：2小时后)
 • X分钟后 (如：30分钟后)
@@ -609,6 +618,9 @@ class TodoCommands:
 • todo 我 现在 提醒内容 (@自己，立即提醒)
 • todo 群提醒 现在 提醒内容 (@全体成员，立即提醒)
 • todo @用户 现在 提醒内容 (@用户，立即提醒)
+• todo 3天5小时45分钟后 重要会议
+• todo 2天3小时后 重要会议
+• todo 3天后 重要会议
 • todo 5小时45分钟后 重要会议
 • todo 5小时40分 当天会议 (当天5点40分)
 • todo 30分钟后 提醒我休息
@@ -689,15 +701,7 @@ class TodoCommands:
             # 如果有提前提醒，添加提前提醒信息
             if time_result.get('advance_remind_minutes', 0) > 0:
                 advance_minutes = time_result['advance_remind_minutes']
-                if advance_minutes >= 60:
-                    hours = advance_minutes // 60
-                    minutes = advance_minutes % 60
-                    if minutes > 0:
-                        advance_display = f"{hours}小时{minutes}分钟"
-                    else:
-                        advance_display = f"{hours}小时"
-                else:
-                    advance_display = f"{advance_minutes}分钟"
+                advance_display = self._format_advance_time(advance_minutes)
                 message += f"\n提前提醒: {advance_display}"
             
             return message
@@ -813,15 +817,7 @@ class TodoCommands:
             # 如果有提前提醒，添加提前提醒信息
             if time_result.get('advance_remind_minutes', 0) > 0:
                 advance_minutes = time_result['advance_remind_minutes']
-                if advance_minutes >= 60:
-                    hours = advance_minutes // 60
-                    minutes = advance_minutes % 60
-                    if minutes > 0:
-                        advance_display = f"{hours}小时{minutes}分钟"
-                    else:
-                        advance_display = f"{hours}小时"
-                else:
-                    advance_display = f"{advance_minutes}分钟"
+                advance_display = self._format_advance_time(advance_minutes)
                 message += f"\n提前提醒: {advance_display}"
             
             return message
@@ -912,15 +908,7 @@ class TodoCommands:
             # 如果有提前提醒，添加提前提醒信息
             if time_result.get('advance_remind_minutes', 0) > 0:
                 advance_minutes = time_result['advance_remind_minutes']
-                if advance_minutes >= 60:
-                    hours = advance_minutes // 60
-                    minutes = advance_minutes % 60
-                    if minutes > 0:
-                        advance_display = f"{hours}小时{minutes}分钟"
-                    else:
-                        advance_display = f"{hours}小时"
-                else:
-                    advance_display = f"{advance_minutes}分钟"
+                advance_display = self._format_advance_time(advance_minutes)
                 message += f"\n提前提醒: {advance_display}"
             
             return message

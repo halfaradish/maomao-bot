@@ -38,7 +38,10 @@ class TimeParser:
             # 相对时间模式（注意：更具体的模式要放在前面）
             "relative": [
                 (r"^(现在|立刻|立即|now)$", self._parse_immediate),  # 立即提醒，放在最前面
+                (r"(\d+)天(\d+)小时(\d+)分钟后", self._parse_days_hours_minutes_later),
+                (r"(\d+)天(\d+)小时后", self._parse_days_hours_later),
                 (r"(\d+)小时(\d+)分钟后", self._parse_hours_minutes_later),
+                (r"(\d+)天后", self._parse_days_later),
                 (r"(\d+)分钟后", self._parse_minutes_later),
                 (r"(\d+)小时后", self._parse_hours_later),
             ],
@@ -145,6 +148,42 @@ class TimeParser:
         hours = int(match.group(1))
         now = self._get_current_time()
         remind_time = now + timedelta(hours=hours)
+        return {
+            "remind_time": remind_time,
+            "remind_type": "once",
+            "repeat_type": None
+        }
+    
+    def _parse_days_later(self, match) -> Optional[Dict[str, Any]]:
+        """解析X天后"""
+        days = int(match.group(1))
+        now = self._get_current_time()
+        remind_time = now + timedelta(days=days)
+        return {
+            "remind_time": remind_time,
+            "remind_type": "once",
+            "repeat_type": None
+        }
+    
+    def _parse_days_hours_later(self, match) -> Optional[Dict[str, Any]]:
+        """解析X天Y小时后"""
+        days = int(match.group(1))
+        hours = int(match.group(2))
+        now = self._get_current_time()
+        remind_time = now + timedelta(days=days, hours=hours)
+        return {
+            "remind_time": remind_time,
+            "remind_type": "once",
+            "repeat_type": None
+        }
+    
+    def _parse_days_hours_minutes_later(self, match) -> Optional[Dict[str, Any]]:
+        """解析X天Y小时Z分钟后"""
+        days = int(match.group(1))
+        hours = int(match.group(2))
+        minutes = int(match.group(3))
+        now = self._get_current_time()
+        remind_time = now + timedelta(days=days, hours=hours, minutes=minutes)
         return {
             "remind_time": remind_time,
             "remind_type": "once",
