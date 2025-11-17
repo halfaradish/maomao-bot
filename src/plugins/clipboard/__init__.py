@@ -12,10 +12,12 @@ from nonebot.adapters.onebot.v11 import (
     PrivateMessageEvent
 )
 from nonebot.exception import FinishedException
+from nonebot.rule import Rule
+from nonebot.params import CommandArg
 
 import io
 import aiohttp
-from typing import Tuple, Union, BinaryIO
+from typing import Tuple, Union, BinaryIO, List
 
 from .config import Config
 
@@ -28,10 +30,20 @@ __plugin_meta__ = PluginMetadata(
 
 config = get_plugin_config(Config)
 
+def exact_command(cmds: List[str]):
+    async def _rule(args: Message = CommandArg()):
+        arg = args.extract_plain_text().strip()
+        if arg:
+            return False
+        return True
+    return Rule(_rule)
+
+
 clipboard = on_command(
     cmd="cv",
     aliases={"剪切板"},
-    priority=config.priority
+    rule=exact_command(["cmd", "剪切板"]),
+    priority=config.clip_priority
 )
 
 async def text_to_image_bytes(text_msg: str) -> Tuple[bool, Union[str, BinaryIO]]:
@@ -40,9 +52,9 @@ async def text_to_image_bytes(text_msg: str) -> Tuple[bool, Union[str, BinaryIO]
     try:
         async with aiohttp.ClientSession() as session:
             async with session.post(
-                url=config.post_url,
+                url=config.clip_post_url,
                 json={'content': text_msg},
-                timeout=config.post_timeout,
+                timeout=config.clip_post_timeout,
             ) as res:
                 logger.debug("成功接收返回信息")
 
