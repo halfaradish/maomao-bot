@@ -7,16 +7,13 @@ from nonebot import(
 )
 from nonebot.plugin import PluginMetadata
 from nonebot.adapters.onebot.v11 import(
-    GroupMessageEvent,
-    PrivateMessageEvent,
-    Message,
-    MessageEvent,
     Bot
 )
 
 import uuid
 from datetime import datetime, timedelta, date
 from nonebot_plugin_apscheduler import scheduler
+import asyncio
 
 from ...common import utils, JsonUtils
 from .config import Config
@@ -72,13 +69,12 @@ async def schedule_job():
 
     每天凌晨四点获取数据并存入定时任务
     """
-    return
     now: datetime = datetime.now()
-    if now.hour >= config.day_start_hour:
-        start_datetime: datetime = now.replace(hour=config.day_start_hour, minute=0, second=0)
+    if now.hour >= config.spv_day_start_hour:
+        start_datetime: datetime = now.replace(hour=config.spv_day_start_hour, minute=0, second=0)
         end_datetime: datetime = start_datetime + timedelta(days=1)
     else:
-        end_datetime: datetime = now.replace(hour=config.day_start_hour, minute=0, second=0)
+        end_datetime: datetime = now.replace(hour=config.spv_day_start_hour, minute=0, second=0)
         start_datetime: datetime = end_datetime - timedelta(days=1)
 
     logger.debug(f"开始获取数据......")
@@ -127,11 +123,30 @@ async def schedule_job():
         sucessed_cnt += 1
     logger.success(f"成功安排 {sucessed_cnt} 条数据")
 
-@scheduler.scheduled_job("cron", hour=config.day_start_hour, minute=00, id="shadow_problem_view")
-async def _():
-    await schedule_job()
+# 根据 enable 状态判断是否开启定时任务
+if config.spv_schedule_job_enable:
+    scheduler.add_job(
+        schedule_job,
+        "cron",
+        hour=config.spv_day_start_hour,
+        minute=0,
+        id="shadow_problem_view",
+        replace_existing=True
+    )
+    scheduler.add_job(
+        schedule_job,
+        'date',
+        run_date=datetime.now() + timedelta(seconds=3),
+        id=f"shadow_problem_view_startup_{uuid.uuid4().hex[:8]}"
+    )
+    logger.debug("已启用 shadow_problem_view 定时任务")
+else:
+    logger.debug("shadow_problem_view 定时任务已禁用")
 
-@scheduler.scheduled_job("date", run_date=datetime.now() + timedelta(seconds=5), id="initial_shadow_problem_view")
-async def _():
-    logger.info("[shadow_problem_view]插件首次加载，获取初始数据并发送任务...")
-    await schedule_job()
+# @scheduler.scheduled_job("cron", hour=config.spv_day_start_hour, minute=00, id="shadow_problem_view")
+# async def _():
+#     await schedule_job()
+# @scheduler.scheduled_job("date", run_date=datetime.now() + timedelta(seconds=5), id="initial_shadow_problem_view")
+# async def _():
+#     logger.info("[shadow_problem_view]插件首次加载，获取初始数据并发送任务...")
+#     await schedule_job()
