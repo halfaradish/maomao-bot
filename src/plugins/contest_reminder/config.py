@@ -10,6 +10,8 @@ class Config(BaseModel):
 
     # 是否启用比赛提醒功能
     clist_gci_enable: bool
+
+    clist_schedule_job_enable: bool
     # 比赛提醒插件的优先级，数值越小优先级越高
     clist_gci_priority: int
     # 比赛提醒命令的触发关键词，默认为'比赛提醒'

@@ -21,6 +21,7 @@ from nonebot_plugin_apscheduler import scheduler
 from typing import List, Dict
 from uuid import uuid4
 from datetime import datetime, timedelta
+import asyncio
 
 from .config import Config
 from .contest_fetcher import contest_fetcher, ContestInfo
@@ -159,24 +160,45 @@ async def contest_reminder():
 
     logger.info(f"成功安排 {success_cnt} 条比赛提醒")
 
-@scheduler.scheduled_job(
-    "cron",
-    hour=config.clist_remind_run_time_hour,
-    minute=0,
-    second=0,
-    id="contests_reminder"
-)
-async def contest_reminder_scheduler():
-    """每日定时提醒"""
-    await contest_reminder()
+# 根据enable状态-启动定时任务
+if config.clist_schedule_job_enable:
+    scheduler.add_job(
+        contest_reminder,
+        "cron",
+        hour=config.clist_remind_run_time_hour,
+        minute=0,
+        second=0,
+        id="contests_reminder"
+    )
+    scheduler.add_job(
+        contest_reminder,
+        'date',
+        run_date=datetime.now() + timedelta(seconds=3),
+        id=f"contest_reminder_startup_{uuid4().hex[:8]}"
+    )
+    logger.debug("已开启 contest_reminder 插件定时比赛提醒")
+else:
+    logger.debug("contest_reminder 插件定时比赛提醒已禁用")
 
-@scheduler.scheduled_job(
-    'date',
-    run_date=datetime.now() + timedelta(seconds=3),
-    id=f"contest_reminder_startup_{uuid4().hex[:8]}"
-)
-async def contest_reminder_startup():
-    """运行比赛提醒任务"""
-    logger.info("启动时开始执行赛程提醒任务")
-    # 直接执行一次比赛信息获取和提醒安排
-    await contest_reminder()
+
+# @scheduler.scheduled_job(
+#     "cron",
+#     hour=config.clist_remind_run_time_hour,
+#     minute=0,
+#     second=0,
+#     id="contests_reminder"
+# )
+# async def contest_reminder_scheduler():
+#     """每日定时提醒"""
+#     await contest_reminder()
+
+# @scheduler.scheduled_job(
+#     'date',
+#     run_date=datetime.now() + timedelta(seconds=3),
+#     id=f"contest_reminder_startup_{uuid4().hex[:8]}"
+# )
+# async def contest_reminder_startup():
+#     """运行比赛提醒任务"""
+#     logger.info("启动时开始执行赛程提醒任务")
+#     # 直接执行一次比赛信息获取和提醒安排
+#     await contest_reminder()
