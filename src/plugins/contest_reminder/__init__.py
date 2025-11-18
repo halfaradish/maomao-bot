@@ -3,7 +3,8 @@ from nonebot import (
     logger,
     on_command,
     require,
-    get_bot
+    get_bot,
+    get_driver
 )
 from nonebot.adapters.onebot.v11 import (
     Bot,
@@ -132,16 +133,8 @@ async def remind_contest_to_groups(contest: ContestInfo) -> None:
         logger.error(f"发送消息时出错: {e}")
         return
 
-
-@scheduler.scheduled_job(
-    "cron",
-    hour=config.clist_remind_run_time_hour,
-    minute=0,
-    second=0,
-    id="contests_reminder"
-)
 async def contest_reminder():
-    """每天固定时间赛程提醒"""
+    """安排比赛提醒"""
     # 获取比赛信息
     contests: List[ContestInfo] = contest_fetcher.fetch_contests(platform_names=config.clist_platforms)
 
@@ -165,3 +158,25 @@ async def contest_reminder():
             continue
 
     logger.info(f"成功安排 {success_cnt} 条比赛提醒")
+
+@scheduler.scheduled_job(
+    "cron",
+    hour=config.clist_remind_run_time_hour,
+    minute=0,
+    second=0,
+    id="contests_reminder"
+)
+async def contest_reminder_scheduler():
+    """每日定时提醒"""
+    await contest_reminder()
+
+@scheduler.scheduled_job(
+    'date',
+    run_date=datetime.now() + timedelta(seconds=3),
+    id=f"contest_reminder_startup_{uuid4().hex[:8]}"
+)
+async def contest_reminder_startup():
+    """运行比赛提醒任务"""
+    logger.info("启动时开始执行赛程提醒任务")
+    # 直接执行一次比赛信息获取和提醒安排
+    await contest_reminder()
