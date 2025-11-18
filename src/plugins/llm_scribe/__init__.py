@@ -16,7 +16,7 @@ async def _(bot: Bot, event: GroupMessageEvent, args: Message = CommandArg()):
 
     group_id = event.group_id
     text = args.extract_plain_text().strip()
-    hours = 24
+    hours = 6
 
     if text:
         try:
