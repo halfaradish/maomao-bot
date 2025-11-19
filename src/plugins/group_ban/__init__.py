@@ -95,6 +95,7 @@ def _parse_duration(arg_text: str) -> int | None:
 
 
 ban_cmd = on_command("ban", priority=10, block=True)
+unban_cmd = on_command("unban", priority=10, block=True)
 
 
 @ban_cmd.handle()
@@ -151,3 +152,41 @@ async def handle_ban(bot: Bot, event: GroupMessageEvent, args: Message = Command
         logger.error(f"设置禁言失败: {e}")
         await ban_cmd.finish("禁言失败，请检查机器人权限")
 
+
+@unban_cmd.handle()
+async def handle_unban(bot: Bot, event: GroupMessageEvent, args: Message = CommandArg()):
+    if not isinstance(event, GroupMessageEvent):
+        await unban_cmd.finish("仅支持在群聊中使用禁言功能")
+        return
+
+    if not _is_allowed(event):
+        await unban_cmd.finish("你没有权限使用解除禁言功能")
+        return
+
+    target_user = _extract_target(event)
+    if not target_user:
+        await unban_cmd.finish("请 @ 需要解除禁言的用户")
+        return
+
+    try:
+        member_info = await bot.get_group_member_info(
+            group_id=event.group_id, user_id=target_user, no_cache=True
+        )
+    except Exception as e:
+        logger.error(f"获取成员信息失败: {e}")
+        await unban_cmd.finish("无法获取成员信息，解除禁言已取消")
+        return
+
+    shut_up_timestamp = member_info.get("shut_up_timestamp", 0)
+    if shut_up_timestamp <= time.time():
+        await unban_cmd.finish("该用户当前没有被禁言")
+        return
+
+    try:
+        await bot.set_group_ban(group_id=event.group_id, user_id=target_user, duration=0)
+        await unban_cmd.finish(f"已解除 {target_user} 的禁言")
+    except FinishedException:
+        raise
+    except Exception as e:
+        logger.error(f"解除禁言失败: {e}")
+        await unban_cmd.finish("解除禁言失败，请检查机器人权限")
