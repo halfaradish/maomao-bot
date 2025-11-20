@@ -17,10 +17,14 @@ from nonebot.adapters.onebot.v11 import (
     ActionFailed
 )
 
-from datetime import datetime
+from datetime import datetime, timedelta
+import asyncio
+import threading
+import time
 
 from .config import Config
 from ...common import JsonUtils, SendForwardMsg
+from ..logging_info.message_dao import message_dao
 
 __plugin_meta__ = PluginMetadata(
     name="auto_manage_group",
@@ -121,11 +125,75 @@ banned_word_detector = on_message(
     priority=20
 )
 
+async def context_erase_messages(bot: Bot, user_id: int, group_id: int, base_time: int, base_message_id: int):
+    """上下文撤回消息"""
+    try:
+        # 等待延迟时间，确保logging_info插件完成消息存储
+        await asyncio.sleep(config.context_erase_delay)
+        
+        # 计算时间范围
+        start_time = base_time - config.context_erase_time_range
+        end_time = base_time + config.context_erase_time_range
+        
+        logger.info(f"开始上下文撤回: 用户{user_id}, 群组{group_id}, 时间范围{start_time}-{end_time}")
+        
+        # 从数据库查询该用户在指定时间范围内的所有消息
+        from django.db.models import Q
+        from asgiref.sync import sync_to_async
+        from botdb.models import MessageEventLog
+        
+        def _get_messages_sync():
+            return list(
+                MessageEventLog.objects.filter(
+                    Q(user_id=user_id) & 
+                    Q(group_id=group_id) & 
+                    Q(time__gte=start_time) & 
+                    Q(time__lte=end_time) &
+                    ~Q(message_id=base_message_id)  # 排除基准消息（已撤回）
+                ).order_by("time")
+            )
+        
+        messages = await sync_to_async(_get_messages_sync)()
+        
+        if not messages:
+            logger.info(f"未找到需要撤回的上下文消息")
+            return
+            
+        logger.info(f"找到 {len(messages)} 条需要撤回的上下文消息")
+        
+        # 批量撤回消息
+        success_count = 0
+        fail_count = 0
+        
+        for msg in messages:
+            try:
+                await bot.delete_msg(message_id=msg.message_id)
+                success_count += 1
+                logger.info(f"成功撤回消息: {msg.message_id}")
+                
+                # 添加延迟避免触发频率限制
+                await asyncio.sleep(config.context_erase_retry_delay)
+                
+            except ActionFailed as e:
+                fail_count += 1
+                logger.warning(f"撤回消息失败: {msg.message_id}, 错误: {e}")
+                
+            except Exception as e:
+                fail_count += 1
+                logger.error(f"撤回消息异常: {msg.message_id}, 错误: {e}")
+        
+        logger.info(f"上下文撤回完成: 成功{success_count}条, 失败{fail_count}条")
+        
+    except Exception as e:
+        logger.error(f"上下文撤回过程异常: {e}")
+
+
 @banned_word_detector.handle()
 async def _(bot: Bot, event: GroupMessageEvent):
     user_id = event.user_id
     group_id = event.group_id
     message_id = event.message_id
+    current_time = event.time
 
     try:
         # 禁言用户
@@ -135,11 +203,14 @@ async def _(bot: Bot, event: GroupMessageEvent):
             duration=3600
         )
 
-        # 撤回消息
+        # 撤回当前消息
         await bot.delete_msg(message_id=message_id)
 
         user_segment = MessageSegment.at(user_id=user_id)
         await banned_word_detector.send(f"检测到消息包含违规词，已对 " + user_segment + f"({user_id})禁言 1 小时")
+
+        # 启动上下文撤回任务（异步执行，不阻塞主流程）
+        asyncio.create_task(context_erase_messages(bot, user_id, group_id, current_time, message_id))
 
         # 构建日志消息
         remind_msgs = []
@@ -148,6 +219,7 @@ async def _(bot: Bot, event: GroupMessageEvent):
         remind_msgs.append(f"{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
         remind_msgs.append("违禁消息如下")
         remind_msgs.append(str(event.get_message()))
+        remind_msgs.append("已启动上下文联动撤回机制")
 
         data, _ = JsonUtils.read(
             filename=config.data_filename,

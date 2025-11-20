@@ -3,11 +3,11 @@ from pydantic import BaseModel
 
 class Config(BaseModel):
     """Plugin Config Here"""
-    priority: int = 10
+    clip_priority: int
 
-    post_url: str = 'http://8.163.30.212:1145/api/generate-image'
+    clip_post_url: str
 
-    post_timeout: float = 30.0
+    clip_post_timeout: float = 30.0
 
     DEFAULT_MSG: str = (
         "云剪切板：\n"

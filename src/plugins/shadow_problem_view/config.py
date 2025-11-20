@@ -3,7 +3,9 @@ from pydantic import BaseModel
 
 class Config(BaseModel):
     """Plugin Config Here"""
-    day_start_hour: int = 4
+    spv_schedule_job_enable: bool
+
+    spv_day_start_hour: int = 4
 
     data_filename: str = 'shadow_problem_view.json'
 

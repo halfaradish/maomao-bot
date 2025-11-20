@@ -159,11 +159,32 @@ class AckReminderScheduler:
         
         # 发送提醒消息
         try:
-            await bot.send_group_msg(group_id=group_id, message=reminder_msg)
+            send_result = await bot.send_group_msg(group_id=group_id, message=reminder_msg)
+            reminder_msg_id = send_result.get("message_id")
+            reminder_msg_id_str = str(reminder_msg_id) if reminder_msg_id is not None else None
+            
             logger.info(
                 f"发送提醒成功: message_id={summary.message_id}, stage={current_stage + 1}, "
-                f"outstanding_count={len(outstanding)}"
+                f"outstanding_count={len(outstanding)}, reminder_msg_id={reminder_msg_id_str}"
             )
+            
+            # 保存提醒消息的msg_id到原始消息的metadata中，以便后续识别
+            if reminder_msg_id_str:
+                from ...common.django_crud import async_get_one, async_update_records
+                current_metadata = message.metadata or {}
+                reminder_msg_ids = current_metadata.get("reminder_msg_ids", [])
+                if not isinstance(reminder_msg_ids, list):
+                    reminder_msg_ids = []
+                # 避免重复添加
+                if reminder_msg_id_str not in reminder_msg_ids:
+                    reminder_msg_ids.append(reminder_msg_id_str)
+                    current_metadata["reminder_msg_ids"] = reminder_msg_ids
+                    await async_update_records(
+                        QQRobotMessage,
+                        {"id": message.id},
+                        {"metadata": current_metadata}
+                    )
+                    logger.debug(f"已保存提醒消息ID到metadata: message_id={message.id}, reminder_msg_id={reminder_msg_id_str}")
         except Exception as e:
             logger.error(f"发送提醒消息失败: {e}")
             raise

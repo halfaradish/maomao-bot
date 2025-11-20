@@ -1,13 +1,9 @@
-from datetime import datetime, timedelta
-from html2image import Html2Image
-from decimal import Decimal
-from playwright.async_api import async_playwright
-import os
-
 from nonebot import logger, get_plugin_config
+from datetime import datetime, timedelta
+from playwright.async_api import async_playwright
+from typing import Tuple
 
 from .config import Config
-from ...config import DiTingData
 from ...common import get_icpc_db_connection, utils
 
 config = get_plugin_config(Config)
@@ -50,7 +46,13 @@ class Submission(object):
         return result_msg
     
     @classmethod
-    async def create_ranking_table(cls, upstream_days: int = 7, needed_roles: list = [], needed_schools: list = [], needed_users: list = []):
+    async def create_ranking_table(
+        cls,
+        upstream_days: int = 7,
+        needed_roles: list = [],
+        needed_schools: list = [],
+        needed_users: list = []
+    ) -> Tuple[bool, str, bytes]:
         """
         将数据转化为表格图片
         """
@@ -62,7 +64,7 @@ class Submission(object):
             end_time=end_time
         )
         if not data:
-            return (False, f"前 {upstream_days} 日没有数据")
+            return (False, f"前 {upstream_days} 日没有数据", None)
         # 过滤数据
         # 过滤用户名
         if needed_users:
@@ -75,7 +77,7 @@ class Submission(object):
         # 过滤身份
         if needed_roles:
             needed_role_ids: list = []
-            for role_name, role_id in config.roles_dict.items():
+            for role_name, role_id in config.sub_record_roles_dict.items():
                 if role_name in needed_roles:
                     needed_role_ids.append(role_id)
             new_data = [item for item in data if item.get('role_id', -1) in needed_role_ids]
@@ -84,12 +86,12 @@ class Submission(object):
         logger.info(data)
 
         # 创建存放路径
-        output_dir = os.path.abspath(DiTingData.SUB_RANKING_DIR)
-        output_filename = f"sub_ranking_table-{datetime.now().strftime('%Y%m%d_%H%M%S_%f')}.png"
-        if not os.path.exists(output_dir):
-            os.makedirs(output_dir)
-            logger.debug(f"表格图片存放目录已创建：{output_dir}")
-        output_path = os.path.join(output_dir, output_filename)
+        # output_dir = os.path.abspath(DiTingData.SUB_RANKING_DIR)
+        # output_filename = f"sub_ranking_table-{datetime.now().strftime('%Y%m%d_%H%M%S_%f')}.png"
+        # if not os.path.exists(output_dir):
+        #     os.makedirs(output_dir)
+        #     logger.debug(f"表格图片存放目录已创建：{output_dir}")
+        # output_path = os.path.join(output_dir, output_filename)
 
         # 3. 构建HTML表格（纯内存操作，无需异步）
         headers = ["排名", "用户名", "CF题数", "洛谷题数", "总题数", "身份", "学校"]
@@ -177,18 +179,14 @@ class Submission(object):
                 # 获取容器元素的边界框，确保精确截图
                 container = await page.query_selector(".container")
                 if container:
-                    box = await container.bounding_box()
-                    if box:
-                        await container.screenshot(path=output_path)
-                    else:
-                        await page.screenshot(path=output_path, full_page=True)
+                    screenshot_bytes: bytes = await container.screenshot()
                 else:
-                    await page.screenshot(path=output_path, full_page=True)
+                    screenshot_bytes: bytes = await page.screenshot(full_page=True)
                 
                 await browser.close()  # 异步关闭浏览器
 
-            logger.success(f"过题表格图片已生成：{output_path}")
-            return (True, output_path)
+            logger.success(f"过题表格图片已生成")
+            return (True, "过题表格生成成功", screenshot_bytes)
         except Exception as e:
-            logger.error(f"表格图片生成失败：{str(e)}", exc_info=True)  # exc_info=True 打印完整堆栈
-            return (False, None)
+            logger.error(f"表格图片生成失败：{str(e)}", exc_info=True)
+            return (False, "表格图片生成失败", None)

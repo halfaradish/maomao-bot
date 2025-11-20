@@ -45,7 +45,7 @@ class MessageEventLog(models.Model):
     sender_nickname = models.CharField(max_length=100)
     sender_card = models.CharField(max_length=100, null=True, blank=True)
     sender_sex = models.CharField(
-        max_length=10, choices=SenderSex.choices, default=SenderSex.UNKNOWN
+        max_length=10, choices=SenderSex.choices, default=SenderSex.UNKNOWN, null=True, blank=True
     )
     sender_age = models.SmallIntegerField(null=True, blank=True)
     sender_role = models.CharField(
