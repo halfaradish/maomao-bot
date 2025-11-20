@@ -16,7 +16,6 @@ from datetime import datetime
 from typing import Union
 
 from ...common import JsonUtils
-from ...common.utils import BuildUri
 from .config import Config
 from .sub_condition import Submission
 
@@ -32,8 +31,8 @@ config = get_plugin_config(Config)
 cf_sub_command = on_command(
     "过题^",
     aliases={"过题"},
-    priority=config.priority,
-    block=config.block
+    priority=config.sub_record_priority,
+    block=config.sub_record_block
 )
 
 def is_valid_gap_time(upstream_days):
@@ -73,16 +72,15 @@ async def _():
     })
     group_ids = data["submission_groups"]
 
-    success, pic_path = await submission.create_ranking_table(upstream_days=7)
-    if not success and pic_path:
+    success, msg, pic = await submission.create_ranking_table(upstream_days=7)
+    if not success:
         for group_id in group_ids:
             await bot.send_group_msg(
                 group_id=group_id,
                 message=config.scheduled_default_msg
             )
-    elif success and pic_path:
-        pic_uri = BuildUri.create_napcat_file_uri(file_path=pic_path)
-        pic_msg = MessageSegment.image(pic_uri)
+    elif pic:
+        pic_msg = MessageSegment.image(pic)
         for group_id in group_ids:
             await bot.send_group_msg(
                 group_id=group_id,
@@ -160,14 +158,15 @@ async def _(bot: Bot, event: Union[GroupMessageEvent, PrivateMessageEvent], args
 
         # 查询数据库
         submission = Submission()
-        success, pic_path = await submission.create_ranking_table(**filtered_params)
-        logger.info(pic_path)
-        if not success and pic_path:
-            await cf_sub_command.finish(pic_path)
-        elif success and pic_path:
-            pic_uri = BuildUri.create_napcat_file_uri(file_path=pic_path)
-            pic_msg = MessageSegment.image(pic_uri)
+        success, msg, pic = await submission.create_ranking_table(**filtered_params)
+        logger.info(f"过题表格生成结果: {success}, 消息: {msg}")
+        if not success:
+            await cf_sub_command.finish(msg)
+        elif pic:
+            pic_msg = MessageSegment.image(pic)
             await cf_sub_command.finish(pic_msg)
+        else:
+            await cf_sub_command.finish("图片生成失败，请稍后重试")
     except FinishedException:
         # 让 FinishedException 正常传递，不记录为错误
         raise
