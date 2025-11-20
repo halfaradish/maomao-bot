@@ -1,0 +1,198 @@
+from nonebot import (
+    get_plugin_config,
+    get_driver,
+    on_command,
+    logger,
+    Bot
+)
+from nonebot.plugin import PluginMetadata
+from nonebot.adapters.onebot.v11 import (
+    GroupMessageEvent,
+    Message,
+    MessageSegment,
+    ActionFailed
+)
+from nonebot.params import CommandArg
+
+from datetime import datetime
+import asyncio
+
+from .config import Config
+from ...common import JsonUtils
+
+__plugin_meta__ = PluginMetadata(
+    name="mass_kick",
+    description="一键退群功能，支持批量将用户从多个群组中踢出",
+    usage="一键退群+QQ号",
+    config=Config,
+)
+
+config = get_plugin_config(Config)
+driver = get_driver()
+
+# 创建命令处理器
+mass_kick_cmd = on_command("一键退群", priority=5, block=True)
+
+def get_managed_groups():
+    """获取管理的群组列表"""
+    data, _ = JsonUtils.read(
+        filename=config.data_filename,
+        default={
+            "managed_groups": []
+        }
+    )
+    return data.get('managed_groups', [])
+async def is_super_admin(user_id: str) -> bool:
+    """验证用户是否为超级管理员"""
+    # 调试信息：打印超级管理员列表和当前用户ID
+    logger.info(f"超级管理员列表: {driver.config.superusers}")
+    logger.info(f"当前用户ID: {user_id}")
+    result = str(user_id) in driver.config.superusers
+    logger.info(f"权限验证结果: {result}")
+    return result
+
+async def kick_user_from_group(bot: Bot, group_id: str, user_id: str) -> bool:
+    """从指定群组踢出用户"""
+    try:
+        await bot.set_group_kick(
+            group_id=int(group_id),
+            user_id=int(user_id)
+        )
+        return True
+    except ActionFailed as e:
+        logger.warning(f"踢出用户失败: 群组{group_id}, 用户{user_id}, 错误: {e}")
+        return False
+    except Exception as e:
+        logger.error(f"踢出用户异常: 群组{group_id}, 用户{user_id}, 错误: {e}")
+        return False
+
+async def log_operation(bot: Bot, operator_id: str, target_user_id: str, 
+                       success_groups: list, failed_groups: list):
+    """记录操作日志"""
+    if not config.log_group_ids:
+        return
+    
+    try:
+        log_messages = []
+        log_messages.append("=== 一键退群操作日志 ===")
+        log_messages.append(f"操作时间: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+        log_messages.append(f"操作者: {operator_id}")
+        log_messages.append(f"目标用户: {target_user_id}")
+        log_messages.append(f"成功踢出的群组: {len(success_groups)}个")
+        
+        if success_groups:
+            log_messages.append("成功群组列表:")
+            for group_id in success_groups:
+                log_messages.append(f"  - {group_id}")
+        
+        if failed_groups:
+            log_messages.append(f"踢出失败的群组: {len(failed_groups)}个")
+            log_messages.append("失败群组列表:")
+            for group_id in failed_groups:
+                log_messages.append(f"  - {group_id}")
+        
+        # 发送到所有日志群组
+        log_content = "\n".join(log_messages)
+        for log_group_id in config.log_group_ids:
+            try:
+                await bot.send_group_msg(
+                    group_id=int(log_group_id),
+                    message=log_content
+                )
+                logger.info(f"操作日志已发送到群组 {log_group_id}")
+            except Exception as e:
+                logger.error(f"发送日志到群组 {log_group_id} 失败: {e}")
+        
+    except Exception as e:
+        logger.error(f"记录操作日志失败: {e}")
+
+@mass_kick_cmd.handle()
+async def handle_mass_kick(bot: Bot, event: GroupMessageEvent, args: Message = CommandArg()):
+    """处理一键退群命令"""
+    
+    # 验证权限
+    if not await is_super_admin(str(event.user_id)):
+        await mass_kick_cmd.finish("您没有权限使用此功能")
+    
+    # 解析参数
+    arg_text = args.extract_plain_text().strip()
+    if not arg_text:
+        await mass_kick_cmd.finish(config.DEFAULT_MSG)
+    
+    # 提取QQ号
+    target_user_id = arg_text
+    if not target_user_id.isdigit():
+        await mass_kick_cmd.finish("QQ号格式错误，请输入纯数字")
+    
+    # 获取管理的群组列表
+    managed_groups = get_managed_groups()
+    if not managed_groups:
+        await mass_kick_cmd.finish("当前没有配置管理的群组，请联系管理员配置")
+    
+    # 检查目标用户是否为自己
+    if target_user_id == str(event.user_id):
+        await mass_kick_cmd.finish("不能踢出自己")
+    
+    # 检查目标用户是否为机器人
+    if target_user_id == str(bot.self_id):
+        await mass_kick_cmd.finish("不能踢出机器人自己")
+    
+    # 开始处理
+    await mass_kick_cmd.send(f"开始处理一键退群，目标用户：{target_user_id}")
+    
+    # 记录操作日志
+    operation_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    operator_id = str(event.user_id)
+    
+    # 执行批量踢出
+    success_groups = []
+    failed_groups = []
+    
+    for group_id in managed_groups:
+        try:
+            # 检查用户是否在群组中
+            try:
+                member_info = await bot.get_group_member_info(
+                    group_id=int(group_id), 
+                    user_id=int(target_user_id)
+                )
+                if member_info:
+                    # 执行踢出操作
+                    result = await kick_user_from_group(bot, group_id, target_user_id)
+                    if result:
+                        success_groups.append(group_id)
+                    else:
+                        failed_groups.append(group_id)
+                else:
+                    failed_groups.append(group_id)
+            except ActionFailed:
+                # 用户不在群组中
+                failed_groups.append(group_id)
+            
+            # 添加操作延迟，避免频率限制
+            if config.operation_delay > 0:
+                await asyncio.sleep(config.operation_delay)
+                
+        except Exception as e:
+            logger.error(f"处理群组 {group_id} 时发生错误: {e}")
+            failed_groups.append(group_id)
+    
+    # 构建结果消息
+    result_msg = f"一键退群操作完成\n"
+    result_msg += f"操作时间：{operation_time}\n"
+    result_msg += f"操作者：{operator_id}\n"
+    result_msg += f"目标用户：{target_user_id}\n"
+    result_msg += f"成功踢出的群组：{len(success_groups)} 个\n"
+    result_msg += f"失败的群组：{len(failed_groups)} 个\n"
+    
+    if success_groups:
+        result_msg += f"成功群组列表：{', '.join(success_groups)}\n"
+    
+    if failed_groups:
+        result_msg += f"失败群组列表：{', '.join(failed_groups)}"
+
+    # 发送操作日志到所有日志群组
+    await log_operation(bot, operator_id, target_user_id, success_groups, failed_groups)
+
+    # 发送结果给操作者
+    await mass_kick_cmd.finish(result_msg)
