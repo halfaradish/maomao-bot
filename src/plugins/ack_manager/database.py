@@ -3,6 +3,7 @@ Database helpers for ACK/ANN message tracking.
 """
 from __future__ import annotations
 
+import importlib
 from typing import Any, Dict, List, Optional, Tuple
 
 from asgiref.sync import sync_to_async
@@ -19,12 +20,17 @@ from ...common.django_crud import (
 
 init_django_if_needed()
 
-from botdb.models import (
-    QQMessageReaction,
-    QQMessageReceiptSummary,
-    QQRobotMessage,
-    beijing_now,
-)
+try:
+    botdb_models = importlib.import_module("botdb.models")
+except ModuleNotFoundError:
+    botdb_models = importlib.import_module("src.django_project.botdb.models")
+
+QQMessageReaction = botdb_models.QQMessageReaction
+QQMessageReceiptSummary = botdb_models.QQMessageReceiptSummary
+QQRobotMessage = botdb_models.QQRobotMessage
+beijing_now = botdb_models.beijing_now
+Group = botdb_models.Group
+GroupMember = botdb_models.GroupMember
 
 TrackedMessageIdentifier = Dict[str, Any]
 
@@ -126,6 +132,46 @@ async def create_ack_message_record(
     )
 
     return message
+
+
+async def get_groups_with_members(
+    group_names: List[str],
+) -> Dict[str, Dict[str, Any]]:
+    """返回指定分组及其成员列表（若分组不存在则不返回）"""
+    if not group_names:
+        return {}
+
+    existing_groups = await async_get_many(
+        Group,
+        filters={"name__in": group_names},
+    )
+    group_map: Dict[str, Dict[str, Any]] = {
+        group.name: {
+            "group": group,
+            "members": [],
+        }
+        for group in existing_groups
+    }
+
+    if not group_map:
+        return {}
+
+    members = await async_get_many(
+        GroupMember,
+        filters={"group__name__in": list(group_map.keys())},
+    )
+    for member in members:
+        group_name = getattr(member, "group_id", None)
+        if not group_name or group_name not in group_map:
+            continue
+        group_map[group_name]["members"].append(
+            {
+                "qq_id": int(member.qq_id),
+                "qq_nickname": member.qq_nickname or "",
+            }
+        )
+
+    return group_map
 
 
 async def _resolve_message(identifier: TrackedMessageIdentifier) -> Optional[QQRobotMessage]:

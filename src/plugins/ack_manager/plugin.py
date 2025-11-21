@@ -27,11 +27,28 @@ def _normalize_whitespace(text: str) -> str:
 
 
 CQ_AT_PATTERN = re.compile(r"\[CQ:at,qq=[^\]]+\]")
+GROUP_MARKER_PATTERN = re.compile(r"@([\u4e00-\u9fa5A-Za-z0-9_\-]+)")
 
 
 def _strip_cq_at_segments(text: str) -> str:
     """移除消息中的CQ at片段文本，避免重复@"""
     return CQ_AT_PATTERN.sub("", text)
+
+
+def _strip_group_markers(text: str) -> Tuple[str, List[str]]:
+    """
+    提取文本中的 @分组 标记并移除，返回 (新的文本, 分组名列表)
+    """
+    group_names: List[str] = []
+
+    def _replacer(match: re.Match) -> str:
+        group_name = match.group(1).strip()
+        if group_name:
+            group_names.append(group_name)
+        return " "
+
+    stripped = GROUP_MARKER_PATTERN.sub(_replacer, text)
+    return stripped, group_names
 
 
 def _extract_target_user_ids(event: GroupMessageEvent, bot_uin: int) -> List[int]:
@@ -55,6 +72,17 @@ def _extract_target_user_ids(event: GroupMessageEvent, bot_uin: int) -> List[int
     return target_ids
 
 
+def _merge_unique_sequences(*sequences: List[int]) -> List[int]:
+    merged: List[int] = []
+    seen: set[int] = set()
+    for seq in sequences:
+        for item in seq:
+            if item not in seen:
+                seen.add(item)
+                merged.append(item)
+    return merged
+
+
 ack_command = on_regex(r"^!ACK\s+(.+)", flags=re.IGNORECASE, priority=8, block=True)
 ann_command = on_regex(r"^!ANN\s+(.+)", flags=re.IGNORECASE, priority=8, block=True)
 reaction_notice = on_notice(priority=50, block=False)
@@ -70,7 +98,9 @@ async def handle_ack_command(
         await ack_command.finish("全员确认指令目前仅支持群聊使用。")
 
     raw_content = groups[0] if groups else ""
-    content = _normalize_whitespace(_strip_cq_at_segments(raw_content))
+    stripped_cq = _strip_cq_at_segments(raw_content)
+    content_without_groups, group_mentions = _strip_group_markers(stripped_cq)
+    content = _normalize_whitespace(content_without_groups)
     if not content:
         await ack_command.finish("请在 !ACK 指令后提供需要公告的内容。")
 
@@ -78,6 +108,17 @@ async def handle_ack_command(
     command_sender = event.user_id
     bot_uin = int(bot.self_id)
     target_user_ids: List[int] = _extract_target_user_ids(event, bot_uin)
+    had_direct_mentions = bool(target_user_ids)
+
+    # 去重并保持顺序
+    unique_group_names: List[str] = []
+    seen_groups: set[str] = set()
+    for name in group_mentions:
+        norm = name.strip()
+        if not norm or norm in seen_groups:
+            continue
+        seen_groups.add(norm)
+        unique_group_names.append(norm)
 
     try:
         members_raw = await bot.get_group_member_list(group_id=group_id)
@@ -105,6 +146,55 @@ async def handle_ack_command(
         member_snapshot_all.append(entry)
         members_by_uin[user_int] = entry
 
+    group_target_ids: List[int] = []
+    invalid_groups: List[str] = []
+    empty_groups: List[str] = []
+    not_in_current_group: Dict[str, List[str]] = {}
+
+    if unique_group_names:
+        group_records = await database.get_groups_with_members(unique_group_names)
+        for name in unique_group_names:
+            record = group_records.get(name)
+            if not record:
+                invalid_groups.append(name)
+                continue
+            members = record.get("members", [])
+            if not members:
+                empty_groups.append(name)
+                continue
+            valid_count = 0
+            for member in members:
+                uin = int(member["qq_id"])
+                if uin not in members_by_uin:
+                    not_in_current_group.setdefault(name, []).append(str(uin))
+                    continue
+                if uin not in group_target_ids:
+                    group_target_ids.append(uin)
+                valid_count += 1
+            if valid_count == 0:
+                empty_groups.append(name)
+
+    target_user_ids = _merge_unique_sequences(target_user_ids, group_target_ids)
+
+    notice_messages: List[str] = []
+    if invalid_groups:
+        notice_messages.append(f"未找到分组: {', '.join(invalid_groups)}")
+    if empty_groups:
+        notice_messages.append(f"这些分组在当前群无有效成员: {', '.join(empty_groups)}")
+    if not_in_current_group:
+        details = []
+        for name, members in not_in_current_group.items():
+            details.append(f"{name}({', '.join(members)})")
+        notice_messages.append(f"以下成员不在当前群: {'; '.join(details)}")
+    notice_text = "提示：" + "；".join(notice_messages) if notice_messages else ""
+
+    if not target_user_ids and unique_group_names and not had_direct_mentions:
+        message = notice_text or "未找到可用的分组成员，请检查分组名称。"
+        await ack_command.finish(message)
+
+    if notice_text and target_user_ids:
+        await ack_command.send(notice_text)
+
     if target_user_ids:
         target_members: List[Dict[str, Any]] = []
         for user_id in target_user_ids:
@@ -119,8 +209,7 @@ async def handle_ack_command(
     else:
         target_members = member_snapshot_all
 
-    if target_user_ids:
-        ack_text = "{}\n请通过任意表情确认收到。".format(content)
+    ack_text = "{}\n请通过任意表情确认收到。".format(content)
 
     if target_user_ids:
         targeted_message = Message(
@@ -169,6 +258,8 @@ async def handle_ack_command(
         "message_detail": message_detail,
         "target_user_ids": target_user_ids,
         "target_scope": "custom" if target_user_ids else "all",
+        "target_group_names": unique_group_names,
+        "group_notice": notice_messages,
     }
 
     await database.create_ack_message_record(
