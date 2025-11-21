@@ -291,3 +291,87 @@ class QQMessageReminder(models.Model):
         ]
 
 
+class Group(models.Model):
+    """
+    用户分组信息
+
+    用于 `group ls` 命令列出所有可用分组
+    """
+
+    name = models.CharField(
+        max_length=64,
+        unique=True,
+        verbose_name='分组标识',
+        help_text='命令行中使用的分组名'
+    )
+    display_name = models.CharField(
+        max_length=128,
+        blank=True,
+        verbose_name='展示名称',
+        help_text='可选的友好显示名称'
+    )
+    description = models.TextField(
+        blank=True,
+        verbose_name='描述',
+        help_text='分组用途说明'
+    )
+    created_at = models.DateTimeField(
+        auto_now_add=True,
+        verbose_name='创建时间'
+    )
+    updated_at = models.DateTimeField(
+        auto_now=True,
+        verbose_name='更新时间'
+    )
+
+    class Meta:
+        db_table = 'group'
+        verbose_name = '分组'
+        verbose_name_plural = '分组列表'
+        ordering = ['name']
+
+    def __str__(self):
+        return self.display_name or self.name
+
+
+class GroupMember(models.Model):
+    """
+    分组成员关系
+
+    支持 `group add QQ号 组名` 命令
+    """
+
+    group = models.ForeignKey(
+        Group,
+        to_field='name',
+        related_name='members',
+        on_delete=models.CASCADE,
+        verbose_name='分组',
+        db_column='group_name'  # 数据库列名使用 group_name，更直观
+    )
+    qq_id = models.BigIntegerField(
+        verbose_name='QQ号',
+        help_text='成员 QQ 号'
+    )
+    qq_nickname = models.CharField(
+        max_length=255,
+        blank=True,
+        verbose_name='QQ 昵称',
+        help_text='成员昵称或群名片'
+    )
+    added_at = models.DateTimeField(
+        auto_now_add=True,
+        verbose_name='加入时间'
+    )
+
+    class Meta:
+        db_table = 'group_member'
+        verbose_name = '分组成员'
+        verbose_name_plural = '分组成员列表'
+        unique_together = ('group', 'qq_id')
+        indexes = [
+            models.Index(fields=['qq_id']),
+        ]
+
+    def __str__(self):
+        return f"{self.qq_id} @ {self.group.name}"
