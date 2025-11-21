@@ -146,4 +146,7 @@ dmypy.json
 # pytype static type analyzer
 .pytype/
 
+# ide配置文件
+.idea/
+
 # End of https://www.toptal.com/developers/gitignore/api/python
