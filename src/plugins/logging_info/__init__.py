@@ -26,10 +26,14 @@ config = get_plugin_config(Config)
 def is_message_event(event):
     return isinstance(event, (PrivateMessageEvent, GroupMessageEvent))
 
+def is_logging_info_enable():
+    return config.logging_info_enable
+logger.info(f"聊天记录持久化插件(logging_info)状态：{config.logging_info_enable}")
+
 message_listen = on_message(
     priority=config.logging_info_priority,
     block=config.logging_info_block,
-    rule=Rule(is_message_event)
+    rule=Rule(is_message_event, is_logging_info_enable)
 )
 
 @message_listen.handle()
