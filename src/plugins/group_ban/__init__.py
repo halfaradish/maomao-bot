@@ -96,6 +96,7 @@ def _parse_duration(arg_text: str) -> int | None:
 
 ban_cmd = on_command("ban", priority=10, block=True)
 unban_cmd = on_command("unban", priority=10, block=True)
+kick_cmd = on_command("kick", priority=10, block=True)
 
 
 @ban_cmd.handle()
@@ -190,3 +191,60 @@ async def handle_unban(bot: Bot, event: GroupMessageEvent, args: Message = Comma
     except Exception as e:
         logger.error(f"解除禁言失败: {e}")
         await unban_cmd.finish("解除禁言失败，请检查机器人权限")
+
+
+async def _bot_can_manage(bot: Bot, group_id: int) -> bool:
+    """检查机器人是否为管理员/群主"""
+    try:
+        info = await bot.get_group_member_info(group_id=group_id, user_id=bot.self_id, no_cache=True)
+        return info.get("role") in {"admin", "owner"}
+    except Exception as e:
+        logger.error(f"获取机器人身份失败: {e}")
+        return False
+
+
+@kick_cmd.handle()
+async def handle_kick(bot: Bot, event: GroupMessageEvent, args: Message = CommandArg()):
+    if not isinstance(event, GroupMessageEvent):
+        await kick_cmd.finish("仅支持在群聊中使用踢人功能")
+        return
+
+    if not _is_allowed(event):
+        await kick_cmd.finish("你没有权限使用踢人功能")
+        return
+
+    if not await _bot_can_manage(bot, event.group_id):
+        await kick_cmd.finish("机器人没有管理员权限，无法踢人")
+        return
+
+    target_user = _extract_target(event)
+    if not target_user:
+        await kick_cmd.finish("请 @ 需要踢出的用户")
+        return
+
+    if target_user == event.self_id:
+        await kick_cmd.finish("不能踢出机器人自己")
+        return
+
+    try:
+        member_info = await bot.get_group_member_info(
+            group_id=event.group_id, user_id=target_user, no_cache=True
+        )
+    except Exception as e:
+        logger.error(f"获取成员信息失败: {e}")
+        await kick_cmd.finish("无法获取成员信息，踢人已取消")
+        return
+
+    role = member_info.get("role")
+    if role in ("admin", "owner"):
+        await kick_cmd.finish("无法踢出管理员或群主")
+        return
+
+    try:
+        await bot.set_group_kick(group_id=event.group_id, user_id=target_user, reject_add_request=False)
+        await kick_cmd.finish(f"已将 {target_user} 移出群聊")
+    except FinishedException:
+        raise
+    except Exception as e:
+        logger.error(f"踢出成员失败: {e}")
+        await kick_cmd.finish("踢出失败，请检查机器人权限")
