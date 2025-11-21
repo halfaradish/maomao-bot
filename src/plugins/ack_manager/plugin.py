@@ -51,6 +51,16 @@ def _strip_group_markers(text: str) -> Tuple[str, List[str]]:
     return stripped, group_names
 
 
+HELP_TEXT = (
+    "[ACK 插件指令]\n"
+    "1. !ACK 内容 —— 发起全群确认，要求表情回复\n"
+    "2. !ACK @QQ @分组 内容 —— 仅通知指定成员或数据库分组\n"
+    "3. !ANN 内容 —— 发布公告，不追踪表情\n"
+    "4. ack —— 查看此帮助\n"
+    "示例：!ACK @技术组 @123456 请 18:00 前确认"
+)
+
+
 def _extract_target_user_ids(event: GroupMessageEvent, bot_uin: int) -> List[int]:
     """从消息中提取被@的成员（排除@全体/机器人自身）"""
     target_ids: List[int] = []
@@ -83,9 +93,15 @@ def _merge_unique_sequences(*sequences: List[int]) -> List[int]:
     return merged
 
 
+ack_help_command = on_regex(r"^ack$", flags=re.IGNORECASE, priority=8, block=True)
 ack_command = on_regex(r"^!ACK\s+(.+)", flags=re.IGNORECASE, priority=8, block=True)
 ann_command = on_regex(r"^!ANN\s+(.+)", flags=re.IGNORECASE, priority=8, block=True)
 reaction_notice = on_notice(priority=50, block=False)
+
+
+@ack_help_command.handle()
+async def handle_ack_help():
+    await ack_help_command.finish(HELP_TEXT)
 
 
 @ack_command.handle()
@@ -102,7 +118,7 @@ async def handle_ack_command(
     content_without_groups, group_mentions = _strip_group_markers(stripped_cq)
     content = _normalize_whitespace(content_without_groups)
     if not content:
-        await ack_command.finish("请在 !ACK 指令后提供需要公告的内容。")
+        await ack_command.finish(HELP_TEXT)
 
     group_id = event.group_id
     command_sender = event.user_id
@@ -285,7 +301,7 @@ async def handle_ann_command(
 
     content = _normalize_whitespace(groups[0] if groups else "")
     if not content:
-        await ann_command.finish("请在 !ANN 指令后提供公告内容。")
+        await ann_command.finish(HELP_TEXT)
 
     group_id = event.group_id
     ann_text = "[公告]\n{}".format(content)
