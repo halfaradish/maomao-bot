@@ -149,5 +149,5 @@ dmypy.json
 # ide配置文件
 .idea/
 # django配置文件
-*/migrations/
-# End of https://www.toptal.com/developers/gitignore/api/python
+src/**/migrations/
+src/django_project/django_project/settings.py
