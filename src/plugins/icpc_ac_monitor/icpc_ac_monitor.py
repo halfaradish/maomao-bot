@@ -201,9 +201,9 @@ def monitor_loop(base_url: str):
         from collections import defaultdict
         # 先一次性把大写题号表拉出来（只需一次）
         if 'prob2char' not in meta:
-            prob_resp = requests.get(f"{base_url}/problem.json", timeout=5)
+            prob_resp = requests.get(f"{base_url}/run.json", timeout=5)
             prob_resp.raise_for_status()
-            # problem.json 里假设 {"data":[{"id":1,"short_name":"A"}, ...]}
+            # run.json 里假设 {"data":[{"id":1,"short_name":"A"}, ...]}
             meta['prob2char'] = {p['id']: p['short_name']  # 1→A
                                  for p in prob_resp.json()['data']}
 
