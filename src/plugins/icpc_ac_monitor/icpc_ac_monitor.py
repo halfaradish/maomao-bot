@@ -102,7 +102,9 @@ async def handle_start_monitor(bot: Bot, event: Event, args: Message = CommandAr
     # 取 URL 并统一成 cdn 域名
     url = args.extract_plain_text().strip()
     if not url or not url.startswith("https://board.xcpcio.com"):
-        await start_monitor.finish("请输入正确比赛网址，例如：\n开始监控 https://board.xcpcio.com/icpc/50th/shenyang")
+        await start_monitor.finish(
+            "请输入正确比赛网址，例如：\n开始监控 https://board.xcpcio.com/icpc/50th/shenyang"
+        )
     base_url = url.rstrip("/").replace("https://board.xcpcio.com", "https://cdn.xcpcio.com/data")
 
     # 全局重复判断
@@ -112,11 +114,21 @@ async def handle_start_monitor(bot: Bot, event: Event, args: Message = CommandAr
     # 拉队伍并过滤学校
     try:
         resp = requests.get(f"{base_url}/team.json", timeout=5, headers={"User-Agent": "Mozilla/5.0"})
-        team_list = resp.json()
+        data = resp.json()
+
+        # 兼容数组和字典两种格式
+        if isinstance(data, list):
+            team_list = data
+        elif isinstance(data, dict):
+            team_list = list(data.values())
+        else:
+            raise ValueError("team.json 返回的数据不是列表或字典")
+
     except Exception as e:
-        logger.error(f"获取队伍数据失败：{e}")
+        logger.error(f"获取队伍数据失败：{e}, 内容: {resp.text[:500]}")
         await start_monitor.finish(f"获取队伍数据失败：{e}")
 
+    # 过滤学校
     teams = [t for t in team_list if t.get("organization") in SCHOOLS]
     if not teams:
         await start_monitor.finish(f"{base_url.split('/')[-1]} 中没有指定学校队伍")
@@ -125,8 +137,10 @@ async def handle_start_monitor(bot: Bot, event: Event, args: Message = CommandAr
     meta = {
         "comp_name": base_url.split("/")[-1],
         "run_url": f"{base_url}/run.json",
-        "team_ids": [t["id"] for t in teams],
-        "id_to_name": {t["id"]: t["name"] for t in teams},
+        "team_ids": [t.get("id") or t.get("team_id") for t in teams],
+        "id_to_name": {
+            t.get("id") or t.get("team_id"): t.get("name", "未知队伍") for t in teams
+        },
         "already_solved": [],
     }
     memory[base_url] = meta
@@ -164,72 +178,68 @@ async def handle_stop_monitor(bot: Bot, event: Event, args: Message = CommandArg
     save_conf(conf)
     await stop_monitor.finish(f"已完全停止监控：{meta['comp_name']}")
 
-# ==============================================================================
-# 七、后台轮询线程 —— 只推 TARGET_GROUPS
-# ==============================================================================
+# -------------------- 轮询推送（固定推全部 TARGET_GROUPS） --------------------
 def monitor_loop(base_url: str):
     logger.info(f"监控线程已启动，比赛 {base_url}")
+
+    # 在子线程创建自己的事件循环（必须）
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+
     while base_url in memory:
         meta = memory[base_url]
         try:
             resp = requests.get(meta["run_url"], timeout=5, headers={"User-Agent": "Mozilla/5.0"})
-            runs = resp.json()
+            runs = resp.json()  # run.json 是一个 list
         except Exception as e:
             logger.warning(f"获取 run.json 失败：{e}")
             time.sleep(5)
             continue
 
-        # # ==========  当前「仅 AC」逻辑（保持原样）  ==========
-        # now_solved = {r["team_id"] for r in runs
-        #               if r["team_id"] in meta["team_ids"] and r["status"] == "AC"}
-        # new_solved = now_solved - set(meta["already_solved"])
-        # if new_solved:
-        #     for gid in TARGET_GROUPS:
-        #         for tid in new_solved:
-        #             name = meta["id_to_name"][tid]
-        #             # 原样输出
-        #             msg = f"[{meta['comp_name']}] 队伍 {name} 已 AC 题！🎉"
-        #             asyncio.create_task(send_ac_msg(int(gid), msg))
-        # meta["already_solved"] = list(now_solved)
-        # ==========  仅 AC 结束  ==========
+        # 初始化 seen_ids，保证不重复推送
+        if "seen_ids" not in meta:
+            meta["seen_ids"] = []
 
+        seen = set(meta["seen_ids"])
 
-        # ------------------------------------------------------------------
-        #  下面整块是「任意状态 + 题号」通用版，目前被注释，可随时取消注释
-        #  同时把上面「仅 AC」块注释掉即可切换
-        # ------------------------------------------------------------------
-        from collections import defaultdict
-        # 先一次性把大写题号表拉出来（只需一次）
-        if 'prob2char' not in meta:
-            prob_resp = requests.get(f"{base_url}/run.json", timeout=5)
-            prob_resp.raise_for_status()
-            # run.json 里假设 {"data":[{"id":1,"short_name":"A"}, ...]}
-            meta['prob2char'] = {p['id']: p['short_name']  # 1→A
-                                 for p in prob_resp.json()['data']}
-
-        # 取任意新提交（按 run.id 判重）
-        seen = set(meta.get("seen_ids", []))
         for run in runs:
-            rid = int(run["id"])
+            try:
+                rid = int(run["id"])
+            except Exception:
+                continue
+
+            # 已处理过的提交跳过
             if rid in seen:
                 continue
             seen.add(rid)
-            # 只关注我们学校
+
+            # 过滤不是我们学校的队伍
             if run["team_id"] not in meta["team_ids"]:
                 continue
-            # 题号 1→A，2→B ...
-            prob_char = meta['prob2char'][int(run["problem_id"])]
-            team_name = meta["id_to_name"][run["team_id"]]
-            status = run["status"]          # AC / WRONG_ANSWER / TIME_LIMIT 等
-            # 拼装： [赛站] [team] 已 [状态] 了 [题号] 题！
-            msg = f"[{meta['comp_name']}] {team_name} 已 {status} 了 {prob_char} 题！"
-            for gid in TARGET_GROUPS:
-                asyncio.create_task(send_ac_msg(int(gid), msg))
-        meta["seen_ids"] = list(seen)
-        # ------------------------------------------------------------------
 
+            # problem_id 转 A/B/C...
+            try:
+                pid = int(run["problem_id"])
+                prob_char = chr(ord("A") + pid)
+            except Exception:
+                prob_char = "?"
+
+            team_name = meta["id_to_name"].get(run["team_id"], "未知队伍")
+            status = run.get("status", "UNKNOWN")
+
+            # 构建消息
+            msg = f"[{meta['comp_name']}] {team_name} 已 {status} 了 {prob_char} 题！"
+
+            # 线程安全推送给所有目标群
+            for gid in TARGET_GROUPS:
+                asyncio.run_coroutine_threadsafe(send_ac_msg(int(gid), msg), loop)
+
+        # 保存已处理过的 run.id
+        meta["seen_ids"] = list(seen)
 
         time.sleep(5)
+
+
 
 # ==============================================================================
 # 八、异步发群消息
@@ -260,3 +270,141 @@ def restore_on_startup():
 
 # 立即执行恢复
 restore_on_startup()
+# -------------------- 新增指令：赛时过题（按队输出） --------------------
+from nonebot import on_command
+from nonebot.adapters.onebot.v11 import Message
+from nonebot.params import CommandArg
+
+query_status = on_command("赛时过题", aliases={"过题情况"}, priority=5)
+
+def _to_base_url(url: str) -> str:
+    """把 board 域名转换为 cdn 数据域名并规范化。"""
+    return url.rstrip("/").replace("https://board.xcpcio.com", "https://cdn.xcpcio.com/data")
+
+def _pid_to_char(pid: int) -> str:
+    """0 -> A, 1 -> B ... 超出则返回数字形式"""
+    try:
+        n = int(pid)
+        if 0 <= n < 26:
+            return chr(ord("A") + n)
+        else:
+            return str(pid)
+    except Exception:
+        return "?"
+
+def fetch_ac_status(base_url: str, schools: List[str]) -> Dict[str, Any]:
+    """
+    在同步线程中执行：拉 team.json 和 run.json，返回统计结果字典：
+    {
+      "comp_name": "zhengzhou",
+      "teams": [
+         {"id": "67", "name": "远航者的幻想乡", "solved": ["A","C"], "count": 2},
+         ...
+      ]
+    }
+    """
+    result = {"comp_name": base_url.split("/")[-1], "teams": []}
+    try:
+        t_resp = requests.get(f"{base_url}/team.json", timeout=8, headers={"User-Agent": "Mozilla/5.0"})
+        t_resp.raise_for_status()
+        teams = t_resp.json()  # list of team objects
+    except Exception as e:
+        raise RuntimeError(f"读取 team.json 失败：{e}")
+
+    try:
+        r_resp = requests.get(f"{base_url}/run.json", timeout=8, headers={"User-Agent": "Mozilla/5.0"})
+        r_resp.raise_for_status()
+        runs = r_resp.json()  # list of run objects
+    except Exception as e:
+        raise RuntimeError(f"读取 run.json 失败：{e}")
+
+    # 过滤出我们关注的正式队伍（organization in schools）
+    # team entries example: {"id":"67","name":"远航者的幻想乡","organization":"广西大学", ...}
+    id_to_name = {}
+    watched_team_ids = set()
+    for t in teams:
+        try:
+            tid = t.get("id")
+        except Exception:
+            continue
+        org = t.get("organization", "")
+        if org in schools:
+            watched_team_ids.add(tid)
+            id_to_name[tid] = t.get("name", str(tid))
+
+    # 如果没有关注的队伍，直接返回空 teams
+    if not watched_team_ids:
+        return result
+
+    # 统计每队已 AC 的题目集合（去重）
+    accept_statuses = {"CORRECT", "ACCEPTED", "AC"}  # 兼容多种写法
+    team_solved: Dict[str, set] = {tid: set() for tid in watched_team_ids}
+    for run in runs:
+        tid = run.get("team_id")
+        if tid not in watched_team_ids:
+            continue
+        status = run.get("status", "")
+        if status not in accept_statuses:
+            continue
+        pid = run.get("problem_id")
+        # 把 pid 转为字母
+        ch = _pid_to_char(pid)
+        team_solved[tid].add(ch)
+
+    # 组装结果
+    for tid in sorted(watched_team_ids, key=lambda x: id_to_name.get(x, x)):
+        solved_list = sorted(team_solved.get(tid, []), key=lambda s: (len(s) > 1, s))  # 尽量按字母排序，数字题号靠后
+        result["teams"].append({
+            "id": tid,
+            "name": id_to_name.get(tid, str(tid)),
+            "solved": solved_list,
+            "count": len(solved_list),
+        })
+    return result
+
+@query_status.handle()
+async def handle_query_status(bot: Bot, event: Event, args: Message = CommandArg()):
+    """
+    用法：
+      @bot 赛时过题 https://board.xcpcio.com/ccpc/11th/zhengzhou
+    输出（每队一行）：
+      远航者的幻想乡 在 zhengzhou 已过了 A,B 共 2 题
+    """
+    text = args.extract_plain_text().strip()
+    if not text:
+        await query_status.finish("请在命令后提供比赛链接，例如：\n@bot 赛时过题 https://board.xcpcio.com/ccpc/11th/zhengzhou")
+
+    # 只取第一个看起来像 URL 的部分（本命令只处理一个 URL）
+    url = text.split()[0]
+    if not url.startswith("https://board.xcpcio.com"):
+        await query_status.finish("请输入合法的 board.xcpcio.com 比赛链接，例如：\n@bot 赛时过题 https://board.xcpcio.com/ccpc/11th/zhengzhou")
+
+    base_url = _to_base_url(url)
+
+    # 在线程池里同步请求远程数据，避免阻塞 nonebot 事件循环
+    try:
+        info = await asyncio.to_thread(fetch_ac_status, base_url, SCHOOLS)
+    except Exception as e:
+        await query_status.finish(f"查询失败：{e}")
+
+    comp_name = info.get("comp_name", base_url.split("/")[-1])
+    teams = info.get("teams", [])
+
+    if not teams:
+        await query_status.finish(f"{comp_name} 中没有来自配置 schools 的队伍（{', '.join(SCHOOLS)}）或没有数据。")
+
+    # 构建消息，每队一行
+    lines = []
+    for t in teams:
+        name = t["name"]
+        solved = t["solved"]
+        count = t["count"]
+        if count == 0:
+            lines.append(f"{name} 在 {comp_name} 还未通过任何题目")
+        else:
+            # 按你的示例要求，用逗号分隔题号（不加空格更紧凑）
+            lines.append(f"{name} 在 {comp_name} 已过了 {','.join(solved)} 共 {count} 题")
+
+    # 如果行数过多可截断或分页——这里一次性返回全部
+    msg = "\n".join(lines)
+    await query_status.finish(msg)
