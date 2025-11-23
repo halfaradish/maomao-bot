@@ -11,8 +11,9 @@ import os
 import tempfile
 import threading
 import time
+from datetime import datetime, timedelta
 from pathlib import Path
-from typing import Dict, List, Any
+from typing import Dict, List, Any, Optional
 import asyncio
 import requests
 
@@ -86,35 +87,75 @@ start_monitor = on_command("开始监控", aliases={"monitor"}, priority=5)
 stop_monitor = on_command("取消监控", aliases={"stop"}, priority=5)
 logger.info("icpc_ac_monitor 插件加载完成（单文件全局版）")
 
+def _to_base_url(url: str) -> str:
+    """将 board 域名转换为 cdn 数据域名"""
+    return url.rstrip("/").replace("https://board.xcpcio.com", "https://cdn.xcpcio.com/data")
+
+def _format_timestamp(timestamp: Any, contest_start_timestamp: Optional[float] = None) -> str:
+    """将时间戳转换为可读的时间格式"""
+    if timestamp is None or contest_start_timestamp is None:
+        return ""
+    
+    try:
+        # 转换为数字
+        if isinstance(timestamp, str):
+            timestamp = float(timestamp)
+        
+        # timestamp 是毫秒数，除以1000转换为秒
+        relative_seconds = timestamp / 1000.0
+        if relative_seconds < 0:
+            return ""
+        
+        # 开始时间戳可能是秒或毫秒，需要判断
+        start_ts = float(contest_start_timestamp)
+        if start_ts > 1e10:  # 毫秒时间戳（13位）
+            start_ts = start_ts / 1000.0
+        
+        # 实际时间 = 开始时间戳 + 相对时间
+        actual_timestamp = start_ts + relative_seconds
+        actual_dt = datetime.fromtimestamp(actual_timestamp)
+        return actual_dt.strftime("%H:%M:%S")
+    except Exception as e:
+        logger.warning(f"时间戳格式化失败：timestamp={timestamp}, start_timestamp={contest_start_timestamp}, 错误：{e}")
+        return ""
+
 # ==============================================================================
 # 五、开始监控 —— 全局开关
 # ==============================================================================
 @start_monitor.handle()
 async def handle_start_monitor(bot: Bot, event: Event, args: Message = CommandArg()):
-    # 保存 bot 实例供子线程使用
+    """开始监控比赛"""
     set_bot_instance(bot)
-    """
-    任意目标群发送：
-      开始监控 https://board.xcpcio.com/icpc/50th/shenyang
-    效果：
-      1. 若已全局监控 → 提示已存在；
-      2. 否则拉 team.json → 过滤 schools → 创建全局记录 →
-         启动唯一线程 → 全部 TARGET_GROUPS 同步收 AC。
-    """
-    # 取 URL 并统一成 cdn 域名
     url = args.extract_plain_text().strip()
     if not url or not url.startswith("https://board.xcpcio.com"):
         await start_monitor.finish(
             "请输入正确比赛网址，例如：\n开始监控 https://board.xcpcio.com/icpc/50th/shenyang"
         )
-    
-    # 将 board.xcpcio.com 转换为 cdn.xcpcio.com/data（数据API端点）
-    original_url = url.rstrip("/")
-    base_url = original_url.replace("https://board.xcpcio.com", "https://cdn.xcpcio.com/data")
+    base_url = _to_base_url(url)
 
     # 全局重复判断
     if base_url in memory:
         await start_monitor.finish("该比赛已在监控列表中，无需重复添加。")
+
+    # 获取比赛配置信息（包含开始时间戳）
+    contest_start_timestamp = None
+    try:
+        # 尝试读取 config.json
+        config_resp = requests.get(f"{base_url}/config.json", timeout=5, headers={"User-Agent": "Mozilla/5.0"})
+        config_data = config_resp.json()
+        contest_start_timestamp = config_data.get("start_time")
+        if contest_start_timestamp:
+            logger.info(f"读取到比赛开始时间戳：{contest_start_timestamp}")
+    except Exception as e:
+        # 如果 config.json 不存在，尝试 contest.json
+        try:
+            contest_resp = requests.get(f"{base_url}/contest.json", timeout=5, headers={"User-Agent": "Mozilla/5.0"})
+            contest_data = contest_resp.json()
+            contest_start_timestamp = contest_data.get("start_time")
+            if contest_start_timestamp:
+                logger.info(f"从 contest.json 读取到比赛开始时间戳：{contest_start_timestamp}")
+        except Exception:
+            logger.warning(f"获取比赛配置失败：{e}")
 
     # 拉队伍并过滤学校
     try:
@@ -154,6 +195,7 @@ async def handle_start_monitor(bot: Bot, event: Event, args: Message = CommandAr
         "team_ids": team_ids_list,
         "id_to_name": id_to_name_dict,
         "already_solved": [],
+        "contest_start_timestamp": contest_start_timestamp,  # 存储比赛开始时间戳（Unix 时间戳）
     }
     logger.info(f"监控配置：队伍数量={len(team_ids_list)}, 目标群={len(TARGET_GROUPS)}个")
     memory[base_url] = meta
@@ -171,16 +213,11 @@ async def handle_start_monitor(bot: Bot, event: Event, args: Message = CommandAr
 # ==============================================================================
 @stop_monitor.handle()
 async def handle_stop_monitor(bot: Bot, event: Event, args: Message = CommandArg()):
-    """
-    任意目标群发送：
-      取消监控 https://board.xcpcio.com/icpc/50th/shenyang
-    效果：
-      直接删整条记录 → 线程自然结束 → 全部目标群不再收推送。
-    """
+    """取消监控比赛"""
     url = args.extract_plain_text().strip()
     if not url or not url.startswith("https://board.xcpcio.com"):
         await stop_monitor.finish("请输入要暂停的比赛网址，例如：\n取消监控 https://board.xcpcio.com/icpc/50th/shenyang")
-    base_url = url.rstrip("/").replace("https://board.xcpcio.com", "https://cdn.xcpcio.com/data")
+    base_url = _to_base_url(url)
 
     meta = memory.pop(base_url, None)
     if not meta:
@@ -195,17 +232,12 @@ async def handle_stop_monitor(bot: Bot, event: Event, args: Message = CommandArg
 def monitor_loop(base_url: str):
     logger.info(f"监控线程已启动，比赛 {base_url}")
 
-    # 使用全局保存的主事件循环
+    # 获取主事件循环
     loop = _main_event_loop
-    
-    if loop is None or not loop.is_running():
-        # 尝试从 driver 获取
+    if not loop or not loop.is_running():
         try:
             driver = get_driver()
-            if hasattr(driver, '_loop'):
-                loop = driver._loop
-            elif hasattr(driver, 'loop'):
-                loop = driver.loop
+            loop = getattr(driver, '_loop', None) or getattr(driver, 'loop', None)
             if not loop or not loop.is_running():
                 logger.error("无法获取运行中的主事件循环，推送将失败")
                 loop = None
@@ -236,29 +268,19 @@ def monitor_loop(base_url: str):
             logger.info(f"初始化 seen_ids 为空（首次运行，将推送所有历史提交）")
 
         seen = set(meta["seen_ids"])
-        seen_count_before = len(seen)  # 记录处理前的数量，用于判断是否需要保存
+        seen_count_before = len(seen)
         
         # 确保 team_ids 中的值都是字符串类型，用于比较
         team_ids_set = {str(tid) for tid in meta["team_ids"]}
         
         total_runs = len(runs)
         new_submissions = 0
-        matched_runs = 0
-        skipped_by_team = 0
 
         for run in runs:
-            # 先过滤不是我们学校的队伍 - 确保类型一致
-            # 只处理监控队伍的提交，减少存储空间
-            run_team_id_raw = run.get("team_id")
-            run_team_id = str(run_team_id_raw) if run_team_id_raw is not None else ""
-            
-            # 如果不是监控的队伍，直接跳过，不加入 seen_ids
+            # 先过滤不是我们学校的队伍
+            run_team_id = str(run.get("team_id", ""))
             if run_team_id not in team_ids_set:
-                skipped_by_team += 1
                 continue
-            
-            # 只对监控队伍的提交生成唯一标识并加入 seen_ids
-            matched_runs += 1
             
             # run.json 可能没有 'id' 字段，使用组合键作为唯一标识
             # 使用 team_id + problem_id + timestamp 作为唯一标识
@@ -285,36 +307,31 @@ def monitor_loop(base_url: str):
             seen.add(rid)
 
             # problem_id 转 A/B/C...
-            try:
-                pid = int(run["problem_id"])
-                prob_char = chr(ord("A") + pid)
-            except (KeyError, ValueError, TypeError):
-                prob_char = "?"
+            prob_char = _pid_to_char(run.get("problem_id", -1))
 
             team_name = meta["id_to_name"].get(run_team_id, "未知队伍")
             status = run.get("status", "UNKNOWN")
+            
+            timestamp = run.get("timestamp")
+            if timestamp is None:
+                timestamp = run.get("time") or run.get("submission_time") or run.get("submitted_at")
+            
+            contest_start_timestamp = meta.get("contest_start_timestamp")
+            time_str = _format_timestamp(timestamp, contest_start_timestamp)
+            time_part = f" [{time_str}]" if time_str else ""
 
             # 构建消息
-            msg = f"[{meta['comp_name']}] {team_name} 已 {status} 了 {prob_char} 题！"
+            msg = f"[{meta['comp_name']}] {team_name} 已 {status} 了 {prob_char} 题{time_part}！"
             logger.info(f"检测到新提交：{msg}")
 
             # 线程安全推送给所有目标群
-            # 使用主事件循环来执行推送，确保 get_bot() 能正确工作
             for gid in TARGET_GROUPS:
                 try:
-                    # 检查事件循环是否可用
-                    if loop is None:
+                    if not loop or not loop.is_running():
                         logger.error(f"事件循环不可用，无法推送消息到群 {gid}")
                         continue
                     
-                    if not loop.is_running():
-                        logger.error(f"事件循环未运行，无法推送消息到群 {gid}")
-                        continue
-                    
-                    # 使用 run_coroutine_threadsafe 在主事件循环中执行
                     future = asyncio.run_coroutine_threadsafe(send_ac_msg(int(gid), msg), loop)
-                    
-                    # 等待推送完成，并捕获异常
                     try:
                         future.result(timeout=10)
                     except asyncio.TimeoutError:
@@ -343,9 +360,6 @@ def monitor_loop(base_url: str):
         
         if new_submissions > 0:
             logger.info(f"本轮检测到 {new_submissions} 个新提交，已推送到 {len(TARGET_GROUPS)} 个群")
-        elif matched_runs == 0 and total_runs > 0 and len(seen) == 0:
-            # 只在首次运行且没有匹配时输出警告
-            logger.warning(f"警告：有 {total_runs} 条提交但匹配队伍数为0，请检查配置")
 
         time.sleep(5)
 
@@ -358,19 +372,22 @@ def monitor_loop(base_url: str):
 _cached_bot = None
 _main_event_loop = None
 
+def _get_main_loop():
+    """获取主事件循环"""
+    try:
+        return asyncio.get_running_loop()
+    except RuntimeError:
+        try:
+            loop = asyncio.get_event_loop()
+            return loop if loop.is_running() else None
+        except Exception:
+            return None
+
 def set_bot_instance(bot: Bot):
     """在启动时设置 bot 实例和主事件循环"""
     global _cached_bot, _main_event_loop
     _cached_bot = bot
-    try:
-        _main_event_loop = asyncio.get_running_loop()
-    except RuntimeError:
-        try:
-            _main_event_loop = asyncio.get_event_loop()
-            if not _main_event_loop.is_running():
-                _main_event_loop = None
-        except Exception:
-            _main_event_loop = None
+    _main_event_loop = _get_main_loop()
 
 async def send_ac_msg(group_id: int, message: str):
     """
@@ -405,15 +422,7 @@ def restore_on_startup():
     
     # 尝试设置主事件循环（如果还没有设置）
     if _main_event_loop is None:
-        try:
-            _main_event_loop = asyncio.get_running_loop()
-        except RuntimeError:
-            try:
-                loop = asyncio.get_event_loop()
-                if loop.is_running():
-                    _main_event_loop = loop
-            except Exception:
-                pass
+        _main_event_loop = _get_main_loop()
     
     if not memory:
         logger.info("icpc_ac_monitor: 没有需要恢复的监控任务")
@@ -442,31 +451,19 @@ def restore_on_startup():
 async def startup_restore():
     """在 bot 启动时恢复监控任务"""
     global _main_event_loop
-    try:
-        _main_event_loop = asyncio.get_running_loop()
-    except Exception:
-        pass
+    _main_event_loop = _get_main_loop()
     restore_on_startup()
 # -------------------- 新增指令：赛时过题（按队输出） --------------------
-from nonebot import on_command
-from nonebot.adapters.onebot.v11 import Message
-from nonebot.params import CommandArg
-
 query_status = on_command("赛时过题", aliases={"过题情况"}, priority=5)
 
-def _to_base_url(url: str) -> str:
-    """把 board 域名转换为 cdn 数据域名并规范化。"""
-    return url.rstrip("/").replace("https://board.xcpcio.com", "https://cdn.xcpcio.com/data")
-
-def _pid_to_char(pid: int) -> str:
-    """0 -> A, 1 -> B ... 超出则返回数字形式"""
+def _pid_to_char(pid) -> str:
+    """0 -> A, 1 -> B ... 超出则返回数字形式或?"""
     try:
         n = int(pid)
         if 0 <= n < 26:
             return chr(ord("A") + n)
-        else:
-            return str(pid)
-    except Exception:
+        return str(pid)
+    except (ValueError, TypeError):
         return "?"
 
 def fetch_ac_status(base_url: str, schools: List[str]) -> Dict[str, Any]:
