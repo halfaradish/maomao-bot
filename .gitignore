@@ -150,4 +150,3 @@ dmypy.json
 .idea/
 # django配置文件
 src/**/migrations/
-src/django_project/django_project/settings.py
