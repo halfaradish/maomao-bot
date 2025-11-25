@@ -8,17 +8,18 @@ ICPC AC Monitor Plugin  ‑  单文件全局版
 
 import json
 import os
+import re
 import tempfile
 import threading
 import time
 from datetime import datetime, timedelta
 from pathlib import Path
-from typing import Dict, List, Any, Optional
+from typing import Any, Dict, List, Optional, Tuple, Union
 import asyncio
 import requests
 
-from nonebot import logger, on_command, get_bot, get_driver
-from nonebot.adapters.onebot.v11 import Bot, Event, Message
+from nonebot import get_bot, get_driver, logger, on_command
+from nonebot.adapters.onebot.v11 import Bot, Event, Message, MessageSegment
 from nonebot.params import CommandArg
 
 # ==============================================================================
@@ -40,15 +41,20 @@ def load_conf() -> Dict[str, Any]:
     若文件不存在则生成模板（目标群为空，学校默认广西大学）。
     """
     if not CONF_FILE.exists():
-        tpl = {"target_groups": [], "schools": ["广西大学"], "monitors": {}}
+        tpl = {"target_groups": [], "schools": ["广西大学"], "monitors": {}, "at_whitelist": []}
         save_conf(tpl)
         return tpl
     try:
         with CONF_FILE.open("r", encoding="utf-8") as f:
-            return json.load(f)
+            data = json.load(f)
+            data.setdefault("target_groups", [])
+            data.setdefault("schools", [])
+            data.setdefault("monitors", {})
+            data.setdefault("at_whitelist", [])
+            return data
     except Exception as e:
         logger.warning(f"读取配置失败：{e}，返回空模板")
-        return {"target_groups": [], "schools": [], "monitors": {}}
+        return {"target_groups": [], "schools": [], "monitors": {}, "at_whitelist": []}
 
 def save_conf(data: Dict[str, Any]):
     """
@@ -77,6 +83,52 @@ conf = load_conf()
 TARGET_GROUPS: List[int] = conf["target_groups"]
 # 监控学校列表——你手动改 json 即可
 SCHOOLS: List[str] = conf["schools"]
+# 可被艾特提醒的 QQ 白名单（qq -> 所属群id，None表示全局）
+def _normalize_whitelist(raw: Any) -> Dict[int, Optional[int]]:
+    result: Dict[int, Optional[int]] = {}
+    if isinstance(raw, dict):
+        for k, v in raw.items():
+            try:
+                qq = int(k)
+            except Exception:
+                continue
+            group_id = None
+            if isinstance(v, dict):
+                group_id = v.get("group_id")
+            elif isinstance(v, int):
+                group_id = v
+            elif v is None:
+                group_id = None
+            elif isinstance(v, str) and v.isdigit():
+                group_id = int(v)
+            result[qq] = int(group_id) if isinstance(group_id, int) else None
+        return result
+    if isinstance(raw, list):
+        for item in raw:
+            if isinstance(item, dict):
+                qq = item.get("qq")
+                group_id = item.get("group_id")
+            else:
+                qq = item
+                group_id = None
+            try:
+                qq_int = int(qq)
+            except Exception:
+                continue
+            try:
+                gid_int = int(group_id)
+            except Exception:
+                gid_int = None
+            result[qq_int] = gid_int
+    elif raw and isinstance(raw, (int, str)):
+        try:
+            result[int(raw)] = None
+        except Exception:
+            pass
+    return result
+
+
+AT_WHITELIST: Dict[int, Optional[int]] = _normalize_whitelist(conf.get("at_whitelist", []))
 # 正在全局监控的比赛字典（url 为 key）
 memory: Dict[str, Any] = conf["monitors"]
 
@@ -85,6 +137,16 @@ memory: Dict[str, Any] = conf["monitors"]
 # ==============================================================================
 start_monitor = on_command("开始监控", aliases={"monitor"}, priority=5)
 stop_monitor = on_command("取消监控", aliases={"stop"}, priority=5)
+add_at_whitelist = on_command(
+    "添加监控", aliases={"添加监控名单", "添加监控指令", "添加监控艾特", "添加监控提醒", "添加ac艾特"}, priority=5, block=True
+)
+remove_at_whitelist = on_command(
+    "移除监控", aliases={"移除监控艾特", "删除监控艾特", "删除ac艾特"}, priority=5, block=True
+)
+list_at_whitelist = on_command(
+    "查看监控名单", aliases={"查看监控艾特", "查看ac艾特", "ac艾特名单"}, priority=5, block=True
+)
+monitor_help = on_command("监控", priority=5, block=True)
 logger.info("icpc_ac_monitor 插件加载完成（单文件全局版）")
 
 def _to_base_url(url: str) -> str:
@@ -120,7 +182,198 @@ def _format_timestamp(timestamp: Any, contest_start_timestamp: Optional[float] =
         return ""
 
 # ==============================================================================
-# 五、开始监控 —— 全局开关
+# 五、艾特白名单管理
+# ==============================================================================
+try:
+    SUPERUSERS: set[str] = {str(u) for u in get_driver().config.superusers}
+except Exception:
+    SUPERUSERS = set()
+
+
+def _is_authorized(event: Event) -> bool:
+    """SUPERUSER 或白名单成员才可管理"""
+    user_id = getattr(event, "user_id", None)
+    if user_id is None:
+        return False
+    if str(user_id) in SUPERUSERS:
+        return True
+    try:
+        uid = int(user_id)
+    except Exception:
+        return False
+    return uid in AT_WHITELIST
+
+
+def _serialize_whitelist() -> List[Dict[str, Optional[int]]]:
+    return [{"qq": qq, "group_id": gid} for qq, gid in AT_WHITELIST.items()]
+
+
+def _persist_at_whitelist():
+    """落盘艾特白名单"""
+    conf["at_whitelist"] = _serialize_whitelist()
+    save_conf(conf)
+
+
+def _parse_qq_numbers(text: str) -> List[int]:
+    """将输入文本解析为 QQ 号列表"""
+    tokens = re.split(r"[\s,，]+", text.strip())
+    qq_list = []
+    for token in tokens:
+        if not token:
+            continue
+        if not token.isdigit():
+            raise ValueError(f"非法 QQ 号：{token}")
+        qq_list.append(int(token))
+    if not qq_list:
+        raise ValueError("未解析到任何 QQ 号")
+    return qq_list
+
+
+def _extract_mentions(message: Message) -> List[int]:
+    """从命令参数中解析 @ 的 QQ"""
+    mentions: List[int] = []
+    for seg in message:
+        if seg.type != "at":
+            continue
+        qq = seg.data.get("qq")
+        if not qq or qq == "all" or not str(qq).isdigit():
+            continue
+        mentions.append(int(qq))
+    return mentions
+
+
+@add_at_whitelist.handle()
+async def handle_add_at(event: Event, args: Message = CommandArg()):
+    if not _is_authorized(event):
+        await add_at_whitelist.finish("只有白名单成员或管理员可执行此命令。")
+    text = args.extract_plain_text().strip()
+    mention_qqs = _extract_mentions(args)
+    group_id = getattr(event, "group_id", None)
+
+    parsed_numbers: List[int] = []
+    if text:
+        try:
+            parsed_numbers = _parse_qq_numbers(text)
+        except ValueError as e:
+            await add_at_whitelist.finish(str(e))
+
+    qqs = mention_qqs + parsed_numbers
+    if not qqs:
+        await add_at_whitelist.finish("请在命令后提供要添加的 QQ 号，可直接输入或 @ 指定。")
+
+    added = []
+    for qq in qqs:
+        previous = AT_WHITELIST.get(qq)
+        if previous == group_id:
+            continue
+        AT_WHITELIST[qq] = group_id if group_id is not None else None
+        added.append(qq)
+    if added:
+        _persist_at_whitelist()
+        msg = f"成功添加 {len(added)} 个 QQ 到艾特白名单：" + ", ".join(map(str, added))
+    else:
+        msg = "全部 QQ 已存在于白名单。"
+    await add_at_whitelist.finish(msg)
+
+
+@remove_at_whitelist.handle()
+async def handle_remove_at(event: Event, args: Message = CommandArg()):
+    if not _is_authorized(event):
+        await remove_at_whitelist.finish("只有白名单成员或管理员可执行此命令。")
+    text = args.extract_plain_text().strip()
+    mention_qqs = _extract_mentions(args)
+
+    parsed_numbers: List[int] = []
+    if text:
+        try:
+            parsed_numbers = _parse_qq_numbers(text)
+        except ValueError as e:
+            await remove_at_whitelist.finish(str(e))
+
+    qqs = mention_qqs + parsed_numbers
+    if not qqs:
+        await remove_at_whitelist.finish("请在命令后提供要移除的 QQ 号，可直接输入或 @ 指定。")
+
+    removed = []
+    for qq in qqs:
+        if qq in AT_WHITELIST:
+            AT_WHITELIST.pop(qq, None)
+            removed.append(qq)
+    if removed:
+        _persist_at_whitelist()
+        msg = f"已从艾特白名单移除 {len(removed)} 个 QQ：" + ", ".join(map(str, removed))
+    else:
+        msg = "这些 QQ 不在白名单中。"
+    await remove_at_whitelist.finish(msg)
+
+
+async def _resolve_display_name(bot: Bot, qq: int, group_id: Optional[int]) -> str:
+    """优先返回群名片，其次昵称"""
+    if group_id:
+        try:
+            info = await bot.get_group_member_info(group_id=group_id, user_id=qq, no_cache=True)
+            card = (info.get("card") or "").strip()
+            nickname = (info.get("nickname") or "").strip()
+            if card:
+                return card
+            if nickname:
+                return nickname
+        except Exception as e:
+            logger.debug(f"获取群成员信息失败：qq={qq}, group={group_id}, err={e}")
+    try:
+        info = await bot.get_stranger_info(user_id=qq, no_cache=True)
+        nickname = (info.get("nickname") or "").strip()
+        if nickname:
+            return nickname
+    except Exception as e:
+        logger.debug(f"获取陌生人信息失败：qq={qq}, err={e}")
+    return str(qq)
+
+
+async def _resolve_group_name(bot: Bot, group_id: Optional[int]) -> str:
+    if group_id is None:
+        return "所有群"
+    try:
+        info = await bot.get_group_info(group_id=group_id, no_cache=True)
+        name = info.get("group_name")
+        if name:
+            return name
+    except Exception as e:
+        logger.debug(f"获取群信息失败：group_id={group_id}, err={e}")
+    return str(group_id)
+
+
+@list_at_whitelist.handle()
+async def handle_list_at(bot: Bot, event: Event):
+    if not _is_authorized(event):
+        await list_at_whitelist.finish("只有白名单成员或管理员可执行此命令。")
+    if not AT_WHITELIST:
+        await list_at_whitelist.finish("当前艾特白名单为空，可使用『添加监控』命令添加。")
+
+    group_id = getattr(event, "group_id", None)
+    lines = []
+    for qq, bind_group in AT_WHITELIST.items():
+        display = await _resolve_display_name(bot, qq, group_id)
+        group_label = await _resolve_group_name(bot, bind_group)
+        lines.append(f"{display} - {qq}（{group_label}）")
+
+    await list_at_whitelist.finish("当前艾特白名单：\n" + "\n".join(lines))
+
+
+@monitor_help.handle()
+async def handle_monitor_help():
+    msg = (
+        "监控指令一览：\n"
+        "1. 开始监控 <比赛URL>\n"
+        "2. 取消监控 <比赛URL>\n"
+        "3. 添加监控 <QQ/@成员>\n"
+        "4. 移除监控 <QQ/@成员>\n"
+        "5. 查看监控名单"
+    )
+    await monitor_help.finish(msg)
+
+# ==============================================================================
+# 六、开始监控 —— 全局开关
 # ==============================================================================
 @start_monitor.handle()
 async def handle_start_monitor(bot: Bot, event: Event, args: Message = CommandArg()):
@@ -330,8 +583,10 @@ def monitor_loop(base_url: str):
                     if not loop or not loop.is_running():
                         logger.error(f"事件循环不可用，无法推送消息到群 {gid}")
                         continue
-                    
-                    future = asyncio.run_coroutine_threadsafe(send_ac_msg(int(gid), msg), loop)
+
+                    future = asyncio.run_coroutine_threadsafe(
+                        send_ac_msg(int(gid), _build_push_message(msg, int(gid))), loop
+                    )
                     try:
                         future.result(timeout=10)
                     except asyncio.TimeoutError:
@@ -389,7 +644,23 @@ def set_bot_instance(bot: Bot):
     _cached_bot = bot
     _main_event_loop = _get_main_loop()
 
-async def send_ac_msg(group_id: int, message: str):
+def _build_push_message(content: str, group_id: Optional[int]) -> Message:
+    """根据目标群构建带 @ 的消息"""
+    mentions = []
+    for qq, bind_group in AT_WHITELIST.items():
+        if bind_group is None or (group_id is not None and bind_group == group_id):
+            mentions.append(str(qq))
+    if not mentions:
+        return Message(content)
+    msg = Message()
+    for qq in mentions:
+        msg += MessageSegment.at(qq)
+        msg += MessageSegment.text(" ")
+    msg += MessageSegment.text(content)
+    return msg
+
+
+async def send_ac_msg(group_id: int, message: Union[str, Message]):
     """
     利用缓存的 bot 实例或 get_bot() 异步向指定群发消息。
     失败时只记日志，不中断线程。
