@@ -6,7 +6,7 @@ from __future__ import annotations
 import re
 from typing import Any, Dict, List, Optional, Tuple
 
-from nonebot import on_notice, on_regex
+from nonebot import get_driver, on_notice, on_regex
 from nonebot.adapters.onebot.v11 import (
     Bot,
     Event,
@@ -20,6 +20,11 @@ from nonebot.log import logger
 from nonebot.params import RegexGroup
 
 from . import database
+from .config import Config
+
+plugin_config = Config.parse_obj(get_driver().config.dict())
+if not plugin_config.enabled:
+    logger.warning("ack_manager 插件已通过配置禁用，所有指令将被忽略。")
 
 
 def _normalize_whitespace(text: str) -> str:
@@ -53,11 +58,11 @@ def _strip_group_markers(text: str) -> Tuple[str, List[str]]:
 
 HELP_TEXT = (
     "[ACK 插件指令]\n"
-    "1. !ACK 内容 —— 发起全群确认，要求表情回复\n"
-    "2. !ACK @QQ @分组 内容 —— 仅通知指定成员或数据库分组\n"
-    "3. !ANN 内容 —— 发布公告，不追踪表情\n"
+    f"1. {plugin_config.ack_command_prefix} 内容 —— 发起全群确认，要求表情回复\n"
+    f"2. {plugin_config.ack_command_prefix} @QQ @分组 内容 —— 仅通知指定成员或数据库分组\n"
+    f"3. {plugin_config.ann_command_prefix} 内容 —— 发布公告，不追踪表情\n"
     "4. ack —— 查看此帮助\n"
-    "示例：!ACK @技术组 @123456 请 18:00 前确认"
+    f"示例：{plugin_config.ack_command_prefix} @技术组 @123456 请 18:00 前确认"
 )
 
 
@@ -93,14 +98,21 @@ def _merge_unique_sequences(*sequences: List[int]) -> List[int]:
     return merged
 
 
-ack_help_command = on_regex(r"^ack$", flags=re.IGNORECASE, priority=8, block=True)
-ack_command = on_regex(r"^!ACK\s+(.+)", flags=re.IGNORECASE, priority=8, block=True)
-ann_command = on_regex(r"^!ANN\s+(.+)", flags=re.IGNORECASE, priority=8, block=True)
+
+ACK_HELP_PATTERN = rf"^ack$"
+ACK_PATTERN = rf"^{re.escape(plugin_config.ack_command_prefix)}\s+(.+)"
+ANN_PATTERN = rf"^{re.escape(plugin_config.ann_command_prefix)}\s+(.+)"
+
+ack_help_command = on_regex(ACK_HELP_PATTERN, flags=re.IGNORECASE, priority=8, block=True)
+ack_command = on_regex(ACK_PATTERN, flags=re.IGNORECASE, priority=8, block=True)
+ann_command = on_regex(ANN_PATTERN, flags=re.IGNORECASE, priority=8, block=True)
 reaction_notice = on_notice(priority=50, block=False)
 
 
 @ack_help_command.handle()
 async def handle_ack_help():
+    if not plugin_config.enabled:
+        await ack_help_command.finish("ACK 插件已被禁用。")
     await ack_help_command.finish(HELP_TEXT)
 
 
@@ -110,6 +122,8 @@ async def handle_ack_command(
     event: Event,
     groups: Tuple[str, ...] = RegexGroup(),
 ):
+    if not plugin_config.enabled:
+        await ack_command.finish("ACK 插件已被禁用。")
     if not isinstance(event, GroupMessageEvent):
         await ack_command.finish("全员确认指令目前仅支持群聊使用。")
 
@@ -296,6 +310,8 @@ async def handle_ann_command(
     event: Event,
     groups: Tuple[str, ...] = RegexGroup(),
 ):
+    if not plugin_config.enabled:
+        await ann_command.finish("ACK 插件已被禁用。")
     if not isinstance(event, GroupMessageEvent):
         await ann_command.finish("公告指令目前仅支持群聊使用。")
 
@@ -311,6 +327,8 @@ async def handle_ann_command(
 
 @reaction_notice.handle()
 async def handle_reaction_notice(bot: Bot, event: NoticeEvent):
+    if not plugin_config.enabled:
+        return
     # 尝试多种方式获取 notice_type
     event_dict = event.dict()
     notice_type = (

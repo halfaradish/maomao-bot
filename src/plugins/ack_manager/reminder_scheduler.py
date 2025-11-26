@@ -8,15 +8,18 @@ import asyncio
 from datetime import datetime, timedelta
 from typing import Any, Dict, List, Optional
 
-from nonebot import get_bot, logger
+from nonebot import get_bot, get_driver, logger
 from nonebot.adapters.onebot.v11 import Bot
 
 from . import database
+from .config import Config
 from ...common.django_crud import async_get_many, init_django_if_needed
 
 init_django_if_needed()
 
 from botdb.models import QQMessageReceiptSummary, QQRobotMessage, beijing_now
+
+plugin_config = Config.parse_obj(get_driver().config.dict())
 
 
 class AckReminderScheduler:
@@ -33,6 +36,9 @@ class AckReminderScheduler:
     
     async def start(self):
         """启动调度器"""
+        if not plugin_config.enabled:
+            logger.info("ACK 插件已禁用，跳过提醒调度器启动。")
+            return
         if self.running:
             logger.warning("全员确认提醒调度器已在运行")
             return
@@ -58,6 +64,8 @@ class AckReminderScheduler:
     
     async def _scheduler_loop(self):
         """调度器主循环"""
+        if not plugin_config.enabled:
+            return
         while self.running:
             try:
                 await self._check_and_send_reminders()
@@ -70,6 +78,8 @@ class AckReminderScheduler:
     
     async def _check_and_send_reminders(self):
         """检查并发送到期的提醒"""
+        if not plugin_config.enabled:
+            return
         try:
             now = beijing_now()
             
@@ -118,6 +128,8 @@ class AckReminderScheduler:
         self, bot: Bot, summary: QQMessageReceiptSummary, now: datetime
     ):
         """发送提醒消息"""
+        if not plugin_config.enabled:
+            return
         # 获取消息记录
         from ...common.django_crud import async_get_one
         message = await async_get_one(QQRobotMessage, id=summary.message_id)
