@@ -149,6 +149,188 @@ list_at_whitelist = on_command(
 monitor_help = on_command("监控", priority=5, block=True)
 logger.info("icpc_ac_monitor 插件加载完成（单文件全局版）")
 
+STATUS_MAP = {
+    "CORRECT": "✅ AC",
+    "AC": "✅ AC",
+    "ACCEPTED": "✅ AC",
+    "WRONG_ANSWER": "❌ WA",
+    "WRONGANSWER": "❌ WA",
+    "TIME_LIMIT_EXCEEDED": "⏰ TLE",
+    "TIME_LIMIT": "⏰ TLE",
+    "RUNTIME_ERROR": "💥 RE",
+    "COMPILATION_ERROR": "🛠 CE",
+}
+
+
+def _pretty_status(raw: str) -> str:
+    upper = (raw or "").upper()
+    return STATUS_MAP.get(upper, upper or "UNKNOWN")
+
+# 计入罚时的错误状态（只对这些状态 +20 分钟），避免把 PENDING/JUDGING 之类算作罚时
+WRONG_STATUSES = {
+    "WRONG_ANSWER",
+    "WRONGANSWER",
+    "WA",
+    "TIME_LIMIT_EXCEEDED",
+    "TLE",
+    "RUNTIME_ERROR",
+    "RUNTIME ERROR",
+    "RE",
+    "MEMORY_LIMIT_EXCEEDED",
+    "MLE",
+    "OUTPUT_LIMIT_EXCEEDED",
+    "OLE",
+    "PRESENTATION_ERROR",
+    "PE",
+}
+
+
+ACCEPT_STATUSES = {"CORRECT", "ACCEPTED", "AC", "YES"}
+
+
+def _format_run_duration(timestamp: Any) -> str:
+    """将 run.json 内的毫秒时间戳转换为 2h29min 样式"""
+    if timestamp is None:
+        return "未知"
+    try:
+        value = float(timestamp)
+    except Exception:
+        return "未知"
+
+    # timestamp 默认是毫秒，直接除以1000转换为秒
+    seconds = int(value / 1000)
+    if seconds < 0:
+        return "未知"
+
+    hours, remainder = divmod(seconds, 3600)
+    minutes, secs = divmod(remainder, 60)
+    parts = []
+    if hours:
+        parts.append(f"{hours}h")
+    if minutes:
+        parts.append(f"{minutes}min")
+    if not hours and not minutes:
+        parts.append(f"{secs}s")
+    return "".join(parts) or "0s"
+
+
+def _extract_run_seconds(run: Dict[str, Any]) -> Optional[float]:
+    """从 run.json 中提取提交时间（秒），timestamp 默认是毫秒，直接除以1000"""
+    for key in ("timestamp", "time", "submission_time", "submitted_at"):
+        value = run.get(key)
+        if value is None or value == "":
+            continue
+        try:
+            num = float(value)
+            # timestamp 默认是毫秒，直接除以1000转换为秒
+            return num / 1000.0
+        except Exception:
+            continue
+    return None
+
+
+def _calculate_team_ranks(
+    runs: List[Dict[str, Any]], team_ids_set: set, all_team_total: int, official_team_ids: Optional[set] = None
+) -> Tuple[Dict[str, Dict[str, Any]], List[tuple]]:
+    """根据 run.json 计算正式队伍的排名（排除打星队伍）"""
+    # 如果提供了正式队伍列表，只计算正式队伍；否则计算所有队伍
+    if official_team_ids is not None:
+        # 直接使用正式队伍列表（已经排除了打星队伍）
+        valid_team_ids = official_team_ids
+    else:
+        valid_team_ids = team_ids_set
+    
+    # 初始化所有正式队伍（包括没有提交的）
+    team_stats: Dict[str, Dict[str, Any]] = {
+        tid: {
+            "solved": 0,
+            "penalty": 0,
+            "first_ac_time": None,  # 首次 AC 时间
+            "last_ac_time": None,   # 最后一题 AC 时间
+            "problems": {},
+            "has_submission": False
+        }
+        for tid in valid_team_ids
+    }
+
+    # 收集所有在 run.json 中出现的队伍ID
+    teams_with_runs = set()
+    
+    sorted_runs = sorted(runs, key=lambda r: _extract_run_seconds(r) or float("inf"))
+
+    for run in sorted_runs:
+        tid = str(run.get("team_id", ""))
+        # 只处理正式队伍
+        if tid not in valid_team_ids:
+            continue
+        teams_with_runs.add(tid)
+        pid = str(run.get("problem_id", ""))
+        if pid == "":
+            continue
+        sec = _extract_run_seconds(run)
+        if sec is None:
+            continue
+        status = str(run.get("status", "")).upper()
+        problems = team_stats[tid]["problems"]
+        state = problems.setdefault(pid, {"solved": False, "wrong": 0, "first_ac_sec": None})
+        if state["solved"]:
+            continue
+        if status in ACCEPT_STATUSES:
+            state["solved"] = True
+            team_stats[tid]["solved"] += 1
+            # 罚时 = AC时间（分钟）+ 错误次数 × 20分钟
+            penalty_minutes = int(sec // 60)
+            team_stats[tid]["penalty"] += penalty_minutes + state["wrong"] * 20
+            # 记录首次AC时间（用于相同成绩时的排序）
+            if state["first_ac_sec"] is None:
+                state["first_ac_sec"] = sec
+            if team_stats[tid]["first_ac_time"] is None or sec < team_stats[tid]["first_ac_time"]:
+                team_stats[tid]["first_ac_time"] = sec
+            if team_stats[tid]["last_ac_time"] is None or sec > team_stats[tid]["last_ac_time"]:
+                team_stats[tid]["last_ac_time"] = sec
+            team_stats[tid]["has_submission"] = True
+        else:
+            # 只有明确的错误提交才算一次罚时
+            if status in WRONG_STATUSES:
+                state["wrong"] += 1
+                team_stats[tid]["has_submission"] = True
+
+    # 排序：有提交的队伍按AC数、罚时、首次AC时间排序；无提交的队伍排在最后
+    # ICPC规则：1. AC数多的在前 2. 罚时少的在前 3. 首次AC时间早的在前
+    ordered = sorted(
+        (
+            (
+                tid,
+                data["solved"],
+                data["penalty"],
+                data["last_ac_time"] if data["last_ac_time"] is not None else float("inf"),
+                data["has_submission"],
+                int(tid) if tid.isdigit() else 0,  # 用于无提交队伍的排序
+            )
+            for tid, data in team_stats.items()
+        ),
+        key=lambda x: (
+            not x[4],  # 有提交的排在前面（False < True，所以 not x[4] 让 True 在前）
+            -x[1],     # AC数降序
+            x[2],      # 罚时升序
+            x[3],      # 最后一题 AC 时间升序
+            x[5],      # 无提交队伍按ID排序
+        ),
+    )
+
+    # 总数使用传入的 all_team_total（已经排除了打星队伍）
+    total = all_team_total
+    rank_map: Dict[str, Dict[str, Any]] = {}
+    for idx, (tid, solved, penalty, first_time, has_sub, _) in enumerate(ordered, start=1):
+        rank_map[tid] = {
+            "rank": idx,
+            "total": total,
+            "solved": solved,
+            "penalty": penalty,
+        }
+    return rank_map, ordered
+
+
 def _to_base_url(url: str) -> str:
     """将 board 域名转换为 cdn 数据域名"""
     return url.rstrip("/").replace("https://board.xcpcio.com", "https://cdn.xcpcio.com/data")
@@ -180,6 +362,22 @@ def _format_timestamp(timestamp: Any, contest_start_timestamp: Optional[float] =
     except Exception as e:
         logger.warning(f"时间戳格式化失败：timestamp={timestamp}, start_timestamp={contest_start_timestamp}, 错误：{e}")
         return ""
+
+
+def _calc_relative_seconds(timestamp: Any, contest_start_timestamp: Optional[float]) -> Optional[float]:
+    if timestamp is None or contest_start_timestamp is None:
+        return None
+    try:
+        ts = float(timestamp)
+        if ts > 1e12:
+            ts /= 1000.0
+        start_ts = float(contest_start_timestamp)
+        if start_ts > 1e12:
+            start_ts /= 1000.0
+        relative = ts - start_ts
+        return relative if relative >= 0 else None
+    except Exception:
+        return None
 
 # ==============================================================================
 # 五、艾特白名单管理
@@ -427,26 +625,30 @@ async def handle_start_monitor(bot: Bot, event: Event, args: Message = CommandAr
         logger.error(f"获取队伍数据失败：{e}, 内容: {resp.text[:500]}")
         await start_monitor.finish(f"获取队伍数据失败：{e}")
 
-    # 过滤学校
-    teams = [t for t in team_list if t.get("organization") in SCHOOLS]
-    if not teams:
+    watched_teams = [t for t in team_list if t.get("organization") in SCHOOLS]
+    if not watched_teams:
         await start_monitor.finish(f"{base_url.split('/')[-1]} 中没有指定学校队伍")
 
-    # 创建全局记录（内存 + 文件）
-    # 确保 team_id 统一为字符串类型，避免类型不匹配
     team_ids_list = []
+    watched_ids = []
     id_to_name_dict = {}
-    for t in teams:
+    id_to_school_dict = {}
+    for t in team_list:
         tid_raw = t.get("id") or t.get("team_id")
         tid = str(tid_raw) if tid_raw is not None else ""
         team_ids_list.append(tid)
         id_to_name_dict[tid] = t.get("name", "未知队伍")
+        id_to_school_dict[tid] = t.get("organization", "未知")
+        if t.get("organization") in SCHOOLS:
+            watched_ids.append(tid)
     
     meta = {
         "comp_name": base_url.split("/")[-1],
         "run_url": f"{base_url}/run.json",
         "team_ids": team_ids_list,
+        "watched_ids": watched_ids,
         "id_to_name": id_to_name_dict,
+        "id_to_school": id_to_school_dict,
         "already_solved": [],
         "contest_start_timestamp": contest_start_timestamp,  # 存储比赛开始时间戳（Unix 时间戳）
     }
@@ -523,16 +725,77 @@ def monitor_loop(base_url: str):
         seen = set(meta["seen_ids"])
         seen_count_before = len(seen)
         
-        # 确保 team_ids 中的值都是字符串类型，用于比较
-        team_ids_set = {str(tid) for tid in meta["team_ids"]}
+        # 实时获取 team.json 确保总数准确，并识别正式队伍（排除打星队伍）
+        official_team_ids = None
+        all_team_ids_set = None
+        try:
+            team_resp = requests.get(f"{base_url}/team.json", timeout=5, headers={"User-Agent": "Mozilla/5.0"})
+            team_data = team_resp.json()
+            if isinstance(team_data, list):
+                all_teams = team_data
+            elif isinstance(team_data, dict):
+                all_teams = list(team_data.values())
+            else:
+                all_teams = []
+            
+            # 构建所有队伍ID集合（包括打星队伍）
+            all_team_ids_set = set()
+            for team in all_teams:
+                tid_raw = team.get("id") or team.get("team_id")
+                if tid_raw is not None:
+                    all_team_ids_set.add(str(tid_raw))
+            
+            # 识别正式队伍：排除打星队伍
+            # 打星队伍在 group 字段中标识（如 "star" 等）
+            official_team_ids = set()
+            star_team_count = 0
+            for team in all_teams:
+                tid_raw = team.get("id") or team.get("team_id")
+                if tid_raw is None:
+                    continue
+                tid = str(tid_raw)
+                
+                # 通过 group 字段判断是否为打星队伍
+                # group 是一个数组，如 ["official"] 或 ["unofficial"]
+                group = team.get("group", [])
+                if isinstance(group, list):
+                    # 如果 group 数组包含 "unofficial"，则为打星队伍，排除
+                    if "unofficial" in group:
+                        star_team_count += 1
+                        continue
+                elif isinstance(group, str):
+                    # 兼容字符串格式
+                    group_lower = group.lower()
+                    if "unofficial" in group_lower or "star" in group_lower or group == "*":
+                        star_team_count += 1
+                        continue
+                
+                official_team_ids.add(tid)
+            
+            actual_total = len(official_team_ids) if official_team_ids else len(all_teams)
+            # 只在第一次获取时输出统计信息，避免日志刷屏
+            if "team_stats_logged" not in meta:
+                logger.info(f"队伍统计：总队伍数={len(all_teams)}, 正式队伍数={actual_total}, 打星队伍数={star_team_count}")
+                meta["team_stats_logged"] = True
+        except Exception as e:
+            logger.warning(f"获取 team.json 失败，使用缓存总数：{e}")
+            actual_total = len(meta["team_ids"])
+            official_team_ids = None
+            all_team_ids_set = {str(tid) for tid in meta["team_ids"]}
+        
+        # 使用实时获取的所有队伍ID，如果没有则使用缓存的
+        team_ids_set = all_team_ids_set if all_team_ids_set is not None else {str(tid) for tid in meta["team_ids"]}
+        watched_ids_set = {str(tid) for tid in meta.get("watched_ids", meta["team_ids"])}
         
         total_runs = len(runs)
         new_submissions = 0
 
+        rank_map, ordered_teams = _calculate_team_ranks(runs, team_ids_set, actual_total, official_team_ids)
+
         for run in runs:
             # 先过滤不是我们学校的队伍
             run_team_id = str(run.get("team_id", ""))
-            if run_team_id not in team_ids_set:
+            if run_team_id not in watched_ids_set:
                 continue
             
             # run.json 可能没有 'id' 字段，使用组合键作为唯一标识
@@ -563,18 +826,27 @@ def monitor_loop(base_url: str):
             prob_char = _pid_to_char(run.get("problem_id", -1))
 
             team_name = meta["id_to_name"].get(run_team_id, "未知队伍")
-            status = run.get("status", "UNKNOWN")
+            status = _pretty_status(run.get("status", "UNKNOWN"))
             
             timestamp = run.get("timestamp")
             if timestamp is None:
                 timestamp = run.get("time") or run.get("submission_time") or run.get("submitted_at")
             
-            contest_start_timestamp = meta.get("contest_start_timestamp")
-            time_str = _format_timestamp(timestamp, contest_start_timestamp)
-            time_part = f" [{time_str}]" if time_str else ""
+            duration_str = _format_run_duration(timestamp)
 
-            # 构建消息
-            msg = f"[{meta['comp_name']}] {team_name} 已 {status} 了 {prob_char} 题{time_part}！"
+            school_name = meta.get("id_to_school", {}).get(run_team_id, SCHOOLS[0] if SCHOOLS else "未知")
+            rank_info = rank_map.get(run_team_id)
+            rank_line = f"\n[排名]：{rank_info['rank']}/{rank_info['total']}" if rank_info else ""
+
+            msg = (
+                f"[时间]：{duration_str}\n"
+                f"[赛站]：{meta['comp_name']}\n"
+                f"[学校]：{school_name}\n"
+                f"[队伍名]：{team_name}\n"
+                f"[题号]：{prob_char}\n"
+                f"[状态]：{status}"
+                f"{rank_line}"
+            )
             logger.info(f"检测到新提交：{msg}")
 
             # 线程安全推送给所有目标群
@@ -656,7 +928,7 @@ def _build_push_message(content: str, group_id: Optional[int]) -> Message:
     for qq in mentions:
         msg += MessageSegment.at(qq)
         msg += MessageSegment.text(" ")
-    msg += MessageSegment.text(content)
+    msg += MessageSegment.text("\n" + content)
     return msg
 
 
@@ -706,9 +978,17 @@ def restore_on_startup():
         # 确保 team_ids 中的 ID 都是字符串类型（兼容旧配置）
         if "team_ids" in meta:
             meta["team_ids"] = [str(tid) for tid in meta["team_ids"]]
+        if "watched_ids" in meta:
+            meta["watched_ids"] = [str(tid) for tid in meta["watched_ids"]]
+        else:
+            meta["watched_ids"] = meta.get("team_ids", [])
         # 确保 id_to_name 的 key 都是字符串
         if "id_to_name" in meta:
             meta["id_to_name"] = {str(k): v for k, v in meta["id_to_name"].items()}
+        if "id_to_school" in meta:
+            meta["id_to_school"] = {str(k): v for k, v in meta["id_to_school"].items()}
+        else:
+            meta["id_to_school"] = {}
         
         thread = threading.Thread(target=monitor_loop, args=(url,), daemon=True)
         meta["thread"] = thread
