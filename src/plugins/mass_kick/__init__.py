@@ -51,6 +51,78 @@ async def is_super_admin(user_id: str) -> bool:
     logger.info(f"权限验证结果: {result}")
     return result
 
+async def get_group_member_role(bot: Bot, group_id: str, user_id: str) -> str:
+    """获取群成员角色
+    返回值: 'owner' - 群主, 'admin' - 管理员, 'member' - 普通成员, None - 不在群中
+    """
+    try:
+        member_info = await bot.get_group_member_info(
+            group_id=int(group_id),
+            user_id=int(user_id)
+        )
+        if member_info:
+            role = member_info.get('role', 'member')
+            # OneBot v11 角色定义: owner, admin, member
+            return role
+    except ActionFailed:
+        # 用户不在群组中或获取信息失败
+        return None
+    except Exception as e:
+        logger.error(f"获取群成员角色失败: 群组{group_id}, 用户{user_id}, 错误: {e}")
+        return None
+    
+    return None
+
+async def check_kick_permission(bot: Bot, group_id: str, operator_id: str, target_user_id: str) -> tuple:
+    """检查踢人权限
+    返回值: (是否允许, 权限不足原因)
+    规则:
+    1. 管理员不能踢出管理员和群主
+    2. 普通群员不能踢出管理员和群主
+    3. 群主可以踢出任何人
+    4. 机器人自身也需要符合以上规则
+    """
+    # 检查操作者权限
+    operator_role = await get_group_member_role(bot, group_id, operator_id)
+    if operator_role is None:
+        return False, "操作者不在群组中"
+    
+    # 检查目标用户权限
+    target_role = await get_group_member_role(bot, group_id, target_user_id)
+    if target_role is None:
+        return False, "目标用户不在群组中"
+    
+    # 检查机器人权限
+    bot_role = await get_group_member_role(bot, group_id, bot.self_id)
+    if bot_role is None:
+        return False, "机器人不在群组中"
+    
+    # 先检查命令者权限
+    # 群主可以踢任何人
+    if operator_role == "owner":
+        pass  # 群主有最高权限
+    # 管理员不能踢出管理员和群主
+    elif operator_role == "admin":
+        if target_role in ["admin", "owner"]:
+            return False, "命令者权限不足"
+    # 普通群员不能踢出任何人
+    elif operator_role == "member":
+        return False, "命令者权限不足"
+    
+    # 再检查机器人权限
+    # 机器人作为群主可以踢任何人
+    if bot_role == "owner":
+        pass  # 机器人是群主，有最高权限
+    # 机器人作为管理员不能踢出管理员和群主
+    elif bot_role == "admin":
+        if target_role in ["admin", "owner"]:
+            return False, "机器人权限不足"
+    # 机器人作为普通成员不能踢出任何人
+    elif bot_role == "member":
+        return False, "机器人权限不足"
+    
+    return True, "权限验证通过"
+
 async def kick_user_from_group(bot: Bot, group_id: str, user_id: str) -> bool:
     """从指定群组踢出用户"""
     try:
@@ -235,6 +307,20 @@ async def handle_mass_kick(bot: Bot, event: GroupMessageEvent, args: Message = C
                         user_id=int(target_user_id)
                     )
                     if member_info:
+                        # 检查踢人权限
+                        has_permission, reason = await check_kick_permission(bot, group_id, operator_id, target_user_id)
+                        if not has_permission:
+                            if reason == "机器人权限不足":
+                                logger.warning(f"在群组 {group_id} 中，机器人权限不足，无法踢出用户 {target_user_id}")
+                                failed_groups.append(f"{group_id}(机器人权限不足)")
+                            elif reason == "命令者权限不足":
+                                logger.warning(f"在群组 {group_id} 中，用户 {operator_id} 没有权限踢出用户 {target_user_id}")
+                                failed_groups.append(f"{group_id}(命令者权限不足)")
+                            else:
+                                logger.warning(f"在群组 {group_id} 中，权限检测失败: {reason}")
+                                failed_groups.append(f"{group_id}({reason})")
+                            continue
+                        
                         # 执行踢出操作
                         result = await kick_user_from_group(bot, group_id, target_user_id)
                         if result:
@@ -242,10 +328,10 @@ async def handle_mass_kick(bot: Bot, event: GroupMessageEvent, args: Message = C
                         else:
                             failed_groups.append(group_id)
                     else:
-                        failed_groups.append(group_id)
+                        failed_groups.append(f"{group_id}(用户不在群中)")
                 except ActionFailed:
                     # 用户不在群组中
-                    failed_groups.append(group_id)
+                    failed_groups.append(f"{group_id}(用户不在群中)")
                 
                 # 添加操作延迟，避免频率限制
                 if config.operation_delay > 0:
@@ -253,7 +339,7 @@ async def handle_mass_kick(bot: Bot, event: GroupMessageEvent, args: Message = C
                     
             except Exception as e:
                 logger.error(f"处理群组 {group_id} 时发生错误: {e}")
-                failed_groups.append(group_id)
+                failed_groups.append(f"{group_id}(处理错误)")
         
         # 构建结果消息
         result_msg = f"一键退群操作完成\n"
@@ -305,5 +391,10 @@ def remove_managed_group(group_id: str) -> bool:
         return False
     managed_groups.remove(group_id)
     return update_managed_groups(managed_groups)
+
+
+
+
+
 
 
