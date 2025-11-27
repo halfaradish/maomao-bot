@@ -29,6 +29,8 @@ from nonebot.params import CommandArg
 BASE_DIR = Path(__file__).resolve().parent.parent.parent.parent
 # 单文件配置路径：data/icpc_ac_monitor.json
 CONF_FILE = BASE_DIR / "data" / "icpc_ac_monitor.json"
+# 城市拼音映射文件，用于将赛站拼音转换为中文
+CITY_MAP_FILE = BASE_DIR / "data" / "city_pinyin_map.json"
 # 若 data 目录不存在则自动创建
 CONF_FILE.parent.mkdir(exist_ok=True)
 
@@ -83,6 +85,61 @@ conf = load_conf()
 TARGET_GROUPS: List[int] = conf["target_groups"]
 # 监控学校列表——你手动改 json 即可
 SCHOOLS: List[str] = conf["schools"]
+
+
+def _load_city_mapping() -> Tuple[Dict[str, str], Dict[str, str]]:
+    """加载 data/city_pinyin_map.json，返回中文->拼音、拼音->中文双向映射"""
+    if not CITY_MAP_FILE.exists():
+        logger.warning(f"未在 {CITY_MAP_FILE} 找到城市映射，赛站将保持原始拼音显示。")
+        return {}, {}
+    try:
+        with CITY_MAP_FILE.open("r", encoding="utf-8") as f:
+            data = json.load(f)
+        if not isinstance(data, dict):
+            raise ValueError("city_pinyin_map.json 内容不是字典。")
+        forward = {}
+        for zh, py in data.items():
+            zh_name = str(zh).strip()
+            py_slug = str(py).strip().lower()
+            if not zh_name or not py_slug:
+                continue
+            forward[zh_name] = py_slug
+        reverse = {py_slug: zh_name for zh_name, py_slug in forward.items()}
+        return forward, reverse
+    except Exception as e:
+        logger.warning(f"加载城市映射失败：{e}")
+        return {}, {}
+
+
+CITY_TO_PINYIN, PINYIN_TO_CITY = _load_city_mapping()
+
+
+def _resolve_city_display_name(raw: str) -> str:
+    """将 URL 中的赛站拼音转换为中文名称"""
+    if not raw:
+        return raw
+    slug = raw.lower()
+    if slug in PINYIN_TO_CITY:
+        return PINYIN_TO_CITY[slug]
+    # 分割出可能的拼音片段（去掉数字、破折号等）
+    tokens = [tok for tok in re.split(r"[^a-z]+", slug) if tok]
+    for token in tokens:
+        if token in PINYIN_TO_CITY:
+            return PINYIN_TO_CITY[token]
+    return raw
+
+
+def _ensure_comp_display(meta: Dict[str, Any]) -> str:
+    """保证 meta 中存在中文赛站名，并返回它"""
+    if not isinstance(meta, dict):
+        return ""
+    display = meta.get("comp_display_name")
+    if display:
+        return display
+    raw = meta.get("comp_name", "")
+    display = _resolve_city_display_name(raw)
+    meta["comp_display_name"] = display
+    return display
 # 可被艾特提醒的 QQ 白名单（qq -> 所属群id，None表示全局）
 def _normalize_whitelist(raw: Any) -> Dict[int, Optional[int]]:
     result: Dict[int, Optional[int]] = {}
@@ -642,8 +699,10 @@ async def handle_start_monitor(bot: Bot, event: Event, args: Message = CommandAr
         if t.get("organization") in SCHOOLS:
             watched_ids.append(tid)
     
+    comp_slug = base_url.split("/")[-1]
     meta = {
-        "comp_name": base_url.split("/")[-1],
+        "comp_name": comp_slug,
+        "comp_display_name": _resolve_city_display_name(comp_slug),
         "run_url": f"{base_url}/run.json",
         "team_ids": team_ids_list,
         "watched_ids": watched_ids,
@@ -656,7 +715,7 @@ async def handle_start_monitor(bot: Bot, event: Event, args: Message = CommandAr
     memory[base_url] = meta
     conf["monitors"] = memory
     save_conf(conf)
-    await start_monitor.send(f"已添加全局监控：{meta['comp_name']}")
+    await start_monitor.send(f"已添加全局监控：{_ensure_comp_display(meta)}")
 
     # 启动唯一轮询线程
     thread = threading.Thread(target=monitor_loop, args=(base_url,), daemon=True)
@@ -681,7 +740,7 @@ async def handle_stop_monitor(bot: Bot, event: Event, args: Message = CommandArg
     # 立刻落盘
     conf["monitors"] = memory
     save_conf(conf)
-    await stop_monitor.finish(f"已完全停止监控：{meta['comp_name']}")
+    await stop_monitor.finish(f"已完全停止监控：{_ensure_comp_display(meta)}")
 
 # -------------------- 轮询推送（固定推全部 TARGET_GROUPS） --------------------
 def monitor_loop(base_url: str):
@@ -840,7 +899,7 @@ def monitor_loop(base_url: str):
 
             msg = (
                 f"[时间]：{duration_str}\n"
-                f"[赛站]：{meta['comp_name']}\n"
+                f"[赛站]：{_ensure_comp_display(meta)}\n"
                 f"[学校]：{school_name}\n"
                 f"[队伍名]：{team_name}\n"
                 f"[题号]：{prob_char}\n"
@@ -989,13 +1048,14 @@ def restore_on_startup():
             meta["id_to_school"] = {str(k): v for k, v in meta["id_to_school"].items()}
         else:
             meta["id_to_school"] = {}
+        _ensure_comp_display(meta)
         
         thread = threading.Thread(target=monitor_loop, args=(url,), daemon=True)
         meta["thread"] = thread
         thread.start()
         # 显示更清晰的信息：显示原始URL（如果可能）和数据URL
         display_url = url.replace("https://cdn.xcpcio.com/data", "https://board.xcpcio.com")
-        logger.info(f"[持久化] 比赛 {meta['comp_name']} 已恢复（{display_url}），将推送给 {len(TARGET_GROUPS)} 个目标群")
+        logger.info(f"[持久化] 比赛 {_ensure_comp_display(meta)} 已恢复（{display_url}），将推送给 {len(TARGET_GROUPS)} 个目标群")
 
 # 使用启动钩子来恢复监控（此时事件循环已运行）
 @get_driver().on_startup
@@ -1028,7 +1088,12 @@ def fetch_ac_status(base_url: str, schools: List[str]) -> Dict[str, Any]:
       ]
     }
     """
-    result = {"comp_name": base_url.split("/")[-1], "teams": []}
+    comp_slug = base_url.split("/")[-1]
+    result = {
+        "comp_name": _resolve_city_display_name(comp_slug),
+        "comp_slug": comp_slug,
+        "teams": [],
+    }
     try:
         t_resp = requests.get(f"{base_url}/team.json", timeout=8, headers={"User-Agent": "Mozilla/5.0"})
         t_resp.raise_for_status()
@@ -1112,7 +1177,10 @@ async def handle_query_status(bot: Bot, event: Event, args: Message = CommandArg
     except Exception as e:
         await query_status.finish(f"查询失败：{e}")
 
-    comp_name = info.get("comp_name", base_url.split("/")[-1])
+    if info.get("comp_name"):
+        comp_name = info["comp_name"]
+    else:
+        comp_name = _resolve_city_display_name(info.get("comp_slug", base_url.split("/")[-1]))
     teams = info.get("teams", [])
 
     if not teams:
