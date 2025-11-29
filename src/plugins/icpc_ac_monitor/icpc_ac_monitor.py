@@ -31,6 +31,8 @@ BASE_DIR = Path(__file__).resolve().parent.parent.parent.parent
 CONF_FILE = BASE_DIR / "data" / "icpc_ac_monitor.json"
 # 城市拼音映射文件，用于将赛站拼音转换为中文
 CITY_MAP_FILE = BASE_DIR / "data" / "city_pinyin_map.json"
+# 学校名称映射文件，用于支持中英文名称匹配
+SCHOOL_MAP_FILE = BASE_DIR / "data" / "school_name_map.json"
 # 若 data 目录不存在则自动创建
 CONF_FILE.parent.mkdir(exist_ok=True)
 
@@ -112,6 +114,61 @@ def _load_city_mapping() -> Tuple[Dict[str, str], Dict[str, str]]:
 
 
 CITY_TO_PINYIN, PINYIN_TO_CITY = _load_city_mapping()
+
+
+def _load_school_mapping() -> Dict[str, List[str]]:
+    """加载 data/school_name_map.json，返回中文名称->英文名称列表的映射"""
+    if not SCHOOL_MAP_FILE.exists():
+        logger.info(f"未在 {SCHOOL_MAP_FILE} 找到学校名称映射，将使用精确匹配。")
+        return {}
+    try:
+        with SCHOOL_MAP_FILE.open("r", encoding="utf-8") as f:
+            data = json.load(f)
+        if not isinstance(data, dict):
+            raise ValueError("school_name_map.json 内容不是字典。")
+        result = {}
+        for zh_name, aliases in data.items():
+            zh_name = str(zh_name).strip()
+            if not zh_name:
+                continue
+            # 支持字符串或列表格式
+            if isinstance(aliases, str):
+                alias_list = [aliases.strip()]
+            elif isinstance(aliases, list):
+                alias_list = [str(a).strip() for a in aliases if a]
+            else:
+                continue
+            if alias_list:
+                result[zh_name] = alias_list
+        return result
+    except Exception as e:
+        logger.warning(f"加载学校名称映射失败：{e}")
+        return {}
+
+
+SCHOOL_NAME_MAP = _load_school_mapping()
+
+
+def _is_school_match(organization: str, schools: List[str], school_map: Dict[str, List[str]]) -> bool:
+    """
+    检查 organization 是否匹配 schools 列表中的任一学校名称
+    支持精确匹配和映射匹配（中英文名称映射）
+    """
+    if not organization:
+        return False
+    org = organization.strip()
+    
+    # 1. 精确匹配：直接检查 organization 是否在配置的学校列表中
+    if org in schools:
+        return True
+    
+    # 2. 映射匹配：检查 organization 是否匹配配置学校名称的英文别名
+    for school in schools:
+        aliases = school_map.get(school, [])
+        if org in aliases:
+            return True
+    
+    return False
 
 
 def _resolve_city_display_name(raw: str) -> str:
@@ -682,7 +739,7 @@ async def handle_start_monitor(bot: Bot, event: Event, args: Message = CommandAr
         logger.error(f"获取队伍数据失败：{e}, 内容: {resp.text[:500]}")
         await start_monitor.finish(f"获取队伍数据失败：{e}")
 
-    watched_teams = [t for t in team_list if t.get("organization") in SCHOOLS]
+    watched_teams = [t for t in team_list if _is_school_match(t.get("organization", ""), SCHOOLS, SCHOOL_NAME_MAP)]
     if not watched_teams:
         await start_monitor.finish(f"{base_url.split('/')[-1]} 中没有指定学校队伍")
 
@@ -696,7 +753,7 @@ async def handle_start_monitor(bot: Bot, event: Event, args: Message = CommandAr
         team_ids_list.append(tid)
         id_to_name_dict[tid] = t.get("name", "未知队伍")
         id_to_school_dict[tid] = t.get("organization", "未知")
-        if t.get("organization") in SCHOOLS:
+        if _is_school_match(t.get("organization", ""), SCHOOLS, SCHOOL_NAME_MAP):
             watched_ids.append(tid)
     
     comp_slug = base_url.split("/")[-1]
@@ -1118,7 +1175,7 @@ def fetch_ac_status(base_url: str, schools: List[str]) -> Dict[str, Any]:
         except Exception:
             continue
         org = t.get("organization", "")
-        if org in schools:
+        if _is_school_match(org, schools, SCHOOL_NAME_MAP):
             watched_team_ids.add(tid)
             id_to_name[tid] = t.get("name", str(tid))
 
