@@ -301,6 +301,25 @@ WRONG_STATUSES = {
 
 ACCEPT_STATUSES = {"CORRECT", "ACCEPTED", "AC", "YES"}
 
+# 未完成状态（需要等待最终结果）
+PENDING_STATUSES = {
+    "PENDING",
+    "JUDGING",
+    "RUNNING",
+    "IN_QUEUE",
+    "WAITING",
+    "COMPILING",
+    "TESTING",
+}
+
+def _is_final_status(status: str) -> bool:
+    """判断状态是否为最终状态（非 PENDING/JUDGING 等）"""
+    if not status:
+        return False
+    upper = status.upper()
+    # 如果不在未完成状态集合中，则认为是最终状态
+    return upper not in PENDING_STATUSES
+
 
 def _format_run_duration(timestamp: Any) -> str:
     """将 run.json 内的毫秒时间戳转换为 2h29min 样式"""
@@ -838,8 +857,13 @@ def monitor_loop(base_url: str):
             meta["seen_ids"] = []
             logger.info(f"初始化 seen_ids 为空（首次运行，将推送所有历史提交）")
 
+        # 初始化 pending_runs，用于跟踪 PENDING 状态的提交
+        if "pending_runs" not in meta:
+            meta["pending_runs"] = {}
+
         seen = set(meta["seen_ids"])
         seen_count_before = len(seen)
+        pending_runs = meta["pending_runs"]  # rid -> run_data 的映射
         
         # 实时获取 team.json 确保总数准确，并识别正式队伍（排除打星队伍）
         official_team_ids = None
@@ -936,6 +960,38 @@ def monitor_loop(base_url: str):
             # 已处理过的提交跳过（只检查监控队伍的提交）
             if rid in seen:
                 continue
+
+            # 获取原始状态（未美化）
+            raw_status = str(run.get("status", "UNKNOWN")).upper()
+            is_final = _is_final_status(raw_status)
+
+            # 检查是否已经在 pending_runs 中跟踪
+            if rid in pending_runs:
+                # 如果状态变成最终状态，发送消息并移除跟踪
+                if is_final:
+                    logger.info(f"提交 {rid} 状态已更新为最终状态：{raw_status}，发送消息")
+                    # 使用最新的 run 数据
+                    pending_runs.pop(rid)
+                    # 继续处理，发送消息
+                else:
+                    # 仍然是 PENDING 状态，继续跟踪，不发送
+                    logger.debug(f"提交 {rid} 仍为 PENDING 状态：{raw_status}，继续跟踪")
+                    continue
+            
+            # 如果是 PENDING 状态且不在 pending_runs 中，加入跟踪但不发送
+            if not is_final:
+                logger.info(f"检测到 PENDING 状态提交 {rid}，加入跟踪队列，状态：{raw_status}")
+                # 保存 run 的副本用于后续跟踪
+                pending_runs[rid] = {
+                    "team_id": run_team_id,
+                    "problem_id": run.get("problem_id"),
+                    "timestamp": run.get("timestamp") or run.get("time") or run.get("submission_time") or run.get("submitted_at"),
+                    "status": raw_status,
+                }
+                # 不加入 seen，不发送消息
+                continue
+
+            # 最终状态的提交，正常处理
             seen.add(rid)
 
             # problem_id 转 A/B/C...
@@ -992,10 +1048,10 @@ def monitor_loop(base_url: str):
         # 定期保存到配置文件（避免重启后重复推送）
         # 如果有新提交或seen_ids数量变化，立即保存
         if new_submissions > 0 or len(seen) != seen_count_before:
-            # 创建干净的配置副本，移除不能序列化的对象（如Thread）
+            # 创建干净的配置副本，移除不能序列化的对象（如Thread）和临时跟踪数据（pending_runs）
             clean_memory = {}
             for url, m in memory.items():
-                clean_meta = {k: v for k, v in m.items() if k != "thread"}
+                clean_meta = {k: v for k, v in m.items() if k not in ("thread", "pending_runs")}
                 clean_memory[url] = clean_meta
             
             conf["monitors"] = clean_memory
