@@ -1,9 +1,12 @@
 from nonebot import logger, get_plugin_config
 from datetime import datetime, timedelta
-from playwright.async_api import async_playwright
 from typing import Tuple
-
+from nonebot import on_command
+from nonebot.adapters.onebot.v11 import MessageSegment
+from nonebot.params import CommandArg
+from nonebot.adapters import Message
 from .config import Config
+from .table_generator import generate_table_png_bytes
 from ...common import get_icpc_db_connection, utils
 
 config = get_plugin_config(Config)
@@ -16,6 +19,7 @@ class Submission(object):
     @staticmethod
     def _get_range_sub_records(start_time, end_time):
         """获取范围内过题数据"""
+
         try:
             with get_icpc_db_connection() as db:
                 query = utils.GetSQL.read_sql_file(config.GET_RANGE_SUB_RECORDS)
@@ -24,7 +28,29 @@ class Submission(object):
         except Exception as e:
             logger.error(f"查询过题记录时出错：{e}")
             return []
-        
+
+    # @staticmethod
+    # def _get_range_sub_records(start_time, end_time):
+    #     # --------------- 临时假数据 ---------------
+    #     return [
+    #         {
+    #             "real_name": "test1",
+    #             "cf_count": 5,
+    #             "luogu_count": 3,
+    #             "all_count": 8,
+    #             "role_id": 1,
+    #             "school": "GXU"
+    #         },
+    #         {
+    #             "real_name": "test2",
+    #             "cf_count": 2,
+    #             "luogu_count": 4,
+    #             "all_count": 6,
+    #             "role_id": 2,
+    #             "school": "GXU"
+    #         }
+    #     ]
+    # #     # --------------- 临时假数据 ---------------
     @classmethod
     def get_records_msg(cls, upstream_days: int = 7):
         """获取cf过题消息"""
@@ -93,100 +119,41 @@ class Submission(object):
         #     logger.debug(f"表格图片存放目录已创建：{output_dir}")
         # output_path = os.path.join(output_dir, output_filename)
 
-        # 3. 构建HTML表格（纯内存操作，无需异步）
+        # 3. 组装表头与行数据
         headers = ["排名", "用户名", "CF题数", "洛谷题数", "总题数", "身份", "学校"]
-        # 给数据添加排名
+        rows = []
         for i, item in enumerate(data, 1):
             item["rank"] = i
-            # 根据role_id映射身份名称
             role_map = {0: "管理员", 1: "现役", 2: "退役", 3: "预备役"}
             item["role_name"] = role_map.get(item.get("role_id", 0), "未知")
+            rows.append([
+                str(item['rank']),
+                item['real_name'],
+                str(item['cf_count']),
+                str(item['luogu_count']),
+                str(item['all_count']),
+                item['role_name'],
+                item['school'].strip()
+            ])
 
-        html_content = """
-        <!DOCTYPE html>
-        <html>
-        <head>
-            <meta charset="UTF-8">
-            <style>
-                * { margin: 0; padding: 0; box-sizing: border-box; }
-                body { font-family: "WenQuanYi Micro Hei", "Heiti TC", "Microsoft YaHei", Arial, sans-serif; margin: 0; padding: 20px; background-color: #f5f5f5; display: flex; justify-content: center; align-items: flex-start; }
-                .container { background-color: white; border-radius: 10px; box-shadow: 0 4px 12px rgba(0,0,0,0.1); overflow: hidden; width: 980px; margin: 0 auto; }
-                .header { background-color: #2c3e50; color: white; padding: 15px; text-align: center; font-size: 20px; font-weight: bold; }
-                table { width: 100%; border-collapse: collapse; table-layout: fixed; }
-                th { background-color: #3498db; color: white; padding: 12px 10px; text-align: center; font-weight: bold; border: 1px solid #2980b9; }
-                td { padding: 12px 10px; border: 1px solid #e0e0e0; text-align: center !important; vertical-align: middle; }
-                tr:nth-child(even) { background-color: #f8f9fa; }
-                tr:hover { background-color: #e8f4fc; }
-                .rank { font-weight: bold; color: #2c3e50; width: 60px; }
-                .real_name { text-align: center !important; width: 120px; font-weight: bold; }
-                .school { text-align: center !important; width: 180px; }
-                .count { font-weight: bold; color: #e74c3c; width: 80px; }
-                .total { font-weight: bold; color: #27ae60; width: 80px; }
-                .role { text-align: center !important; width: 90px; font-weight: bold; color: #8e44ad; }
-            </style>
-        </head>
-        """
-        html_content += f"""
-        <body>
-            <div class="container">
-                <div class="header">前 {upstream_days} 日过题数排行榜</div>
-                <table>
-                    <thead><tr>
-        """
-        # 添加表头
-        for header in headers:
-            html_content += f"<th>{header}</th>"
-        html_content += "</tr></thead><tbody>"
-        # 添加数据行
-        for row in data:
-            html_content += f"""
-            <tr>
-                <td class="rank">{row['rank']}</td>
-                <td class="real_name">{row['real_name']}</td>
-                <td class="count">{row['cf_count']}</td>
-                <td class="count">{row['luogu_count']}</td>
-                <td class="total">{row['all_count']}</td>
-                <td class="role">{row['role_name']}</td>
-                <td class="school">{row['school'].strip()}</td>
-            </tr>
-            """
-        html_content += """
-                    </tbody>
-                </table>
-            </div>
-        </body>
-        </html>
-        """
-
-        # 4. 异步生成图片（用playwright替换html2image）
-        image_width = 1030  # 增加表格宽度以适应新列
-        base_height = 200  # 基础高度（表头+标题）
-        row_height = 45    # 每行高度
-        image_height = min(base_height + len(data) * row_height, 10000)  # 限制最大高度
-
-        # 异步截图时的优化
+        # 4. 用 C++ 生成 PNG
         try:
-            # 异步启动playwright浏览器（headless=True 无界面模式）
-            async with async_playwright() as p:
-                browser = await p.chromium.launch(headless=True, args=["--no-sandbox", "--disable-gpu", "--font-render-hinting=medium"])  # 增加字体渲染参数
-                page = await browser.new_page()
-                # 设置页面大小，增加一些边距
-                await page.set_viewport_size({"width": 1000, "height": image_height + 50})
-                # 异步设置HTML内容（等待页面渲染）
-                await page.set_content(html_content, wait_until="networkidle")  # 等待网络空闲，确保CSS加载完成
-                # 等待额外时间确保字体完全渲染
-                await page.wait_for_timeout(1000)
-                # 获取容器元素的边界框，确保精确截图
-                container = await page.query_selector(".container")
-                if container:
-                    screenshot_bytes: bytes = await container.screenshot()
-                else:
-                    screenshot_bytes: bytes = await page.screenshot(full_page=True)
-                
-                await browser.close()  # 异步关闭浏览器
-
-            logger.success(f"过题表格图片已生成")
-            return (True, "过题表格生成成功", screenshot_bytes)
+            png_bytes = await generate_table_png_bytes(headers, rows)
+            logger.success("过题表格图片已生成")
+            return (True, "过题表格生成成功", png_bytes)
         except Exception as e:
             logger.error(f"表格图片生成失败：{str(e)}", exc_info=True)
             return (False, "表格图片生成失败", None)
+
+
+
+test_table = on_command("测表格", priority=5, block=True)
+
+@test_table.handle()
+async def _(arg: Message = CommandArg()):
+    logger.debug("=== 测表格命令已触发 ===")
+    days = int(arg.extract_plain_text()) if arg else 7
+    ok, msg, png_bytes = await Submission.create_ranking_table(upstream_days=days)
+    if not ok:
+        await test_table.finish(msg)
+    await test_table.finish(MessageSegment.image(png_bytes))
