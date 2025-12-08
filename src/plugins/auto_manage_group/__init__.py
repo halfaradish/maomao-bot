@@ -170,33 +170,39 @@ async def context_erase_messages(bot: Bot, user_id: int, group_id: int, base_tim
         # 批量撤回消息
         success_count = 0
         fail_count = 0
+        successful_erased_messages = []  # 存储成功撤回的消息
+        failed_erased_messages = []  # 存储撤回失败的消息
         
         # 创建异步撤回函数
         async def delete_message(msg):
             try:
                 await bot.delete_msg(message_id=msg.message_id)
-                return {"status": "success", "message_id": msg.message_id}
+                return {"status": "success", "message_id": msg.message_id, "msg": msg}
             except ActionFailed as e:
-                return {"status": "failed", "message_id": msg.message_id, "error": e}
+                return {"status": "failed", "message_id": msg.message_id, "error": e, "msg": msg}
             except Exception as e:
-                return {"status": "error", "message_id": msg.message_id, "error": e}
+                return {"status": "error", "message_id": msg.message_id, "error": e, "msg": msg}
         
-        # 创建任务列表
-        tasks = []
+        # 按顺序执行撤回任务，每次撤回前添加间隔延迟
+        results = []
         for msg in messages:
-            tasks.append(delete_message(msg))
-        
-        # 并发执行所有撤回任务
-        results = await asyncio.gather(*tasks, return_exceptions=True)
+            # 在每次撤回前添加配置的间隔延迟
+            await asyncio.sleep(config.context_erase_retry_delay)
+            
+            # 执行撤回任务
+            result = await delete_message(msg)
+            results.append(result)
         
         # 统计结果
         for result in results:
             if isinstance(result, dict):
                 if result["status"] == "success":
                     success_count += 1
+                    successful_erased_messages.append(result["msg"])  # 记录成功撤回的消息
                     logger.info(f"成功撤回消息: {result['message_id']}")
                 else:
                     fail_count += 1
+                    failed_erased_messages.append(result["msg"])  # 记录撤回失败的消息
                     if result["status"] == "failed":
                         logger.warning(f"撤回消息失败: {result['message_id']}, 错误: {result.get('error', 'Unknown')}")
                     else:
@@ -213,7 +219,12 @@ async def context_erase_messages(bot: Bot, user_id: int, group_id: int, base_tim
                 "message_id": msg.message_id,
                 "time": msg.time,
                 "content": msg.raw_message
-            } for msg in messages]
+            } for msg in successful_erased_messages],
+            "failed_messages": [{
+                "message_id": msg.message_id,
+                "time": msg.time,
+                "content": msg.raw_message
+            } for msg in failed_erased_messages]
         }
         
     except Exception as e:
@@ -265,6 +276,13 @@ async def _(bot: Bot, event: GroupMessageEvent):
             if erase_result["messages"]:
                 remind_msgs.append("被撤回的消息内容：")
                 for i, msg_info in enumerate(erase_result["messages"], 1):
+                    msg_time = datetime.fromtimestamp(msg_info["time"]).strftime('%Y-%m-%d %H:%M:%S')
+                    remind_msgs.append(f"{i}. [{msg_time}] {msg_info['content']}")
+            
+            # 展示撤回失败的消息内容
+            if erase_result.get("failed_messages"):
+                remind_msgs.append("撤回失败的消息内容：")
+                for i, msg_info in enumerate(erase_result["failed_messages"], 1):
                     msg_time = datetime.fromtimestamp(msg_info["time"]).strftime('%Y-%m-%d %H:%M:%S')
                     remind_msgs.append(f"{i}. [{msg_time}] {msg_info['content']}")
         else:
