@@ -162,15 +162,6 @@ async def _(bot: Bot, event: Union[GroupMessageEvent, PrivateMessageEvent]):
                     logger.debug(f"bot 在群组 {event.group_id} 中没有管理权限，无法撤回消息")
             except Exception as e:
                 logger.debug(f"检查权限或撤回消息时出错: {e}")
-            
-            # 无论如何都发送提示消息，优先显示群名片，如果没有则显示群昵称（QQ名）
-            try:
-                if source_user_name:
-                    await clipboard.send(f"图片剪贴板的消息由 {source_user_name} 提供")
-                else:
-                    await clipboard.send("图片剪贴板的消息已添加")
-            except Exception as e:
-                logger.warning(f"发送提示消息失败: {e}")
 
         return
     except FinishedException:
