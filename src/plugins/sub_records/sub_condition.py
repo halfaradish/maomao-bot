@@ -8,7 +8,7 @@ from nonebot.adapters import Message
 from .config import Config
 from .table_generator import generate_table_png_bytes
 from ...common import get_icpc_db_connection, utils
-
+import time
 config = get_plugin_config(Config)
 
 class Submission(object):
@@ -70,27 +70,31 @@ class Submission(object):
         # 去掉最后一个换行符
         result_msg = result_msg.rstrip('\n')
         return result_msg
-    
+
     @classmethod
     async def create_ranking_table(
-        cls,
-        upstream_days: int = 7,
-        needed_roles: list = [],
-        needed_schools: list = [],
-        needed_users: list = []
+            cls,
+            upstream_days: int = 7,
+            needed_roles: list = [],
+            needed_schools: list = [],
+            needed_users: list = []
     ) -> Tuple[bool, str, bytes]:
-        """
-        将数据转化为表格图片
-        """
+
+        # 查询范围
         end_time: datetime = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
         start_time: datetime = end_time - timedelta(days=upstream_days)
-        
-        data = cls._get_range_sub_records(
-            start_time=start_time,
-            end_time=end_time
-        )
+
+        # 计时改为独立变量
+        _t0 = time.perf_counter()
+
+        data = cls._get_range_sub_records(start_time=start_time, end_time=end_time)
+
+        _t1 = time.perf_counter()
+        logger.info(f"获取数据耗时: {_t1 - _t0:.4f} 秒")  # ← 替换 print
+
         if not data:
             return (False, f"前 {upstream_days} 日没有数据", None)
+
         # 过滤数据
         # 过滤用户名
         if needed_users:
