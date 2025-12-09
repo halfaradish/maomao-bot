@@ -28,7 +28,7 @@ __plugin_meta__ = PluginMetadata(
     config=Config,
 )
 
-config = get_plugin_config(Config)
+config: Config = get_plugin_config(Config)
 
 def exact_command(cmds: List[str]):
     async def _rule(args: Message = CommandArg()):
@@ -48,7 +48,7 @@ clipboard = on_command(
 
 async def text_to_image_bytes(text_msg: str) -> Tuple[bool, Union[str, BinaryIO]]:
     # 请求api生成图片
-    logger.info("正在请求api获取图片")
+    logger.info(f"正在请求API获取图片，URL: {config.clip_post_url}, 超时: {config.clip_post_timeout}秒")
     try:
         async with aiohttp.ClientSession() as session:
             async with session.post(
@@ -68,18 +68,22 @@ async def text_to_image_bytes(text_msg: str) -> Tuple[bool, Union[str, BinaryIO]
                     try:
                         error_data = await res.json()
                         logger.error(f"图片生成失败：{error_data.get('error', '未知错误')}")
-                        return (False, f"图片生成失败")
-                    except:
+                        return (False, "图片生成失败")
+                    except Exception:
                         logger.error(f"图片生成失败，HTTP状态码：{res.status}")
-                        return (False, f"图片生成失败")
+                        return (False, "图片生成失败")
     except aiohttp.ClientError as e:
-        logger.error(f"网络请求异常：{e}")
-        return (False, f"网络请求异常")
+        logger.error(f"网络请求异常：{type(e).__name__}: {e}")
+        return (False, f"网络请求异常：{type(e).__name__}")
 
 @clipboard.handle()
 async def _(bot: Bot, event: Union[GroupMessageEvent, PrivateMessageEvent]):
     try:
+        event_type = "群聊" if isinstance(event, GroupMessageEvent) else "私聊"
+        logger.info(f"收到{event_type}cv命令请求，用户ID: {event.sender.user_id}")
+        
         if not event.reply:
+            logger.info("未检测到回复消息，返回默认提示")
             await clipboard.finish(config.DEFAULT_MSG)
 
         # 将消息字符串转化为 Message 对象
@@ -93,18 +97,22 @@ async def _(bot: Bot, event: Union[GroupMessageEvent, PrivateMessageEvent]):
         success, res = await text_to_image_bytes(text_content.replace("\\", "\\\\"))
         if not success:
             await clipboard.finish(res)
-        logger.debug(f"图片生成成功")
+        logger.debug("图片生成成功")
 
-        img_msg = MessageSegment.image(res)
         # 发送图片
         if isinstance(event, GroupMessageEvent):
             logger.debug(f"正在发送图片 -> 群聊 {event.group_id}")
         else:
             logger.debug(f"正在发送图片 -> 私聊 {event.sender.user_id}")
         
+        message = Message.template("图片文本来自 {}\ncv命令由 {} 触发\n{}").format(
+            MessageSegment.at(user_id=event.reply.sender.user_id),
+            MessageSegment.at(user_id=event.sender.user_id),
+            MessageSegment.image(res)
+        )
         try:
-            await clipboard.send(img_msg)
-            logger.debug(f"图片发送成功")
+            await clipboard.send(message)
+            logger.debug("图片发送成功")
         except Exception as e:
             # 图片发送失败，这是真正的错误
             logger.error(f"发送图片失败: {e}")
