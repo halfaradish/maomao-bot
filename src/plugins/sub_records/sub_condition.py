@@ -8,10 +8,16 @@ from nonebot.adapters import Message
 from .config import Config
 from .table_generator import generate_table_png_bytes
 from ...common import get_icpc_db_connection, utils
-import time
-config = get_plugin_config(Config)
 
+import time
+
+config = get_plugin_config(Config)
+import time
+t0 = time.perf_counter()
+t1 = time.perf_counter()
+logger.info(f"① 获取数据耗时：{(t1 - t0) * 1000:.2f} ms")
 class Submission(object):
+
     """
     获取过题数据
     """
@@ -139,6 +145,7 @@ class Submission(object):
                 item['role_name'],
                 item['school'].strip()
             ])
+        t1=time.perf_counter()
 
         # 4. 用 C++ 生成 PNG
         try:

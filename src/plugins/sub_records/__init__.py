@@ -15,6 +15,8 @@ from nonebot_plugin_apscheduler import scheduler
 from datetime import datetime
 from typing import Union
 import platform
+import time
+
 
 # ========= Linux/DLL 适配 =========
 # Windows -> 使用 DLL
@@ -90,6 +92,8 @@ async def _():
 @cf_sub_command.handle()
 async def _(bot: Bot, event: Union[GroupMessageEvent, PrivateMessageEvent], args: Message = CommandArg()):
     try:
+        t0 = time.perf_counter()
+        recv_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         raw = args.extract_plain_text().strip()
         params = raw.split() if raw else []
 
@@ -109,7 +113,6 @@ async def _(bot: Bot, event: Union[GroupMessageEvent, PrivateMessageEvent], args
             "person_users": [],
             "group_users": []
         })
-
         # 权限验证
         if str(event.group_id) not in data["group_users"] and str(event.user_id) not in data["person_users"]:
             logger.warning(f"权限不足 user={event.user_id}")
@@ -144,10 +147,28 @@ async def _(bot: Bot, event: Union[GroupMessageEvent, PrivateMessageEvent], args
 
         submission = Submission()
         success, msg, pic = await submission.create_ranking_table(**filtered)
+        t1 = time.perf_counter()
+        logger.info(f"总耗时：{(t1 - t0)*1000:.2f} ms")
 
-        if not success: await cf_sub_command.finish(msg)
-        if pic: await cf_sub_command.finish(MessageSegment.image(pic))
-        await cf_sub_command.finish("图片生成失败，请稍后重试")
+        if not success:
+            await cf_sub_command.send(msg)  # <<<<< 不能 finish，换成 send
+            return
+        send_img_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        # 如果生成了图片 → 先发送图
+        if pic:
+            # --- 第一条：图片 ---
+            await cf_sub_command.send(MessageSegment.image(pic))
+
+            # --- 第二条：Bot收到消息的北京时间 ---
+            await cf_sub_command.send(f"[Bot收到消息时间] 北京时间：{recv_time}")
+
+            # --- 第三条：Bot发送图片时的时间 ---
+            await cf_sub_command.finish(
+                f"[Bot发送图片时间] 北京时间：{send_img_time}\n"
+                f"(总处理用时：{(t1 - t0) * 1000:.0f} ms)"
+            )
+        else:
+            await cf_sub_command.finish("图片生成失败，请稍后重试")
 
     except FinishedException:
         raise
