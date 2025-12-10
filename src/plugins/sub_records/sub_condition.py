@@ -12,7 +12,7 @@ from ...common import get_icpc_db_connection, utils
 import time
 
 config = get_plugin_config(Config)
-import time
+
 t0 = time.perf_counter()
 t1 = time.perf_counter()
 logger.info(f"① 获取数据耗时：{(t1 - t0) * 1000:.2f} ms")
@@ -90,36 +90,32 @@ class Submission(object):
         end_time: datetime = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
         start_time: datetime = end_time - timedelta(days=upstream_days)
 
-        # 计时改为独立变量
-        _t0 = time.perf_counter()
-
-        data = cls._get_range_sub_records(start_time=start_time, end_time=end_time)
-
-        _t1 = time.perf_counter()
-        logger.info(f"获取数据耗时: {_t1 - _t0:.4f} 秒")  # ← 替换 print
+        with timer("数据读取"):
+            data = cls._get_range_sub_records(start_time=start_time, end_time=end_time)
 
         if not data:
             return (False, f"前 {upstream_days} 日没有数据", None)
 
-        # 过滤数据
-        # 过滤用户名
-        if needed_users:
-            new_data = [item for item in data if item.get('real_name', '') in needed_users]
-            data = new_data
-        # 过滤学校
-        if needed_schools:
-            new_data = [item for item in data if item.get('school', '') in needed_schools]
-            data = new_data
-        # 过滤身份
-        if needed_roles:
-            needed_role_ids: list = []
-            for role_name, role_id in config.sub_record_roles_dict.items():
-                if role_name in needed_roles:
-                    needed_role_ids.append(role_id)
-            new_data = [item for item in data if item.get('role_id', -1) in needed_role_ids]
-            data = new_data
+        with timer("数据过滤"):
+            # 过滤数据
+            # 过滤用户名
+            if needed_users:
+                new_data = [item for item in data if item.get('real_name', '') in needed_users]
+                data = new_data
+            # 过滤学校
+            if needed_schools:
+                new_data = [item for item in data if item.get('school', '') in needed_schools]
+                data = new_data
+            # 过滤身份
+            if needed_roles:
+                needed_role_ids: list = []
+                for role_name, role_id in config.sub_record_roles_dict.items():
+                    if role_name in needed_roles:
+                        needed_role_ids.append(role_id)
+                new_data = [item for item in data if item.get('role_id', -1) in needed_role_ids]
+                data = new_data
 
-        logger.info(data)
+        # logger.info(data)
 
         # 创建存放路径
         # output_dir = os.path.abspath(DiTingData.SUB_RANKING_DIR)
@@ -149,7 +145,8 @@ class Submission(object):
 
         # 4. 用 C++ 生成 PNG
         try:
-            png_bytes = await generate_table_png_bytes(headers, rows)
+            with timer("cpp图片生成"):
+                png_bytes = await generate_table_png_bytes(headers, rows)
             logger.success("过题表格图片已生成")
             return (True, "过题表格生成成功", png_bytes)
         except Exception as e:

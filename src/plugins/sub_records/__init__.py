@@ -9,7 +9,6 @@ from nonebot.adapters.onebot.v11 import(
     GroupMessageEvent,
     MessageSegment
 )
-require("nonebot_plugin_apscheduler")
 from nonebot_plugin_apscheduler import scheduler
 
 from datetime import datetime
@@ -17,6 +16,13 @@ from typing import Union
 import platform
 import time
 
+
+from ...common import JsonUtils
+from .config import Config
+from .sub_condition import Submission
+from ...common.timer import timer, timed_section
+
+require("nonebot_plugin_apscheduler")
 
 # ========= Linux/DLL 适配 =========
 # Windows -> 使用 DLL
@@ -27,11 +33,6 @@ else:
     LIB_MODE = "SO 模式运行（Linux）"
 
 logger.info(f"[sub_records] 当前系统加载方式：{LIB_MODE}")
-
-# ========= 导入业务 =========
-from ...common import JsonUtils
-from .config import Config
-from .sub_condition import Submission
 
 
 __plugin_meta__ = PluginMetadata(
@@ -89,6 +90,7 @@ async def _():
 
 
 # ========= 指令执行 =========
+@timed_section("过题命令处理")
 @cf_sub_command.handle()
 async def _(bot: Bot, event: Union[GroupMessageEvent, PrivateMessageEvent], args: Message = CommandArg()):
     try:
@@ -114,36 +116,38 @@ async def _(bot: Bot, event: Union[GroupMessageEvent, PrivateMessageEvent], args
             "group_users": []
         })
         # 权限验证
-        if str(event.group_id) not in data["group_users"] and str(event.user_id) not in data["person_users"]:
-            logger.warning(f"权限不足 user={event.user_id}")
-            await cf_sub_command.finish("你没有权限使用 '过题' 功能")
+        with timer("权限验证"):
+            if str(event.group_id) not in data["group_users"] and str(event.user_id) not in data["person_users"]:
+                logger.warning(f"权限不足 user={event.user_id}")
+                await cf_sub_command.finish("你没有权限使用 '过题' 功能")
 
         # 解析筛选参数
         roles = data["roles_name"]
         schools = data["school"]
 
-        upstream_days = None
-        need_roles = []
-        need_schools = []
-        need_users = []
+        with timer("消息文本二次处理"):
+            upstream_days = None
+            need_roles = []
+            need_schools = []
+            need_users = []
 
-        for p in params:
-            if p.isdigit(): upstream_days = int(p)
-            elif p in roles: need_roles.append(p)
-            elif p in schools: need_schools.append(p)
-            else: need_users.append(p)
+            for p in params:
+                if p.isdigit(): upstream_days = int(p)
+                elif p in roles: need_roles.append(p)
+                elif p in schools: need_schools.append(p)
+                else: need_users.append(p)
 
-        if upstream_days:
-            ok, msg = is_valid_gap_time(upstream_days)
-            if not ok: await cf_sub_command.finish(msg)
+            if upstream_days:
+                ok, msg = is_valid_gap_time(upstream_days)
+                if not ok: await cf_sub_command.finish(msg)
 
-        query = {
-            "upstream_days": upstream_days,
-            "needed_roles": need_roles,
-            "needed_schools": need_schools,
-            "needed_users": need_users
-        }
-        filtered = {k: v for k, v in query.items() if v}
+            query = {
+                "upstream_days": upstream_days,
+                "needed_roles": need_roles,
+                "needed_schools": need_schools,
+                "needed_users": need_users
+            }
+            filtered = {k: v for k, v in query.items() if v}
 
         submission = Submission()
         success, msg, pic = await submission.create_ranking_table(**filtered)
