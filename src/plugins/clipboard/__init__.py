@@ -41,7 +41,7 @@ def exact_command(cmds: List[str]):
 
 
 clipboard = on_command(
-    cmd="cvv",
+    cmd=config.clip_cmd,
     aliases={"剪切板"},
     rule=exact_command(["cmd", "剪切板"]),
     priority=config.clip_priority

@@ -3,6 +3,9 @@ from pydantic import BaseModel
 
 class Config(BaseModel):
     """Plugin Config Here"""
+
+    clip_cmd: str = "cv"
+
     clip_priority: int
 
     clip_post_url: str
