@@ -4,6 +4,7 @@ from nonebot import (
     logger
 )
 from nonebot.plugin import PluginMetadata
+from nonebot.matcher import Matcher
 from nonebot.adapters.onebot.v11 import (
     GroupMessageEvent,
     Message,
@@ -40,19 +41,26 @@ def exact_command(cmds: List[str]):
 
 
 clipboard = on_command(
-    cmd="cv",
+    cmd="cvv",
     aliases={"剪切板"},
     rule=exact_command(["cmd", "剪切板"]),
     priority=config.clip_priority
 )
 
-async def text_to_image_bytes(text_msg: str) -> Tuple[bool, Union[str, BinaryIO]]:
+clipboard_md = on_command(
+    cmd="cvmd",
+    aliases={"markdown剪切板"},
+    rule=exact_command(["cvmd", "markdown剪切板"]),
+    priority=config.clip_priority
+)
+
+async def text_to_image_bytes(text_msg: str, api_url: str) -> Tuple[bool, Union[str, BinaryIO]]:
     # 请求api生成图片
-    logger.info(f"正在请求API获取图片，URL: {config.clip_post_url}, 超时: {config.clip_post_timeout}秒")
+    logger.info(f"正在请求API获取图片，URL: {api_url}, 超时: {config.clip_post_timeout}秒")
     try:
         async with aiohttp.ClientSession() as session:
             async with session.post(
-                url=config.clip_post_url,
+                url=api_url,
                 json={'content': text_msg},
                 timeout=config.clip_post_timeout,
             ) as res:
@@ -77,26 +85,68 @@ async def text_to_image_bytes(text_msg: str) -> Tuple[bool, Union[str, BinaryIO]
         return (False, f"网络请求异常：{type(e).__name__}")
 
 @clipboard.handle()
-async def _(bot: Bot, event: Union[GroupMessageEvent, PrivateMessageEvent]):
+@clipboard_md.handle()
+async def _(bot: Bot, event: Union[GroupMessageEvent, PrivateMessageEvent], matcher: Matcher):
     try:
         event_type = "群聊" if isinstance(event, GroupMessageEvent) else "私聊"
-        logger.info(f"收到{event_type}cv命令请求，用户ID: {event.sender.user_id}")
+        
+        # 判断是哪个命令触发的
+        cmd = event.get_plaintext().strip().lower()
+        is_markdown = "cvmd" in cmd or "markdown" in cmd
+        
+        logger.info(f"收到{event_type}{'Markdown' if is_markdown else '普通'}剪切板命令请求，用户ID: {event.sender.user_id}")
         
         if not event.reply:
             logger.info("未检测到回复消息，返回默认提示")
-            await clipboard.finish(config.DEFAULT_MSG)
+            await matcher.finish(config.DEFAULT_MSG)
 
         # 将消息字符串转化为 Message 对象
         message: Message = Message(event.reply.message)
-        text_content = message.extract_plain_text()
+        
+        text_content = ""
+        
+        # 检查是否包含文件 (仅 cvmd 支持)
+        file_segments = [seg for seg in message if seg.type == "file"]
+        is_file_msg = False
+        if is_markdown and file_segments:
+            is_file_msg = True
+            file_seg = file_segments[0]
+            file_url = file_seg.data.get("url")
+            file_name = file_seg.data.get("file") or "unknown"
+            
+            if not file_url:
+                await matcher.finish("无法获取文件下载链接，请确保文件未过期。")
+            
+            logger.info(f"检测到引用文件: {file_name}, URL: {file_url}")
+            
+            try:
+                async with aiohttp.ClientSession() as session:
+                    async with session.get(file_url) as resp:
+                        if resp.status != 200:
+                            await matcher.finish(f"文件下载失败，状态码: {resp.status}")
+                        
+                        file_bytes = await resp.read()
+                        try:
+                            text_content = file_bytes.decode("utf-8")
+                        except UnicodeDecodeError:
+                            try:
+                                text_content = file_bytes.decode("gbk")
+                            except UnicodeDecodeError:
+                                await matcher.finish("文件编码格式不支持，仅支持 UTF-8 或 GBK 编码的文本文件。")
+            except Exception as e:
+                logger.error(f"下载或读取文件失败: {e}")
+                await matcher.finish(f"读取文件失败: {e}")
+        else:
+            text_content = message.extract_plain_text()
 
         if not text_content.strip():
-            await clipboard.finish("引用的消息不包含有效文本")
+            await matcher.finish("引用的消息不包含有效文本")
 
         # 获取图片
-        success, res = await text_to_image_bytes(text_content.replace("\\", "\\\\"))
+        target_url = config.clip_md_post_url if is_markdown else config.clip_post_url
+        success, res = await text_to_image_bytes(text_content.replace("\\", "\\\\"), target_url)
         if not success:
-            await clipboard.finish(res)
+            await matcher.finish(res)
         logger.debug("图片生成成功")
 
         # 发送图片
@@ -105,18 +155,19 @@ async def _(bot: Bot, event: Union[GroupMessageEvent, PrivateMessageEvent]):
         else:
             logger.debug(f"正在发送图片 -> 私聊 {event.sender.user_id}")
         
-        message = Message.template("图片文本来自 {}\ncv命令由 {} 触发\n{}").format(
+        message = Message.template("图片文本来自 {}\n{}命令由 {} 触发\n{}").format(
             MessageSegment.at(user_id=event.reply.sender.user_id),
+            "cvmd" if is_markdown else "cv",
             MessageSegment.at(user_id=event.sender.user_id),
             MessageSegment.image(res)
         )
         try:
-            await clipboard.send(message)
+            await matcher.send(message)
             logger.debug("图片发送成功")
         except Exception as e:
             # 图片发送失败，这是真正的错误
             logger.error(f"发送图片失败: {e}")
-            await clipboard.finish("发送图片失败")
+            await matcher.finish("发送图片失败")
             return
 
         # 只在群聊中执行权限检查和消息删除操作
@@ -150,7 +201,9 @@ async def _(bot: Bot, event: Union[GroupMessageEvent, PrivateMessageEvent]):
                 if bot_role in ['owner', 'admin']:
                     # 如果bot有管理员权限，尝试删除原消息和当前命令消息
                     try:
-                        await bot.delete_msg(message_id=event.reply.message_id)
+                        # 如果是文件消息，则不撤回
+                        if not is_file_msg:
+                            await bot.delete_msg(message_id=event.reply.message_id)
                     except Exception as e:
                         logger.debug(f"撤回被回复消息失败: {e}")
                     
