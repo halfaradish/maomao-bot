@@ -75,33 +75,32 @@ async def create_forward_message(bot: Bot, event: Event, text: str, bot_name: st
 
 def get_todo_help_text():
     """获取todo帮助文本"""
-    return """[todo]命令使用详细
-[例子]:
-/todo ls (列出未完成的todo)
-/todo done (列出已完成的todo)
-/todo add 时间 内容 (添加个人todo)
-/todo 我 时间 内容 (@自己的提醒，如：todo 我 2分钟后 吃饭 或 todo 我 现在 提醒内容)
-/todo 群提醒 时间 内容 (群组@全体成员提醒，如：todo 群提醒 现在 提醒内容)
-/todo @用户 时间 内容 (创建@指定用户的提醒，如：todo @用户 现在 提醒内容)
-/todo 时间 内容 (普通提醒，如：todo 现在 提醒我喝水 或 todo 2分钟后 提醒我休息)
-/todo cancel ID (取消todo)
-/todo complete ID (完成todo)
-/todo delete ID (删除todo)
-/todo info ID (查看todo详情)
-/todo time (显示支持的时间格式)
+    return """[todo] 命令简表
+— 创建提醒 —
+/todo 时间 内容                 (默认个人)
+/todo add 时间 内容             (个人)
+/todo 我 时间 内容              (@自己)
+/todo @用户 时间 内容           (@指定用户)
+/todo 群提醒 时间 内容          (@全体成员)
 
-时间格式示例：
-• 30分钟后 提醒我休息
-• 5小时40分 当天会议
-• 周一9点 周会
-• 每天9点 每日打卡（重复提醒）
+— 查询/管理 —
+/todo ls                        (未完成列表)
+/todo done                      (已完成列表)
+/todo info ID                   (详情)
+/todo cancel ID                 (取消)
+/todo complete ID               (标记完成)
+/todo delete ID                 (删除)
+/todo time                      (查看时间格式示例)
 
-使用说明：
-• 不指定用户时，默认为个人提醒
-• 使用"我"命令会@自己（如：todo 我 2分钟后 吃饭 或 todo 我 现在 提醒内容）
-• 使用"现在"、"立刻"、"立即"、"now"作为时间会立即执行提醒（如：todo 现在 提醒我喝水）
-• 使用"群提醒"命令会@全体成员（如：todo 群提醒 现在 提醒内容）
-• 使用 "@用户 时间 内容" 需要加 todo 前缀，如：todo @某人 现在 提醒内容 或 todo @某人 2分钟后 开会"""
+— 时间输入示例 —
+明天 16:30 | 后天 09:00 | 大后天 三点
+下周三 18:00 | 每天 09:00 | 每周三 09:00
+工作日 10:00 | 30分钟后 | 2小时后
+
+提示：
+- 未写用户时默认个人提醒；“我”= @自己；“群提醒”= @全体。
+- 立刻/现在/立即/now 会立即提醒。
+- 支持提前提醒：/todo 时间 -30min 内容"""
 
 # 使用插件启动钩子
 from nonebot import get_driver
