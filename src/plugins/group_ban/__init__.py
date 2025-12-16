@@ -16,6 +16,7 @@ from nonebot.exception import FinishedException
 from nonebot.log import logger
 from nonebot.params import CommandArg
 from nonebot.plugin import PluginMetadata
+from nonebot.rule import Rule
 
 from ...common import JsonUtils
 
@@ -94,9 +95,38 @@ def _parse_duration(arg_text: str) -> int | None:
     return seconds if seconds > 0 else None
 
 
-ban_cmd = on_command("ban", priority=10, block=True)
-unban_cmd = on_command("unban", priority=10, block=True)
-kick_cmd = on_command("kick", priority=10, block=True)
+# 定义规则：确保命令是独立的单词（避免误触发，如 banana 不会触发 ban）
+def _is_word_boundary_command(cmd: str):
+    """确保命令是独立的单词，避免误触发（如 banana 不会触发 ban）"""
+    async def _rule(event: GroupMessageEvent) -> bool:
+        if not isinstance(event, GroupMessageEvent):
+            return False
+        # 获取消息文本
+        msg_text = event.get_plaintext().strip()
+        
+        # 检查消息是否以命令开头
+        if not msg_text.lower().startswith(cmd.lower()):
+            return False
+        
+        # 如果命令长度等于消息长度，说明是完整匹配
+        if len(msg_text) == len(cmd):
+            return True
+        
+        # 检查命令后的字符：必须是空格、标点符号或非字母数字字符
+        next_char = msg_text[len(cmd)]
+        # 允许的字符：空格、制表符、换行符、@符号、中文标点等
+        if next_char in (' ', '\t', '\n', '@', '，', '。', '！', '？', '、', '：', '；'):
+            return True
+        # 如果是非字母数字字符，也允许（如标点符号）
+        if not next_char.isalnum():
+            return True
+            
+        return False
+    return Rule(_rule)
+
+ban_cmd = on_command("ban", rule=_is_word_boundary_command("ban"), priority=10, block=True)
+unban_cmd = on_command("unban", rule=_is_word_boundary_command("unban"), priority=10, block=True)
+kick_cmd = on_command("kick", rule=_is_word_boundary_command("kick"), priority=10, block=True)
 
 
 @ban_cmd.handle()
