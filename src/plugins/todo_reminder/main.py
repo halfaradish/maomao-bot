@@ -90,12 +90,6 @@ def get_todo_help_text():
 /todo cancel ID                 (取消)
 /todo complete ID               (标记完成)
 /todo delete ID                 (删除)
-/todo time                      (查看时间格式示例)
-
-— 时间输入示例 —
-明天 16:30 | 后天 09:00 | 大后天 三点
-下周三 18:00 | 每天 09:00 | 每周三 09:00
-工作日 10:00 | 30分钟后 | 2小时后
 
 提示：
 - 未写用户时默认个人提醒；“我”= @自己；“群提醒”= @全体。
@@ -226,12 +220,6 @@ if todo_cmd:
                 # help命令显示帮助信息
                 help_text = get_todo_help_text()
                 await create_forward_message(bot, event, help_text)
-                await todo_cmd.finish()
-            elif operation in ["time", "时间格式", "formats"]:
-                # 显示时间格式
-                result = await commands.show_time_formats(bot, event)
-                # 使用转发消息格式
-                await create_forward_message(bot, event, result)
                 await todo_cmd.finish()
             elif operation in ["群提醒", "group"]:
                 # 群组@全体成员提醒
