@@ -672,13 +672,13 @@ class TodoCommands:
             text_content = " ".join(text_parts).strip()
             
             if not text_content:
-                return "请提供时间和内容，例如：@用户 30分钟后 开会"
+                return "请提供时间和内容，例如：todo @用户 30分钟后 开会"
             
             # 去掉可能存在的 "todo " 前缀（因为从消息中提取的文本可能包含命令前缀）
             text_content = text_content.lstrip("todo ").strip()
             
             if not text_content:
-                return "请提供时间和内容，例如：@用户 30分钟后 开会"
+                return "请提供时间和内容，例如：todo @用户 30分钟后 开会"
             
             # 获取目标用户信息
             try:
@@ -693,11 +693,11 @@ class TodoCommands:
             # 添加 "todo " 前缀以符合解析器期望的格式
             parsed = self._parse_reminder_content(f"todo {text_content}")
             if not parsed:
-                return "请提供正确的时间格式，例如：@用户 30分钟后 开会"
+                return "请提供正确的时间格式，例如：todo @用户 30分钟后 开会"
             
             time_str, advance_str, reminder_content = parsed
             if not time_str or not reminder_content:
-                return "请提供时间和内容，例如：@用户 30分钟后 开会"
+                return "请提供时间和内容，例如：todo @用户 30分钟后 开会"
             
             # 解析时间
             time_result = self.time_parser.parse_time_with_advance(time_str, advance_str)
