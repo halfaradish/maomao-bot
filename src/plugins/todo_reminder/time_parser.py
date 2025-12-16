@@ -1,68 +1,26 @@
 """
 Todo提醒插件时间解析器
-支持多种时间格式的解析
+目前只通过 Moonshot LLM 解析时间格式，不再使用本地正则/cn2date 兜底。
 """
 
+import json
+import os
 import re
 from datetime import datetime, timedelta
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, Tuple
+
 import pytz
+import requests
 from nonebot import logger
 
 
 class TimeParser:
-    """时间解析器类"""
+    """时间解析器类（基于 LLM 的时间解析）"""
     
     def __init__(self, timezone: str = "Asia/Shanghai"):
         self.timezone = pytz.timezone(timezone)
-        
-        # 星期中文映射（周一=0, 周二=1, ..., 周日=6）
-        self.weekday_map = {
-            "一": 0, "二": 1, "三": 2, "四": 3, 
-            "五": 4, "六": 5, "日": 6, "天": 6
-        }
-        
-        # 时间模式配置（注意：更具体的模式要放在前面）
-        self.patterns = {
-            # 重复提醒模式（放在最前面，避免与一次性提醒冲突）
-            "recurring": [
-                (r"每天(\d+)点(\d+)分", self._parse_daily_recurring_with_minute),
-                (r"每天(\d+)点", self._parse_daily_recurring_hour_only),
-                (r"工作日(\d+)点(\d+)分", self._parse_workday_recurring_with_minute),
-                (r"工作日(\d+)点", self._parse_workday_recurring_hour_only),
-                (r"每周([一二三四五六日天])(\d+)点(\d+)分", self._parse_weekly_recurring_with_minute),
-                (r"每周([一二三四五六日天])(\d+)点", self._parse_weekly_recurring_hour_only),
-                (r"每月(\d+)号(\d+)点(\d+)分", self._parse_monthly_recurring_with_minute),
-                (r"每月(\d+)号(\d+)点", self._parse_monthly_recurring_hour_only),
-            ],
-            # 相对时间模式（注意：更具体的模式要放在前面）
-            "relative": [
-                (r"^(现在|立刻|立即|now)$", self._parse_immediate),  # 立即提醒，放在最前面
-                (r"(\d+)天(\d+)小时(\d+)分钟后", self._parse_days_hours_minutes_later),
-                (r"(\d+)天(\d+)小时后", self._parse_days_hours_later),
-                (r"(\d+)小时(\d+)分钟后", self._parse_hours_minutes_later),
-                (r"(\d+)天后", self._parse_days_later),
-                (r"(\d+)分钟后", self._parse_minutes_later),
-                (r"(\d+)小时后", self._parse_hours_later),
-            ],
-            # 绝对日期时间模式（月份-日期-几点-几分）
-            "absolute_date": [
-                (r"(\d+)-(\d+)-(\d+)-(\d+)", self._parse_numeric_month_day_hour_minute),
-                (r"(\d+)-(\d+)-(\d+)", self._parse_numeric_month_day_hour_only),
-                (r"(\d+)月(\d+)日-(\d+)点-(\d+)分", self._parse_month_day_hour_minute),
-                (r"(\d+)月(\d+)日-(\d+)点", self._parse_month_day_hour_only),
-                (r"(\d+)小时(\d+)分(?!后)", self._parse_hours_minutes_today),  # 当天时间点，如：5小时40分
-            ],
-            # 周几+几点模式（注意：下周的模式要放在"周"模式之前，因为更具体）
-            "weekday_time": [
-                (r"下周([一二三四五六日天])(\d+)点(\d+)分", self._parse_next_week_weekday_time_with_minute),
-                (r"下周([一二三四五六日天])(\d+):(\d+)", self._parse_next_week_weekday_time_colon),
-                (r"下周([一二三四五六日天])(\d+)点", self._parse_next_week_weekday_time_hour_only),
-                (r"周([一二三四五六日天])(\d+)点(\d+)分", self._parse_weekday_time_with_minute),
-                (r"周([一二三四五六日天])(\d+):(\d+)", self._parse_weekday_time_colon),
-                (r"周([一二三四五六日天])(\d+)点", self._parse_weekday_time_hour_only),
-            ],
-        }
+        self.moonshot_api_key = os.getenv("MOONSHOT_API_KEY")
+        self.moonshot_model = os.getenv("MOONSHOT_MODEL", "moonshot-v1-8k")
     
     def _get_current_time(self) -> datetime:
         """获取当前时间"""
@@ -82,34 +40,325 @@ class TimeParser:
             return None
         
         time_str = time_str.strip()
-        
-        # 尝试各种模式
-        for pattern_type, patterns in self.patterns.items():
-            for pattern, parser_func in patterns:
-                match = re.search(pattern, time_str)
-                if match:
-                    try:
-                        result = parser_func(match)
-                        if result:
-                            result["original_string"] = time_str
-                            result["pattern_type"] = pattern_type
-                            logger.debug(f"时间解析成功: {time_str} -> {pattern_type}: {pattern}")
-                            return result
-                    except Exception as e:
-                        logger.warning(f"时间解析失败: {time_str}, 模式: {pattern}, 错误: {e}")
-                        continue
-        
-        # 如果所有模式都失败，尝试直接解析
-        return self._parse_direct_time(time_str)
+
+        # 仅使用 LLM 解析时间
+        try:
+            llm_result = self._parse_with_llm(time_str)
+            if llm_result:
+                return llm_result
+        except Exception as e:
+            logger.warning(f"LLM 解析失败: {e}")
+
+        # LLM 解析失败时，直接返回 None，由上层给出“无法解析时间格式”的提示
+        return None
+
+    def _parse_with_llm(self, time_str: str) -> Optional[Dict[str, Any]]:
+        """
+        使用 Moonshot LLM 解析时间字符串，返回与本地解析一致的结构。
+        返回格式：
+            {
+              "remind_time": datetime,
+              "remind_type": "once|immediate|daily|weekly|monthly|workday",
+              "repeat_type": 同 remind_type 或 None
+            }
+        """
+        if not self.moonshot_api_key:
+            logger.debug("未设置 MOONSHOT_API_KEY，跳过 LLM 解析")
+            return None
+
+        now = self._get_current_time()
+        timezone_name = self.timezone.zone
+
+        system_prompt = (
+            "你是一个严格的时间解析器，把用户输入的时间表达转换为未来的具体时间。\n"
+            "必须返回 JSON，包含字段：\n"
+            "  next_trigger_iso: 下次触发的绝对时间，ISO8601，最好带时区偏移（例如 2025-12-16T09:00:00+08:00）。\n"
+            "  remind_type: immediate|once|daily|weekly|monthly|workday 之一。\n"
+            "  detail: 可选，说明解析依据。\n"
+            "规则：\n"
+            "1) 使用给定的当前时间和时区计算相对时间（如 明天、后天、下周一、30 分钟后）。\n"
+            "2) next_trigger_iso 必须在当前时间之后（允许几秒内的立即提醒）。\n"
+            "3) 只有当用户**明确**提到“每天/每日/每周/周几/每月/工作日”等重复词汇时，才可以把 remind_type 设置为 daily/weekly/monthly/workday；\n"
+            "   对于“今天/明天/后天/下周三/下个月1号/某个具体日期时间”等一次性时间表达，remind_type 必须是 once。\n"
+            "4) 如果用户只说日期（例如“下周三”、“下周三再见”），没有说具体几点几分，\n"
+            "   你必须使用当前时间的小时和分钟作为默认时间段，例如当前是 16:27，则“下周三”解析为下周三 16:27。\n"
+            "5) 如果用户说“X点”但没有说上午/下午/晚上（例如“大后天三点”、“明天四点”），\n"
+            "   一律按 24 小时制的 X:00 来解析，且 X 在 1~12 时视为上午时间（如“三点”= 03:00，“十点”= 10:00），不要自动改成下午 15:00、22:00 等。\n"
+            "6) 要严格区分“明天”和“后天”等相对日期，不要偷懒全部当作明天。\n"
+            "7) 无法解析时返回 error 字段，内容为原因，仍是合法 JSON。\n"
+        )
+
+        user_prompt = (
+            f"当前时间: {now.isoformat()}\n"
+            f"时区: {timezone_name}\n"
+            f"用户输入: {time_str}\n"
+            "请输出 JSON，只包含 next_trigger_iso, remind_type, detail(可选), error(可选)。"
+        )
+
+        response_text = self._call_moonshot(system_prompt, user_prompt)
+        if not response_text:
+            return None
+
+        try:
+            data = json.loads(response_text)
+        except json.JSONDecodeError as e:
+            logger.warning(f"LLM 返回非 JSON，无法解析: {e}, content={response_text}")
+            return None
+
+        if data.get("error"):
+            logger.warning(f"LLM 解析返回错误: {data.get('error')}")
+            return None
+
+        remind_type_raw = data.get("remind_type") or data.get("type") or data.get("mode")
+        remind_type = self._normalize_remind_type(remind_type_raw)
+        if not remind_type:
+            logger.warning(f"LLM 返回未知 remind_type: {remind_type_raw}")
+            return None
+
+        if remind_type == "immediate":
+            now_dt = self._get_current_time()
+            return {
+                "remind_time": now_dt,
+                "remind_type": "immediate",
+                "repeat_type": None,
+            }
+
+        next_iso = data.get("next_trigger_iso") or data.get("start_iso") or data.get("time")
+        parsed_dt = self._parse_iso_datetime(next_iso)
+        if not parsed_dt:
+            logger.warning(f"LLM 返回的时间无法解析: {next_iso}")
+            return None
+
+        # 确保使用配置的时区
+        if parsed_dt.tzinfo is None:
+            parsed_dt = self.timezone.localize(parsed_dt)
+        else:
+            parsed_dt = parsed_dt.astimezone(self.timezone)
+
+        # 如果 LLM 给了过去时间，直接回退
+        if parsed_dt < now:
+            logger.warning(
+                f"LLM 返回的时间已过期，丢弃并回退本地解析: {parsed_dt} < {now}"
+            )
+            return None
+
+        repeat_type = remind_type if remind_type in ["daily", "weekly", "monthly", "workday"] else None
+
+        return {
+            "remind_time": parsed_dt,
+            "remind_type": remind_type,
+            "repeat_type": repeat_type,
+        }
+
+    def _call_moonshot(self, system_prompt: str, user_prompt: str) -> Optional[str]:
+        """调用 Moonshot Chat Completions 接口，返回 content 文本"""
+        url = "https://api.moonshot.cn/v1/chat/completions"
+        headers = {
+            "Content-Type": "application/json",
+            "Authorization": f"Bearer {self.moonshot_api_key}",
+        }
+        payload = {
+            "model": self.moonshot_model,
+            "messages": [
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_prompt},
+            ],
+            "temperature": 0.1,
+            "response_format": {"type": "json_object"},
+        }
+
+        try:
+            resp = requests.post(url, headers=headers, json=payload, timeout=15)
+            resp.raise_for_status()
+            data = resp.json()
+            choices = data.get("choices") or []
+            if not choices:
+                logger.warning("Moonshot 返回空 choices")
+                return None
+            content = choices[0]["message"].get("content")
+            return content
+        except Exception as e:
+            logger.error(f"调用 Moonshot 接口失败: {e}")
+            return None
+
+    @staticmethod
+    def _parse_iso_datetime(value: Optional[str]) -> Optional[datetime]:
+        """解析 ISO8601 字符串为 datetime"""
+        if not value or not isinstance(value, str):
+            return None
+        try:
+            # 兼容结尾 Z 的格式
+            if value.endswith("Z"):
+                value = value.replace("Z", "+00:00")
+            return datetime.fromisoformat(value)
+        except Exception:
+            return None
+
+    @staticmethod
+    def _normalize_remind_type(remind_type_raw: Optional[str]) -> Optional[str]:
+        """标准化 LLM 返回的 remind_type"""
+        if not remind_type_raw:
+            return None
+        val = remind_type_raw.lower()
+        mapping = {
+            "immediate": "immediate",
+            "now": "immediate",
+            "once": "once",
+            "single": "once",
+            "one_time": "once",
+            "daily": "daily",
+            "everyday": "daily",
+            "weekly": "weekly",
+            "week": "weekly",
+            "monthly": "monthly",
+            "month": "monthly",
+            "workday": "workday",
+            "weekday": "workday",
+        }
+        return mapping.get(val, None)
     
     def _parse_direct_time(self, time_str: str) -> Optional[Dict[str, Any]]:
         """
-        直接解析时间字符串（备用方法）
-        当所有模式都无法匹配时调用此方法
-        可以在这里添加通用的时间解析逻辑
+        旧的本地兜底解析逻辑（基于 cn2date），已弃用。
+        目前已经统一由 LLM 负责解析时间，这里仅为兼容旧版本保留方法签名。
         """
-        # TODO: 实现你的直接解析逻辑
+        logger.debug(f"_parse_direct_time 已弃用，不再使用本地解析: {time_str}")
         return None
+    
+    def _extract_time_from_string(self, time_str: str) -> Optional[Tuple[int, int]]:
+        """
+        从时间字符串中提取时间信息（小时和分钟）
+        支持格式：两点、9点、14点30分、14:30等
+        """
+        # 中文数字到阿拉伯数字的映射
+        chinese_numbers = {
+            "零": 0, "一": 1, "二": 2, "两": 2, "三": 3, "四": 4, "五": 5,
+            "六": 6, "七": 7, "八": 8, "九": 9, "十": 10,
+            "十一": 11, "十二": 12, "十三": 13, "十四": 14, "十五": 15,
+            "十六": 16, "十七": 17, "十八": 18, "十九": 19, "二十": 20,
+            "二十一": 21, "二十二": 22, "二十三": 23
+        }
+        
+        hour = None
+        minute = 0
+        
+        # 匹配格式：X点Y分 或 X点（如：两点、9点、14点30分）
+        # 先尝试匹配带分钟的模式
+        # 注意：正则表达式中包含"两"字
+        pattern_with_minute = r"([零一二两三三四五六七八九十]+|[\d]+)点([零一二两三三四五六七八九十]+|[\d]+)分"
+        match = re.search(pattern_with_minute, time_str)
+        if match:
+            hour_str = match.group(1)
+            minute_str = match.group(2)
+            
+            # 解析小时
+            if hour_str.isdigit():
+                hour = int(hour_str)
+            elif hour_str in chinese_numbers:
+                hour = chinese_numbers[hour_str]
+            elif hour_str.startswith("十") and len(hour_str) == 2:
+                # 处理"十一"到"十九"
+                hour = 10 + chinese_numbers.get(hour_str[1], 0)
+            elif hour_str == "十":
+                hour = 10
+            
+            # 解析分钟
+            if minute_str.isdigit():
+                minute = int(minute_str)
+            elif minute_str in chinese_numbers:
+                minute = chinese_numbers[minute_str]
+            elif minute_str.startswith("十") and len(minute_str) == 2:
+                minute = 10 + chinese_numbers.get(minute_str[1], 0)
+            elif minute_str == "十":
+                minute = 10
+            
+            if hour is not None and 0 <= hour < 24 and 0 <= minute < 60:
+                return (hour, minute)
+        
+        # 匹配格式：X点（如：两点、9点、14点）
+        # 注意：正则表达式中包含"两"字
+        pattern_hour_only = r"([零一二两三三四五六七八九十]+|[\d]+)点"
+        match = re.search(pattern_hour_only, time_str)
+        if match:
+            hour_str = match.group(1)
+            
+            # 解析小时
+            if hour_str.isdigit():
+                hour = int(hour_str)
+            elif hour_str in chinese_numbers:
+                hour = chinese_numbers[hour_str]
+            elif hour_str.startswith("十") and len(hour_str) == 2:
+                hour = 10 + chinese_numbers.get(hour_str[1], 0)
+            elif hour_str == "十":
+                hour = 10
+            
+            if hour is not None and 0 <= hour < 24:
+                return (hour, 0)
+        
+        # 匹配格式：HH:MM 或 H:MM（如：14:30、9:00）
+        pattern_colon = r"(\d{1,2}):(\d{2})"
+        match = re.search(pattern_colon, time_str)
+        if match:
+            hour = int(match.group(1))
+            minute = int(match.group(2))
+            if 0 <= hour < 24 and 0 <= minute < 60:
+                return (hour, minute)
+        
+        return None
+    
+    def _parse_common_chinese_time(self, time_str: str) -> Optional[Dict[str, Any]]:
+        """
+        手动解析常见的中文时间格式（当 cn2date 无法解析时的回退方案）
+        支持格式：明天两点、后天9点、今天14:30等
+        """
+        now = self._get_current_time()
+        days_offset = 0
+        hour = 0
+        minute = 0
+        
+        # 解析相对日期
+        if "明天" in time_str or "明日" in time_str:
+            days_offset = 1
+        elif "后天" in time_str:
+            days_offset = 2
+        elif "大后天" in time_str:
+            days_offset = 3
+        elif "今天" in time_str or "今日" in time_str:
+            days_offset = 0
+        elif "昨天" in time_str or "昨日" in time_str:
+            days_offset = -1
+        elif "前天" in time_str:
+            days_offset = -2
+        else:
+            # 如果没有明确的相对日期，尝试使用 cn2date 解析的日期部分
+            # 这里先返回 None，让调用方知道无法解析
+            return None
+        
+        # 从字符串中提取时间信息
+        time_match = self._extract_time_from_string(time_str)
+        if time_match:
+            hour, minute = time_match
+        else:
+            # 如果没有找到时间信息，默认使用当前时间
+            hour = now.hour
+            minute = now.minute
+        
+        # 计算目标日期时间
+        target_date = now + timedelta(days=days_offset)
+        parsed_dt = target_date.replace(hour=hour, minute=minute, second=0, microsecond=0)
+        
+        # 添加时区信息
+        if parsed_dt.tzinfo is None:
+            parsed_dt = self.timezone.localize(parsed_dt)
+        elif parsed_dt.tzinfo != self.timezone:
+            parsed_dt = parsed_dt.astimezone(self.timezone)
+        
+        logger.debug(f"手动解析中文时间成功: {time_str} -> {parsed_dt}")
+        return {
+            "remind_time": parsed_dt,
+            "remind_type": "once",
+            "repeat_type": None
+        }
     
     def _parse_immediate(self, match) -> Optional[Dict[str, Any]]:
         """解析立即提醒（现在、立刻、立即、now）"""
@@ -117,6 +366,17 @@ class TimeParser:
         return {
             "remind_time": now,
             "remind_type": "immediate",  # 特殊标记，表示立即提醒
+            "repeat_type": None
+        }
+    
+    def _parse_seconds_later(self, match) -> Optional[Dict[str, Any]]:
+        """解析X秒后"""
+        seconds = int(match.group(1))
+        now = self._get_current_time()
+        remind_time = now + timedelta(seconds=seconds)
+        return {
+            "remind_time": remind_time,
+            "remind_type": "once",
             "repeat_type": None
         }
     
@@ -200,190 +460,6 @@ class TimeParser:
             return None
         
         remind_time = self._get_today_time(hours, minutes)
-        return {
-            "remind_time": remind_time,
-            "remind_type": "once",
-            "repeat_type": None
-        }
-    
-    def _parse_weekday_time_with_minute(self, match) -> Optional[Dict[str, Any]]:
-        """解析周几+几点几分格式，如：周一9点30分（仅本周，一次性提醒）"""
-        weekday_cn = match.group(1)
-        hour = int(match.group(2))
-        minute = int(match.group(3))
-        
-        if weekday_cn not in self.weekday_map:
-            return None
-        
-        weekday = self.weekday_map[weekday_cn]
-        
-        # 验证时间有效性
-        if not (0 <= hour < 24 and 0 <= minute < 60):
-            return None
-        
-        remind_time = self._get_this_week_weekday_time(weekday, hour, minute)
-        return {
-            "remind_time": remind_time,
-            "remind_type": "once",
-            "repeat_type": None
-        }
-    
-    def _parse_weekday_time_colon(self, match) -> Optional[Dict[str, Any]]:
-        """解析周几+冒号时间格式，如：周一9:30（仅本周，一次性提醒）"""
-        weekday_cn = match.group(1)
-        hour = int(match.group(2))
-        minute = int(match.group(3))
-        
-        if weekday_cn not in self.weekday_map:
-            return None
-        
-        weekday = self.weekday_map[weekday_cn]
-        
-        # 验证时间有效性
-        if not (0 <= hour < 24 and 0 <= minute < 60):
-            return None
-        
-        remind_time = self._get_this_week_weekday_time(weekday, hour, minute)
-        return {
-            "remind_time": remind_time,
-            "remind_type": "once",
-            "repeat_type": None
-        }
-    
-    def _parse_weekday_time_hour_only(self, match) -> Optional[Dict[str, Any]]:
-        """解析周几+几点格式，如：周一9点（分钟默认为0，即9:00，仅本周，一次性提醒）"""
-        weekday_cn = match.group(1)
-        hour = int(match.group(2))
-        minute = 0  # 默认分钟为0
-        
-        if weekday_cn not in self.weekday_map:
-            return None
-        
-        weekday = self.weekday_map[weekday_cn]
-        
-        # 验证时间有效性
-        if not (0 <= hour < 24):
-            return None
-        
-        remind_time = self._get_this_week_weekday_time(weekday, hour, minute)
-        return {
-            "remind_time": remind_time,
-            "remind_type": "once",
-            "repeat_type": None
-        }
-    
-    def _parse_next_week_weekday_time_with_minute(self, match) -> Optional[Dict[str, Any]]:
-        """解析下周几+几点几分格式，如：下周一九点30分（仅下周，一次性提醒）"""
-        weekday_cn = match.group(1)
-        hour = int(match.group(2))
-        minute = int(match.group(3))
-        
-        if weekday_cn not in self.weekday_map:
-            return None
-        
-        weekday = self.weekday_map[weekday_cn]
-        
-        # 验证时间有效性
-        if not (0 <= hour < 24 and 0 <= minute < 60):
-            return None
-        
-        remind_time = self._get_next_week_weekday_time(weekday, hour, minute)
-        return {
-            "remind_time": remind_time,
-            "remind_type": "once",
-            "repeat_type": None
-        }
-    
-    def _parse_next_week_weekday_time_colon(self, match) -> Optional[Dict[str, Any]]:
-        """解析下周几+冒号时间格式，如：下周一九:30（仅下周，一次性提醒）"""
-        weekday_cn = match.group(1)
-        hour = int(match.group(2))
-        minute = int(match.group(3))
-        
-        if weekday_cn not in self.weekday_map:
-            return None
-        
-        weekday = self.weekday_map[weekday_cn]
-        
-        # 验证时间有效性
-        if not (0 <= hour < 24 and 0 <= minute < 60):
-            return None
-        
-        remind_time = self._get_next_week_weekday_time(weekday, hour, minute)
-        return {
-            "remind_time": remind_time,
-            "remind_type": "once",
-            "repeat_type": None
-        }
-    
-    def _parse_next_week_weekday_time_hour_only(self, match) -> Optional[Dict[str, Any]]:
-        """解析下周几+几点格式，如：下周一九点（分钟默认为0，即9:00，仅下周，一次性提醒）"""
-        weekday_cn = match.group(1)
-        hour = int(match.group(2))
-        minute = 0  # 默认分钟为0
-        
-        if weekday_cn not in self.weekday_map:
-            return None
-        
-        weekday = self.weekday_map[weekday_cn]
-        
-        # 验证时间有效性
-        if not (0 <= hour < 24):
-            return None
-        
-        remind_time = self._get_next_week_weekday_time(weekday, hour, minute)
-        return {
-            "remind_time": remind_time,
-            "remind_type": "once",
-            "repeat_type": None
-        }
-    
-    def _parse_month_day_hour_minute(self, match) -> Optional[Dict[str, Any]]:
-        """解析月份-日期-几点-几分格式，如：1月15日-9点-30分（一次性提醒）"""
-        month = int(match.group(1))
-        day = int(match.group(2))
-        hour = int(match.group(3))
-        minute = int(match.group(4))
-        
-        # 验证时间有效性
-        if not (1 <= month <= 12):
-            return None
-        if not (1 <= day <= 31):
-            return None
-        if not (0 <= hour < 24):
-            return None
-        if not (0 <= minute < 60):
-            return None
-        
-        remind_time = self._get_month_day_time(month, day, hour, minute)
-        if remind_time is None:
-            return None
-        
-        return {
-            "remind_time": remind_time,
-            "remind_type": "once",
-            "repeat_type": None
-        }
-    
-    def _parse_month_day_hour_only(self, match) -> Optional[Dict[str, Any]]:
-        """解析月份-日期-几点格式，如：1月15日-9点（分钟默认为0，即9:00，一次性提醒）"""
-        month = int(match.group(1))
-        day = int(match.group(2))
-        hour = int(match.group(3))
-        minute = 0  # 默认分钟为0
-        
-        # 验证时间有效性
-        if not (1 <= month <= 12):
-            return None
-        if not (1 <= day <= 31):
-            return None
-        if not (0 <= hour < 24):
-            return None
-        
-        remind_time = self._get_month_day_time(month, day, hour, minute)
-        if remind_time is None:
-            return None
-        
         return {
             "remind_time": remind_time,
             "remind_type": "once",
@@ -495,26 +571,6 @@ class TimeParser:
                 return next_day.replace(hour=hour, minute=minute, second=0, microsecond=0)
             days_ahead += 1
     
-    def _get_this_week_weekday_time(self, weekday: int, hour: int, minute: int) -> datetime:
-        """获取本周指定星期几的指定时间（仅本周，一次性提醒）"""
-        now = self._get_current_time()
-        # 计算本周目标星期几的日期
-        days_ahead = weekday - now.weekday()
-        # 如果目标星期已过，仍然返回本周的（即过去的时间）
-        # 如果是今天或未来，也返回本周的
-        target_date = now + timedelta(days=days_ahead)
-        return target_date.replace(hour=hour, minute=minute, second=0, microsecond=0)
-    
-    def _get_next_week_weekday_time(self, weekday: int, hour: int, minute: int) -> datetime:
-        """获取下周指定星期几的指定时间（仅下周，一次性提醒）"""
-        now = self._get_current_time()
-        # 计算本周目标星期几的日期
-        days_ahead = weekday - now.weekday()
-        # 如果目标星期已过或还未到，都加7天到下下周
-        # 如果是今天或未来的本周，也加7天到下周
-        target_date = now + timedelta(days=days_ahead + 7)
-        return target_date.replace(hour=hour, minute=minute, second=0, microsecond=0)
-    
     def _get_next_weekday_time(self, weekday: int, hour: int, minute: int) -> datetime:
         """获取下一个指定星期几的指定时间"""
         now = self._get_current_time()
@@ -550,35 +606,18 @@ class TimeParser:
         minute = remind_time.minute
         time_str = f"{hour:02d}:{minute:02d}"
         
-        # 如果是今天
-        if days_diff == 0 and remind_time.date() == now.date():
-            return f"今天 {time_str}"
-        # 如果是明天
-        elif days_diff == 1:
-            return f"明天 {time_str}"
-        # 如果是后天
-        elif days_diff == 2:
-            return f"后天 {time_str}"
-        # 如果是本周内
-        elif 0 <= days_diff < 7:
-            weekday_names = ["周一", "周二", "周三", "周四", "周五", "周六", "周日"]
-            weekday_name = weekday_names[remind_time.weekday()]
-            return f"{weekday_name} {time_str}"
-        # 如果是下周内
-        elif 7 <= days_diff < 14:
-            weekday_names = ["周一", "周二", "周三", "周四", "周五", "周六", "周日"]
-            weekday_name = weekday_names[remind_time.weekday()]
-            return f"下{weekday_name} {time_str}"
-        # 其他情况显示完整日期
+        # 始终显示具体日期 + 周几，不使用“今天/明天/后天”等相对描述
+        month = remind_time.month
+        day = remind_time.day
+        year = remind_time.year
+        weekday_names = ["周一", "周二", "周三", "周四", "周五", "周六", "周日"]
+        weekday_name = weekday_names[remind_time.weekday()]
+
+        # 如果是今年，只显示月日；否则显示完整年月日
+        if year == now.year:
+            return f"{month}月{day}日 {weekday_name} {time_str}"
         else:
-            month = remind_time.month
-            day = remind_time.day
-            year = remind_time.year
-            # 如果是今年，不显示年份
-            if year == now.year:
-                return f"{month}月{day}日 {time_str}"
-            else:
-                return f"{year}年{month}月{day}日 {time_str}"
+            return f"{year}年{month}月{day}日 {weekday_name} {time_str}"
     
     
     def parse_advance_time(self, advance_str: str) -> Optional[int]:
