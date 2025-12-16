@@ -21,6 +21,7 @@ class TimeParser:
         self.timezone = pytz.timezone(timezone)
         self.moonshot_api_key = os.getenv("MOONSHOT_API_KEY")
         self.moonshot_model = os.getenv("MOONSHOT_MODEL", "moonshot-v1-8k")
+        self.last_usage: Optional[Dict[str, Any]] = None  # 记录最近一次 LLM 调用的 token 用量
     
     def _get_current_time(self) -> datetime:
         """获取当前时间"""
@@ -171,6 +172,15 @@ class TimeParser:
             resp = requests.post(url, headers=headers, json=payload, timeout=15)
             resp.raise_for_status()
             data = resp.json()
+            # 记录并输出本次调用的 token 消耗，便于测试
+            self.last_usage = data.get("usage")
+            if self.last_usage:
+                logger.info(
+                    f"[todo_reminder] Moonshot token usage: "
+                    f"prompt={self.last_usage.get('prompt_tokens')}, "
+                    f"completion={self.last_usage.get('completion_tokens')}, "
+                    f"total={self.last_usage.get('total_tokens')}"
+                )
             choices = data.get("choices") or []
             if not choices:
                 logger.warning("Moonshot 返回空 choices")
