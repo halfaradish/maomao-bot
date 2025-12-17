@@ -8,6 +8,7 @@ from nonebot.adapters import Message
 from .config import Config
 from .table_generator import generate_table_png_bytes
 from ...common import get_icpc_db_connection, utils
+from ...common.timer import timer
 
 import time
 

@@ -24,11 +24,11 @@ def timed_section(name):
             logger.debug(f"{name} 耗时: {end - start:.6f} 秒")
             return result
         
-        @wraps
+        @wraps(func)
         async def async_wrapper(*args, **kwargs):
-            # 处理同步函数
+            # 处理异步函数
             start = time.perf_counter()
-            result = func(*args, **kwargs)
+            result = await func(*args, **kwargs)
             end = time.perf_counter()
             logger.debug(f"{name} 耗时: {end - start:.6f} 秒")
             return result
