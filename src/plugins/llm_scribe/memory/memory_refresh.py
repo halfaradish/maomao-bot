@@ -3,25 +3,23 @@ from ..memory.memory_long import save_memory_long
 from ..memory.cache import save_chat_cache
 from ..Prompt.create_prompt import create_prompt, create_delta_prompt
 from ..LLM.model import model
-from ..utils.text_utils import to_str, beautify_smy, display_summary
+from ..utils.text_utils import to_str, beautify_smy, display_summary, extract_nicknames
 from ..utils.meta_utils import base_info
-from ..utils.msg_utils import chunk_msgs, build_alias_map, restore_nicknames
+from ..utils.msg_utils import chunk_msgs
 
 # 全量更新, 将生成的summary和 mem_json存入长期，短期记忆,cache
 def high_refresh(group_id, msgs, hours):
     short = load_memory_short(group_id)
     pool = short.get("mem_json", {}).copy()
 
-    alias_map = build_alias_map(msgs)
-
     # 基础信息
     meta = base_info(msgs)
 
     # 摘要部分
-    prompt = create_prompt(msgs, alias_map=alias_map)
+    prompt = create_prompt(msgs)
     response = to_str(model.invoke(prompt))
-    summary = beautify_smy(response)
-    summary = restore_nicknames(summary, alias_map)
+    nicknames = extract_nicknames(msgs)
+    summary = beautify_smy(response, nicknames)
 
     # 保存cache
     start_ts = msgs[0]["time"]
@@ -49,11 +47,10 @@ def high_refresh_chunk(group_id, msgs, hours):
     # 每段做小摘要
     chunk_summaries = []
     for idx, c in enumerate(chunks, 1):
-        alias_map = build_alias_map(c)
-        prompt = create_prompt(c, alias_map=alias_map)
+        prompt = create_prompt(c)
         resp = to_str(model.invoke(prompt))
-        chunk_summary = beautify_smy(resp)
-        chunk_summary = restore_nicknames(chunk_summary, alias_map)
+        nicknames = extract_nicknames(c)
+        chunk_summary = beautify_smy(resp, nicknames)
 
         # 包装为“分段摘要 N”
         chunk_summaries.append(
@@ -115,20 +112,22 @@ def delta_refresh(group_id, msgs, new_msgs, short, hours):
     if not last_summary:
         return high_refresh(group_id, msgs, hours)
 
-    alias_map = build_alias_map(new_msgs)
+    # 只保留基础摘要部分
+    base_summary = last_summary
+    if "[本次新增内容]" in last_summary:
+        base_summary = last_summary.split("[本次新增内容]")[0].strip()
 
-    # 创建增量摘要提示词
-    prompt = create_delta_prompt(last_summary, new_msgs, alias_map=alias_map)
+    prompt = create_delta_prompt(base_summary, new_msgs)
     if not prompt:
         return low_refresh(group_id, msgs, short)
     delta_resp = to_str(model.invoke(prompt))
-    delta_summary = beautify_smy(delta_resp)
-    delta_summary = restore_nicknames(delta_summary, alias_map)
+    nicknames = extract_nicknames(new_msgs)
+    delta_summary = beautify_smy(delta_resp, nicknames)
 
-    # 合成新的 last_summary：旧摘要 + 本次新增部分
+    # 基础摘要 + 本次新增部分
     combined_summary = (
-        last_summary
-        + "\n\n[本次新增内容]\n"
+        base_summary
+        + "\n\n** [本次新增内容] **\n"
         + delta_summary
     ).strip()
 
