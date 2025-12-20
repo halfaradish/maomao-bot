@@ -25,7 +25,36 @@ import time
 from .config import Config
 from ...common import JsonUtils, SendForwardMsg
 from ..logging_info.message_dao import message_dao
+from nonebot import (
+    get_plugin_config,
+    on_notice,
+    logger,
+    on_message
+)
+from nonebot.plugin import PluginMetadata
+from nonebot.rule import Rule
+from nonebot.adapters.onebot.v11.permission import GROUP
+from nonebot.adapters.onebot.v11 import (
+    GroupIncreaseNoticeEvent,
+    GroupDecreaseNoticeEvent,
+    Message,
+    MessageSegment,
+    GroupMessageEvent,
+    Bot,
+    ActionFailed
+)
+from nonebot.utils import run_sync  # 引入 run_sync 用于在异步中运行同步的模型推理
 
+from datetime import datetime, timedelta
+import asyncio
+import threading
+import time
+
+from .config import Config
+from ...common import JsonUtils, SendForwardMsg
+# 假设你的 predict.py 在同级目录下，如果不是，请修改 import 路径
+# 例如：from src.plugins.ai_train.predict import predict
+from .predict import predict
 __plugin_meta__ = PluginMetadata(
     name="auto_manage_group",
     description="",
@@ -91,38 +120,63 @@ async def _(event: GroupDecreaseNoticeEvent):
 
 
 # 临时功能
-def contains_banned_word(event: GroupMessageEvent):
-    # 获取数据
+@run_sync
+def async_predict(text: str):
+    return predict(text)
+
+
+async def contains_banned_word(event: GroupMessageEvent) -> bool:
+    """
+    使用模型判断是否包含违禁内容
+    """
+    # 1. 获取配置数据
     data, _ = JsonUtils.read(
         filename=config.data_filename,
-        default={
-            "ban_words": [],
-            "ban_words_monitored_groups": []
-        }
+        default={"ban_words_monitored_groups": []}
     )
-    ban_words = data.get('ban_words', [])
     ban_words_monitored_groups = data.get('ban_words_monitored_groups', [])
 
-    # 是否是违禁词检测群组
-    group_id = event.group_id
-    if str(group_id) not in ban_words_monitored_groups:
+    # 2. 检查是否在监控群组
+    group_id = str(event.group_id)
+    if group_id not in ban_words_monitored_groups:
         return False
-    # 是否包含违禁词
-    message_txt = str(event.get_message())
-    has_banned_word  = any(word in message_txt for word in ban_words)
-    if not has_banned_word:
-        return False
-    # 发送者是否为管理员
+
+    # 3. 检查发送者权限 (管理员/群主免检)
     sender_role = event.sender.role
     if sender_role in ["admin", "owner"]:
         return False
-    
-    return True
 
+    # 🔥 4. 新增：检查群等级 (等级 >= 3 免检)
+    # event.sender.level 可能是 None，所以用 getattr 或 or 0 保证安全
+    user_level = event.sender.level or 0
+    if user_level >= 3:
+        # logger.info(f"用户 {event.user_id} 等级为 {user_level}，跳过 AI 检测")
+        return False
+
+    # 5. 获取纯文本消息
+    message_txt = event.get_message().extract_plain_text().strip()
+    if not message_txt:
+        return False
+
+    # 6. 调用模型进行预测
+    try:
+        result = await async_predict(message_txt)
+        if result.get("is_malicious"):
+            logger.info(f"模型拦截消息: {message_txt} | 标签: {result.get('label')}")
+            return True
+        return False
+
+    except Exception as e:
+        logger.error(f"模型预测出错: {e}")
+        return False
+
+
+# 注册 Matcher
 banned_word_detector = on_message(
-    rule=Rule(contains_banned_word),
+    rule=Rule(contains_banned_word),  # Rule 支持 async 函数
     permission=GROUP,
-    priority=20
+    priority=20,
+    block=False  # 建议设为 False，避免拦截其他插件，除非你确定要截断
 )
 
 async def context_erase_messages(bot: Bot, user_id: int, group_id: int, base_time: int, base_message_id: int):
