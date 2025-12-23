@@ -15,6 +15,7 @@ from nonebot.rule import Rule
 from nonebot.plugin import PluginMetadata
 from nonebot.params import CommandArg
 from nonebot.exception import FinishedException
+
 require("nonebot_plugin_apscheduler")
 from nonebot_plugin_apscheduler import scheduler
 
@@ -27,30 +28,6 @@ from .config import Config
 from .contest_fetcher import contest_fetcher, ContestInfo
 from ...common.send_forward_msg import send_forword_msg
 from ...common import JsonUtils
-from nonebot.adapters.onebot.v11 import MessageSegment
-from nonebot.adapters.onebot.v11 import MessageSegment as OBMessageSegment
-
-
-def make_at_all_segment():
-    """兼容不同 onebot 版本，返回用于艾特全体的 MessageSegment"""
-    # 优先尝试标准方法
-    if hasattr(OBMessageSegment, "at_all"):
-        return OBMessageSegment.at_all()
-    # 部分实现使用 at("all") 或 at(0) / at("all")
-    if hasattr(OBMessageSegment, "at"):
-        try:
-            return OBMessageSegment.at("all")
-        except Exception:
-            try:
-                return OBMessageSegment.at_all()  # 兜底再次尝试
-            except Exception:
-                pass
-    # 最后退回到手动构造 CQ 码节点
-    try:
-        return OBMessageSegment("at", {"qq": "all"})
-    except Exception:
-        # 任何情况下返回空字符串，调用方需能接受
-        return ""
 
 __plugin_meta__ = PluginMetadata(
     name="contest_reminder",
@@ -61,9 +38,11 @@ __plugin_meta__ = PluginMetadata(
 
 config = get_plugin_config(Config)
 
+
 def is_get_contest_info_enable():
     logger.debug(f'get_contest_info_enable enable: {config.clist_gci_enable}')
     return config.clist_gci_enable
+
 
 get_contest_info = on_command(
     cmd=config.clist_gci_cmd,
@@ -71,6 +50,7 @@ get_contest_info = on_command(
     priority=config.clist_gci_priority,
     block=True
 )
+
 
 @get_contest_info.handle()
 async def _(bot: Bot, event: GroupMessageEvent, args: Message = CommandArg()) -> None:
@@ -91,22 +71,18 @@ async def _(bot: Bot, event: GroupMessageEvent, args: Message = CommandArg()) ->
 
     try:
         # 获取比赛信息
-        contests: List[ContestInfo] = contest_fetcher.fetch_contests(platform_names=config.clist_platforms, hours_ahead=hours_ahead)
+        contests: List[ContestInfo] = contest_fetcher.fetch_contests(platform_names=config.clist_platforms,
+                                                                     hours_ahead=hours_ahead)
 
         # 如果没有比赛信息
         if not contests:
             get_contest_info.finish(f"{days} 天内无比赛")
-        
+
         msg_list: List[str] = []
         msg_list.append(f"{days} 天内比赛信息\n适配平台{config.clist_platforms}")
-        
-        for idx, contest in enumerate(contests):
-            if idx == 0:
-                # 将艾特全体与首条比赛内容合并为同一消息节点
-                at_seg = make_at_all_segment()
-                msg_list.append([at_seg, f"比赛提醒：\n{contest.to_string()}"])
-            else:
-                msg_list.append(f"{contest.to_string()}")
+
+        for contest in contests:
+            msg_list.append(contest.to_string())
 
         await send_forword_msg.by_onebot_api(bot, event, msg_list, str(event.group_id))
 
@@ -114,6 +90,7 @@ async def _(bot: Bot, event: GroupMessageEvent, args: Message = CommandArg()) ->
         pass
     except Exception as e:
         logger.error(f"获取比赛信息出错: {e}")
+
 
 def get_json_data() -> Dict:
     """读取json配置文件"""
@@ -132,6 +109,7 @@ def get_json_data() -> Dict:
             "groups_send_by_plugin": []
         }
 
+
 async def remind_contest_to_groups(contest: ContestInfo) -> None:
     """发送比赛提醒消息"""
     try:
@@ -139,7 +117,7 @@ async def remind_contest_to_groups(contest: ContestInfo) -> None:
         # 获取数据
         data: Dict = get_json_data()
         group_ids: List[str] = data.get('groups_send_by_plugin', [])
-        
+
         if not group_ids:
             logger.debug("没有需要发送提醒的群组")
             return
@@ -147,10 +125,12 @@ async def remind_contest_to_groups(contest: ContestInfo) -> None:
         # 发送消息
         for group_id in group_ids:
             try:
-                at_seg = make_at_all_segment()
                 await bot.send_group_msg(
                     group_id=group_id,
-                    message=Message([at_seg, "比赛提醒：\n" + f"{contest.to_string()}"])
+                    message=(
+                        "比赛提醒：\n"
+                        f"{contest.to_string()}"
+                    )
                 )
                 logger.debug(f"成功向群组 {group_id} 发送比赛提醒")
             except Exception as e:
@@ -160,6 +140,7 @@ async def remind_contest_to_groups(contest: ContestInfo) -> None:
     except Exception as e:
         logger.error(f"发送消息时出错: {e}")
         return
+
 
 async def contest_reminder():
     """安排比赛提醒"""
@@ -171,7 +152,7 @@ async def contest_reminder():
         run_date: datetime = contest.start - timedelta(hours=1)
         # 尝试安排提醒
         try:
-            job_id=f"contest_reminder_{uuid4().hex[:8]}"
+            job_id = f"contest_reminder_{uuid4().hex[:8]}"
             scheduler.add_job(
                 remind_contest_to_groups,
                 'date',
@@ -186,6 +167,7 @@ async def contest_reminder():
             continue
 
     logger.info(f"成功安排 {success_cnt} 条比赛提醒")
+
 
 # 根据enable状态-启动定时任务
 if config.clist_schedule_job_enable:
@@ -206,7 +188,6 @@ if config.clist_schedule_job_enable:
     logger.debug("已开启 contest_reminder 插件定时比赛提醒")
 else:
     logger.debug("contest_reminder 插件定时比赛提醒已禁用")
-
 
 # @scheduler.scheduled_job(
 #     "cron",
