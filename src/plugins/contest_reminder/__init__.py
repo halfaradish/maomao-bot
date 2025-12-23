@@ -27,6 +27,30 @@ from .config import Config
 from .contest_fetcher import contest_fetcher, ContestInfo
 from ...common.send_forward_msg import send_forword_msg
 from ...common import JsonUtils
+from nonebot.adapters.onebot.v11 import MessageSegment
+from nonebot.adapters.onebot.v11 import MessageSegment as OBMessageSegment
+
+
+def make_at_all_segment():
+    """兼容不同 onebot 版本，返回用于艾特全体的 MessageSegment"""
+    # 优先尝试标准方法
+    if hasattr(OBMessageSegment, "at_all"):
+        return OBMessageSegment.at_all()
+    # 部分实现使用 at("all") 或 at(0) / at("all")
+    if hasattr(OBMessageSegment, "at"):
+        try:
+            return OBMessageSegment.at("all")
+        except Exception:
+            try:
+                return OBMessageSegment.at_all()  # 兜底再次尝试
+            except Exception:
+                pass
+    # 最后退回到手动构造 CQ 码节点
+    try:
+        return OBMessageSegment("at", {"qq": "all"})
+    except Exception:
+        # 任何情况下返回空字符串，调用方需能接受
+        return ""
 
 __plugin_meta__ = PluginMetadata(
     name="contest_reminder",
@@ -76,8 +100,13 @@ async def _(bot: Bot, event: GroupMessageEvent, args: Message = CommandArg()) ->
         msg_list: List[str] = []
         msg_list.append(f"{days} 天内比赛信息\n适配平台{config.clist_platforms}")
         
-        for contest in contests:
-            msg_list.append(contest.to_string())
+        for idx, contest in enumerate(contests):
+            if idx == 0:
+                # 将艾特全体与首条比赛内容合并为同一消息节点
+                at_seg = make_at_all_segment()
+                msg_list.append([at_seg, f"比赛提醒：\n{contest.to_string()}"])
+            else:
+                msg_list.append(f"{contest.to_string()}")
 
         await send_forword_msg.by_onebot_api(bot, event, msg_list, str(event.group_id))
 
@@ -118,12 +147,10 @@ async def remind_contest_to_groups(contest: ContestInfo) -> None:
         # 发送消息
         for group_id in group_ids:
             try:
+                at_seg = make_at_all_segment()
                 await bot.send_group_msg(
                     group_id=group_id,
-                    message= (
-                        "比赛提醒：\n"
-                        f"{contest.to_string()}"
-                    )
+                    message=Message([at_seg, "比赛提醒：\n" + f"{contest.to_string()}"])
                 )
                 logger.debug(f"成功向群组 {group_id} 发送比赛提醒")
             except Exception as e:
