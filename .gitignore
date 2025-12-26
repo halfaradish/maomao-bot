@@ -6,6 +6,7 @@ docs/locals/*
 poetry.toml
 activate_env.bat
 activate_env.sh
+src/plugins/auto_manage_group/sell_ad_group_model
 
 # Created by https://www.toptal.com/developers/gitignore/api/python
 # Edit at https://www.toptal.com/developers/gitignore?templates=python
