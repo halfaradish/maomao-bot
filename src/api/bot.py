@@ -53,10 +53,10 @@ async def health_check():
         adapter_name = bot.adapter.get_name()
         status = "online" if bot else "offline"
 
-        return BotStatusResponse(
-            status=status,
-            bot_count=len(bots),
-            uptime=3600,
-            bot_id=bot_id,
-            adapter=adapter_name
-        )
+    return BotStatusResponse(
+        status=status,
+        bot_count=len(bots),
+        uptime=3600,
+        bot_id=bot_id,
+        adapter=adapter_name
+    )
