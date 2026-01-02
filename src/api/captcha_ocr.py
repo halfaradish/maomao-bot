@@ -8,9 +8,6 @@ from fastapi import (
     Form
 )
 from pydantic import BaseModel
-import io
-from functools import wraps
-from time import time
 from ..common.captcha_ocr import recognize_from_url, recognize
 from ..config.local_config import NoneBotToken
 from ..config import error, success

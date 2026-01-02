@@ -10,9 +10,11 @@ from fastapi import (
 )
 from ..config.response import success
 from .captcha_ocr import router as captcha_ocr_router
+from .bot import router as bot_router
 
 api_router = APIRouter()
 api_router.include_router(captcha_ocr_router, prefix="/ocr", tags=["ocr识别"])
+api_router.include_router(bot_router, tags=["bot信息"])
 
 app: FastAPI = get_app()
 app.include_router(api_router, prefix="/api")
