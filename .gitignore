@@ -3,6 +3,11 @@ test/
 test_event.py
 data/*
 docs/locals/*
+poetry.toml
+activate_env.bat
+activate_env.sh
+src/plugins/auto_manage_group/sell_ad_group_model
+logs
 
 # Created by https://www.toptal.com/developers/gitignore/api/python
 # Edit at https://www.toptal.com/developers/gitignore?templates=python
@@ -143,4 +148,8 @@ dmypy.json
 # pytype static type analyzer
 .pytype/
 
-# End of https://www.toptal.com/developers/gitignore/api/python
+# ide配置文件
+.idea/
+# django配置文件
+src/**/migrations/
+src/django_project/django_project/settings.py

@@ -12,6 +12,7 @@ from nonebot.adapters.onebot.v11 import Message
 
 import aiohttp
 import asyncio
+import io
 
 from .config import Config
 
@@ -68,16 +69,9 @@ async def fetch_all(params: list):
     
     return all_scores
 
-def revers_to_rank_text_table(records: list):
-    if not records:
-        return "无过题积分榜数据"
-    records.sort(key=lambda x: x["totalScore"], reverse=True)
 
-    msg = "    Name    Score\n"
-    for i, person in enumerate(records, 1):
-        msg += f"{i:<3}{person['realName']:<6}{person['totalScore']}\n"
-
-    return msg
+# 导入图片生成模块
+from .image_generator import generate_leaderboard_image
 
 @leaderboard.handle()
 async def handle_leaderboard(event: GroupMessageEvent, args: Message = CommandArg()):
@@ -89,6 +83,22 @@ async def handle_leaderboard(event: GroupMessageEvent, args: Message = CommandAr
     params = arg.split()
 
     records = await fetch_all(params=params)
+    
+    # 检查数据是否为空
+    if not records:
+        await leaderboard.finish("暂无积分数据")
 
-    msg = revers_to_rank_text_table(records=records)
-    await leaderboard.finish(msg)
+    # 生成图片
+    try:
+        logger.info(f"开始生成积分榜图片，数据条数: {len(records)}")
+        img_bytes = await generate_leaderboard_image(records, config)
+        if img_bytes:
+            logger.info(f"图片生成成功，大小: {len(img_bytes)} 字节")
+            # 发送图片
+            from nonebot.adapters.onebot.v11 import MessageSegment
+            await leaderboard.finish(MessageSegment.image(img_bytes))
+        else:
+            logger.warning("图片生成失败，返回None")
+    except Exception as e:
+        # 如果出现异常，返回错误信息
+        logger.error(f"生成图片失败: {e}")

@@ -1,12 +1,13 @@
 from pathlib import Path
 import datetime
-from nonebot import get_plugin_config, on_regex, logger, Bot, on_command
+from nonebot import get_plugin_config, logger, Bot, on_command
 from nonebot.plugin import PluginMetadata
-from nonebot.adapters.onebot.v11 import GroupMessageEvent, MessageEvent, Message, MessageSegment
+from nonebot.adapters.onebot.v11 import GroupMessageEvent, Message, MessageSegment
 from nonebot.params import CommandArg
 
 from .config import Config
 from ...common import CompressPic, JsonUtils
+from ...common.utils import BuildUri
 from .lolicon import Lolicon
 from .anosu import Anosu
 
@@ -40,23 +41,10 @@ def is_in_cd(user_id: int, cd_time: int = 30):
         data["cd"][str(user_id)] = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         JsonUtils.write(config.filename, data)
         return False
-                
-def create_image_segment(image_path: str) -> MessageSegment:
-    # 获取绝对路径
-    abs_path = Path(image_path).absolute().as_posix()
-
-    start_pattern = "/app/data/images"
-    start_index = str(abs_path).find(start_pattern)
-
-    if start_index != -1:
-        result_path = str(abs_path)[start_index:]
-    
-    uri = f"file://{result_path}"
-    logger.info(f"the pic uri is: {uri}")
-    return MessageSegment.image(uri)
 
 async def send_group_msg(event: GroupMessageEvent, bot: Bot, img_path: str) -> None:
-    img_msg = create_image_segment(image_path=img_path)
+    uri = BuildUri.create_napcat_file_uri(img_path)
+    img_msg = MessageSegment.image(uri)
 
     try:
         await bot.send(event=event, message=img_msg)

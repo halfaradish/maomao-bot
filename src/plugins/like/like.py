@@ -1,4 +1,4 @@
-from nonebot import Bot, on_command, logger, get_plugin_config, on_regex, get_bot
+from nonebot import Bot, logger, get_plugin_config, on_regex, get_bot
 from nonebot.plugin import PluginMetadata
 from nonebot.adapters.onebot.v11 import GROUP, GroupMessageEvent, Message, MessageSegment
 from nonebot.adapters.onebot.v11.exception import ActionFailed
@@ -6,6 +6,8 @@ from nonebot_plugin_apscheduler import scheduler
 
 import re
 import asyncio
+from functools import wraps
+from typing import Callable, List
 
 from .config import Config
 from ...common import JsonUtils
@@ -46,6 +48,58 @@ like_unfollow = on_regex(
     priority=plugin_config.priority,
     block=plugin_config.block
 )
+
+def perm_decorator(func: Callable) -> Callable:
+    """
+    权限装饰器，检查用户是否有权限
+    """
+    @wraps(func)
+    async def wrapper(*args, **kwargs):
+        logger.info("权限装饰器开始执行")
+        
+        # 从kwargs中获取event和bot（NoneBot通常通过依赖注入传递）
+        event = kwargs.get('event')
+        bot = kwargs.get('bot')
+        
+        # 如果kwargs中没有，则尝试从args中查找
+        if not event or not bot:
+            for arg in args:
+                if isinstance(arg, GroupMessageEvent):
+                    event = arg
+                    logger.debug(f"从args中找到GroupMessageEvent参数，群ID: {event.group_id}")
+                elif isinstance(arg, Bot):
+                    bot = arg
+                    logger.debug("从args中找到Bot参数")
+        
+        # logger.debug(f"wrapper接收到的参数 - args数量: {len(args)}, kwargs键: {list(kwargs.keys())}")
+        # logger.debug(f"获取到的event: {event is not None}, bot: {bot is not None}")
+        
+        if not event or not bot:
+            logger.warning("无法获取必要的event或bot参数")
+            # 即使没有参数也尝试执行原函数，让NoneBot的错误处理机制介入
+            return await func(*args, **kwargs)
+        
+        try:
+            # 判断是否有权限
+            data, _ = JsonUtils.read(filename, {
+                "ban_group_users": []
+            })
+            ban_group_users: List = data.get('ban_group_users', [])
+            logger.info(f"群ID: {event.group_id}，禁止列表: {ban_group_users}")
+            
+            if str(event.group_id) in ban_group_users:
+                logger.info(f"群 {event.group_id} 没有权限使用该功能")
+                return
+            
+            logger.info(f"群 {event.group_id} 有权限，继续执行原函数")
+            # 有权限，返回原函数
+            return await func(*args, **kwargs)
+        except Exception as e:
+            logger.error(f"权限检查过程中发生错误: {e}", exc_info=True)
+            # 发生错误时也尝试执行原函数
+            return
+    
+    return wrapper
 
 def follow_or_not(follow: bool, user_id: str, nickname: str) -> str:
     """改变订阅赞的用户状态"""
@@ -180,13 +234,21 @@ async def like_other_handle(bot: Bot, event: GroupMessageEvent):
         await like_other.finish(sender + "未指定有效的QQ号或@用户")
 
 @like_follow.handle()
+@perm_decorator
 async def _(bot: Bot, event: GroupMessageEvent):
     """添加订阅"""
     follow: bool = True
     user_id = event.sender.user_id
     nickname = event.sender.nickname
-    msg = follow_or_not(follow=follow, user_id=user_id, nickname=nickname)
-    await like_unfollow.finish(msg)
+    logger.info(f"用户信息: user_id={user_id}, nickname={nickname}")
+
+    msg = f"收到订阅请求！用户: {nickname}({user_id})\n"
+    try:
+        msg += follow_or_not(follow=follow, user_id=str(user_id), nickname=nickname)
+        logger.info(msg)
+        await bot.send(event, message=msg)
+    except Exception as e:
+        logger.error(f"处理订阅时发生错误: {e}", exc_info=True)
 
 @like_unfollow.handle()
 async def _(bot: Bot, event: GroupMessageEvent):
@@ -194,8 +256,15 @@ async def _(bot: Bot, event: GroupMessageEvent):
     follow: bool = False
     user_id = event.sender.user_id
     nickname = event.sender.nickname
-    msg = follow_or_not(follow=follow, user_id=user_id, nickname=nickname)
-    await like_unfollow.finish(msg)
+    logger.info(f"用户信息: user_id={user_id}, nickname={nickname}")
+
+    msg = f"收到订阅请求！用户: {nickname}({user_id})\n"
+    try:
+        msg += follow_or_not(follow=follow, user_id=str(user_id), nickname=nickname)
+        logger.info(msg)
+        await bot.send(event, message=msg)
+    except Exception as e:
+        logger.error(f"处理订阅时发生错误: {e}", exc_info=True)
 
 @scheduler.scheduled_job("cron", hour=5, minute=0 ,second=0, id="job_subscribed_likes")
 async def _():

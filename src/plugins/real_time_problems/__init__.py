@@ -3,7 +3,8 @@ from nonebot.params import CommandArg
 from nonebot.exception import FinishedException
 from nonebot.plugin import PluginMetadata
 from nonebot_plugin_apscheduler import scheduler
-from nonebot.adapters.onebot.v11 import Bot, Message
+from nonebot.adapters.onebot.v11 import Message
+from nonebot.rule import Rule
 # 引入定时任务功能
 require("nonebot_plugin_apscheduler")
 
@@ -27,10 +28,20 @@ __plugin_meta__ = PluginMetadata(
 # 获取插件配置
 config = get_plugin_config(Config)
 # 自动查询的时间间隔
-check_gap_minutes = config.check_gap_minutes
+check_gap_minutes = config.rtp_check_gap_minutes
+
+def is_enable():
+    """是否启动实时过题查询"""
+    return config.rtp_check_enable
+logger.info(f"实时过题命令开关状态：{config.rtp_check_enable}")
 
 # 可以在QQ群里发送"检查过题"来手动查看
-check_ac_command = on_command("实时过题", aliases={"过题统计"}, priority=5)
+check_ac_command = on_command(
+    config.rtp_check_cmd,
+    aliases={"过题统计"},
+    rule=Rule(is_enable),
+    priority=config.rtp_check_priority
+)
 
 class RealTimeProblemsPlugin:
     """实时过题插件主类"""
@@ -47,7 +58,7 @@ class RealTimeProblemsPlugin:
             return None
 
         # 创建消息对象
-        message = Message(f"实时过题(前 {minutes} 分钟)\n")
+        message = Message(f"[实时过题](前 {minutes} 分钟)\n")
         # 遍历每条记录
         for record in records:
             # 从记录中获取各个字段
@@ -100,38 +111,42 @@ def get_recent_ac_records(minutes: int = check_gap_minutes) -> List[Dict[str, An
         # 出错时返回空列表
         return []
 
-@scheduler.scheduled_job(
-    "cron",
-    minute="0",
-    hour="*",
-    id="real_time_problems"
-)
-async def check_ac_records():
-    """
-    定时检查过题记录 - 每 check_gap_minutes 分钟自动运行一次
-    """
-    try:
-        logger.info("开始检查过题记录...")
-        
-        # 1. 从数据库获取最近check_gap_minutes分钟的过题记录
-        records = get_recent_ac_records()
+if config.rtp_report_enable:
+    @scheduler.scheduled_job(
+        "cron",
+        minute="0",
+        hour="*",
+        id="real_time_problems"
+    )
+    async def check_ac_records():
+        """
+        定时检查过题记录 - 每 check_gap_minutes 分钟自动运行一次
+        """
+        try:
+            logger.info("开始检查过题记录...")
+            
+            # 1. 从数据库获取最近check_gap_minutes分钟的过题记录
+            records = get_recent_ac_records()
 
-        # 2. 创建要发送的消息
-        message = plugin.create_message(records)
+            # 2. 创建要发送的消息
+            message = plugin.create_message(records)
 
-        # 3. 如果没有消息就跳过（没有过题记录）
-        if message is None:
-            logger.info("没有过题记录，跳过发送")
-            return
-        
-        # 4. 发送消息到配置的QQ群
-        await send_to_groups(message)
+            # 3. 如果没有消息就跳过（没有过题记录）
+            if message is None:
+                logger.info("没有过题记录，跳过发送")
+                return
+            
+            # 4. 发送消息到配置的QQ群
+            await send_to_groups(message)
 
-        logger.info(f"成功发送 {len(records)} 条过题记录")
-        
-    except Exception as e:
-        # 如果出错了，记录错误信息
-        logger.error(f"检查过题记录时出错: {e}")
+            logger.info(f"成功发送 {len(records)} 条过题记录")
+            
+        except Exception as e:
+            # 如果出错了，记录错误信息
+            logger.error(f"检查过题记录时出错: {e}")
+    logger.info("已启用实时过题播报功能")
+else:
+    logger.info(f"实时过题播报已禁用")
 
 async def send_to_groups(message: Message):
     #发送消息到所有配置的QQ群

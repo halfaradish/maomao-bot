@@ -12,14 +12,16 @@ class IcpcDBConfig:
     ICPC_DB_USER: str = os.getenv('ICPC_DB_USER') or 'root'
     ICPC_DB_PASSWORD: str = os.getenv('ICPC_DB_PASSWORD') or ''
     ICPC_DB_NAME: str = os.getenv('ICPC_DB_NAME') or ''
-    ICPC_DB_PORT: int = os.getenv('ICPC_DB_PORT') or 3306
+    ICPC_DB_PORT: int = int(os.getenv('ICPC_DB_PORT') or 3306)
+    ICPC_DB_POOL_SIZE: int = int(os.getenv('ICPC_DB_POOL_SIZE') or 20)
 
 class DiTingBotDBConfig:
     BOT_DB_HOST: str = os.getenv('BOT_DB_HOST') or 'localhost'
     BOT_DB_USER: str = os.getenv('BOT_DB_USER') or 'root'
     BOT_DB_PASSWORD: str = os.getenv('BOT_DB_PASSWORD') or ''
     BOT_DB_NAME: str = os.getenv('BOT_DB_NAME') or ''
-    BOT_DB_PORT: int = os.getenv('BOT_DB_PORT') or 3306
+    BOT_DB_PORT: int = int(os.getenv('BOT_DB_PORT') or 3306)
+    BOT_DB_POOL_SIZE: int = int(os.getenv('BOT_DB_POOL_SIZE') or 20)
 
 class CheckUpDay:
     # 表示第一天的八点
@@ -32,10 +34,13 @@ class CheckUpDay:
     TIMING_SECOND: str = str(os.getenv('TIMING_SECOND', 00))
 
 class SleepConfig:
-    # 最短睡眠时间
-    MIN_SLEEP_TIME: float = os.getenv('MIN_SLEEP_TIME') or 0.3
-    # 最长睡眠时间
-    MAX_SLEEP_TIME: float = os.getenv('MAX_SLEEP_TIME') or 1.0
+    # 是否启动延迟回复（处理布尔值：环境变量设为"False"或"0"时为False，否则用默认值True）
+    delay_env = os.getenv('DELAY_ENABLED')
+    DELAY_ENABLED: bool = False if delay_env in ("False", "0") else (True if delay_env else True)
+    # 最短睡眠时间（转换为float，默认0.3）
+    MIN_SLEEP_TIME: float = float(os.getenv('MIN_SLEEP_TIME', 0.3))
+    # 最长睡眠时间（转换为float，默认1.0）
+    MAX_SLEEP_TIME: float = float(os.getenv('MAX_SLEEP_TIME', 1.0))
 
 class QQControlConfig:
     # QQ控制的主机地址
@@ -56,7 +61,17 @@ class DiTingData:
     SQL_DIR: str = os.getenv('SQL_DIR') or "/app/data/sql"
 
 class RedisConfig:
-    NEW_OJ_HOST: str = os.getenv('NEW_OJ_HOST') or 'localhost'
-    NEW_OJ_PORT: int = os.getenv('NEW_OJ_PORT') or 6379
-    NEW_OJ_PASSWORD: str = os.getenv('NEW_OJ_PASSWORD') or '123456'
-    NEW_OJ_DB: int = os.getenv('NEW_OJ_DB') or 0
+    HOST: str = os.getenv('NEW_OJ_REDIS_HOST') or 'localhost'
+    PORT: int = os.getenv('NEW_OJ_REDIS_PORT') or 6379
+    PASSWORD: str = os.getenv('NEW_OJ_REDIS_PASSWORD') or '123456'
+    DB: int = os.getenv('NEW_OJ_REDIS_DB') or 0
+    MAX_CONNECTIONS: int = int(os.getenv('NEW_OJ_REDIS_MAX_CONNECTIONS') or 20)
+    SOCKET_TIMEOUT: int = int(os.getenv('NEW_OJ_REDIS_SOCKET_timeout') or 5)
+    SOCKET_CONNECT_TIMEOUT: int = int(os.getenv('NEW_OJ_REDIS_SOCKET_CONNECT_TIMEOUT') or 5)
+    DECODE_RESPONSES: int = os.getenv('NEW_OJ_REDIS_DECODE_RESPONSES') or True
+    RETRY_ON_TIME: bool = os.getenv('NEW_OJ_REDIS_RETRY_ON_TIME') or True
+    HEALTH_CHECK_INTERVAL: int = int(os.getenv('NEW_OJ_REDIS_HEALTH_CHECK_INTERVAL') or 30)
+
+class NoneBotToken:
+    ONEBOT_ACCESS_TOKEN: str = str(os.getenv('ONEBOT_ACCESS_TOKEN') or '')
+    DITING_API_ACCESS_TOKEN: str = str(os.getenv('DITING_API_ACCESS_TOKEN') or '')
