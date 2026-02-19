@@ -20,3 +20,4 @@ Django==4.2.16
 tzdata
 mysqlclient
 pymysql==1.1.2
+torch
