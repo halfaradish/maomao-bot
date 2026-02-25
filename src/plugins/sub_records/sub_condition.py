@@ -23,41 +23,41 @@ class Submission(object):
     获取过题数据
     """
 
-    # @staticmethod
-    # def _get_range_sub_records(start_time, end_time):
-    #     """获取范围内过题数据"""
-    #
-    #     try:
-    #         with get_icpc_db_connection() as db:
-    #             query = utils.GetSQL.read_sql_file(config.GET_RANGE_SUB_RECORDS)
-    #             records = db.execute(query, (start_time, end_time, start_time, end_time)).fetchall()
-    #             return records
-    #     except Exception as e:
-    #         logger.error(f"查询过题记录时出错：{e}")
-    #         return []
-
     @staticmethod
     def _get_range_sub_records(start_time, end_time):
-        # --------------- 临时假数据 ---------------
-        return [
-            {
-                "real_name": "test1",
-                "cf_count": 5,
-                "luogu_count": 3,
-                "all_count": 8,
-                "role_id": 1,
-                "school": "GXU"
-            },
-            {
-                "real_name": "test2",
-                "cf_count": 2,
-                "luogu_count": 4,
-                "all_count": 6,
-                "role_id": 2,
-                "school": "GXU"
-            }
-        ]
+        """获取范围内过题数据"""
+    
+        try:
+            with get_icpc_db_connection() as db:
+                query = utils.GetSQL.read_sql_file(config.GET_RANGE_SUB_RECORDS)
+                records = db.execute(query, (start_time, end_time, start_time, end_time)).fetchall()
+                return records
+        except Exception as e:
+            logger.error(f"查询过题记录时出错：{e}")
+            return []
+
+    # @staticmethod
+    # def _get_range_sub_records(start_time, end_time):
     #     # --------------- 临时假数据 ---------------
+    #     return [
+    #         {
+    #             "real_name": "test1",
+    #             "cf_count": 5,
+    #             "luogu_count": 3,
+    #             "all_count": 8,
+    #             "role_id": 1,
+    #             "school": "GXU"
+    #         },
+    #         {
+    #             "real_name": "test2",
+    #             "cf_count": 2,
+    #             "luogu_count": 4,
+    #             "all_count": 6,
+    #             "role_id": 2,
+    #             "school": "GXU"
+    #         }
+    #     ]
+    # #     # --------------- 临时假数据 ---------------
     @classmethod
     def get_records_msg(cls, upstream_days: int = 7):
         """获取cf过题消息"""
