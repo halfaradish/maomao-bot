@@ -164,13 +164,13 @@ async def _(bot: Bot, event: Union[GroupMessageEvent, PrivateMessageEvent], args
             await cf_sub_command.send(MessageSegment.image(pic))
 
             # --- 第二条：Bot收到消息的北京时间 ---
-            await cf_sub_command.send(f"[Bot收到消息时间] 北京时间：{recv_time}")
-
-            # --- 第三条：Bot发送图片时的时间 ---
-            await cf_sub_command.finish(
-                f"[Bot发送图片时间] 北京时间：{send_img_time}\n"
-                f"(总处理用时：{(t1 - t0) * 1000:.0f} ms)"
-            )
+            # await cf_sub_command.send(f"[Bot收到消息时间] 北京时间：{recv_time}")
+            #
+            # # --- 第三条：Bot发送图片时的时间 ---
+            # await cf_sub_command.finish(
+            #     f"[Bot发送图片时间] 北京时间：{send_img_time}\n"
+            #     f"(总处理用时：{(t1 - t0) * 1000:.0f} ms)"
+            # )
         else:
             await cf_sub_command.finish("图片生成失败，请稍后重试")
 
