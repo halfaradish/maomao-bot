@@ -1,51 +1,61 @@
 services:
-  nonebot:
+  diting-nonebot:
     networks:
       - ditingbot
-    container_name: nonebot
+    container_name: diting-nonebot
     depends_on:
-      - mysql
-      - redis
+    #   - mysql
+      - diting-redis
     build: .
+    env_file:
+      - .env
     ports:
       - "6090:6090"
+    volumes:
+      - "./logs:/app/logs"
+      - "./data:/app/data"
+    environment:
+      - TZ=Asia/Shanghai  # 统一时区
 
-  redis:
+  diting-redis:
     networks:
       - ditingbot
+    container_name: diting-redis
     image: library/redis:latest
     command: redis-server --requirepass 12345678 #Redis 密码
     ports:
       - "6379:6379"
-
-  mysql:
-    networks:
-      - ditingbot
-    image: library/mysql:latest
     environment:
-      - MYSQL_ROOT_PASSWORD=12345678
-    ports:
-      - "13306:3306"
+      - TZ=Asia/Shanghai  # 统一时区
 
-  napcat:
-    networks:
-      - ditingbot
-    image: mlikiowa/napcat-docker:latest
-    container_name: napcat
-    restart: always
-    mac_address: 00:e0:70:9a:5d:2b
-    privileged: true
-    ports:
-      - "6099:6099"
-      - "30000:3000" #接口测试端口穿透设置
-    environment:
-      - TZ=Asia/Shanghai
-      - NAPCAT_UID=0
-      - NAPCAT_GID=0
-    volumes:
-      - /app/.config/QQ:/app/.config/QQ
-      - /app/napcat/config:/app/napcat/config
-      - /app/napcat/config:/app/napcat/logs
+  # mysql:
+  #   networks:
+  #     - ditingbot
+  #   image: library/mysql:latest
+  #   environment:
+  #     - MYSQL_ROOT_PASSWORD=12345678
+  #   ports:
+  #     - "13306:3306"
+
+  # napcat:
+  #   networks:
+  #     - ditingbot
+  #   image: mlikiowa/napcat-docker:latest
+  #   container_name: napcat
+  #   restart: always
+  #   mac_address: 00:e0:70:9a:5d:2b
+  #   privileged: true
+  #   ports:
+  #     - "6099:6099"
+  #     - "30000:3000" #接口测试端口穿透设置
+  #   environment:
+  #     - TZ=Asia/Shanghai
+  #     - NAPCAT_UID=0
+  #     - NAPCAT_GID=0
+  #   volumes:
+  #     - /app/.config/QQ:/app/.config/QQ
+  #     - /app/napcat/config:/app/napcat/config
+  #     - /app/napcat/config:/app/napcat/logs
 
 networks:
   ditingbot:
