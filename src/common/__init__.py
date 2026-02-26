@@ -5,6 +5,7 @@ from .send_forward_msg import SendForwardMsg
 from . import utils
 from .oj_redis_pool import get_redis_connection
 from .rate_limiter import TokenBucketLimiter, GroupRateLimiter
+from .siqi_auth_client import siqi_auth
 
 __all__ = [
     'get_icpc_db_connection', 
@@ -14,5 +15,6 @@ __all__ = [
     'utils',
     'get_redis_connection',
     'TokenBucketLimiter',
-    'GroupRateLimiter'
+    'GroupRateLimiter',
+    'siqi_auth'
 ]
