@@ -16,6 +16,8 @@ services:
       - "./data:/app/data"
     environment:
       - TZ=Asia/Shanghai  # 统一时区
+    extra_hosts:
+      - "host.docker.internal:host-gateway"  # 允许容器通过此主机名访问宿主机服务
 
   diting-redis:
     networks:

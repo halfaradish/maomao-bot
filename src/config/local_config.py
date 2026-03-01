@@ -75,3 +75,12 @@ class RedisConfig:
 class NoneBotToken:
     ONEBOT_ACCESS_TOKEN: str = str(os.getenv('ONEBOT_ACCESS_TOKEN') or '')
     DITING_API_ACCESS_TOKEN: str = str(os.getenv('DITING_API_ACCESS_TOKEN') or '')
+
+class SiqiAuthConfig:
+    """司契权限系统配置"""
+    HOST: str = os.getenv('SIQI_AUTH_HOST') or 'host.docker.internal'
+    PORT: int = int(os.getenv('SIQI_AUTH_PORT') or 8888)
+    APP_CODE: str = os.getenv('SIQI_AUTH_APP_CODE') or 'qq_bot'
+    TIMEOUT: int = int(os.getenv('SIQI_AUTH_TIMEOUT') or 2)
+    _enabled_env = os.getenv('SIQI_AUTH_ENABLED')
+    ENABLED: bool = False if _enabled_env in ("False", "false", "0") else (True if _enabled_env else True)
