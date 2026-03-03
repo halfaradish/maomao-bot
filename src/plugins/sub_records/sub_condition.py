@@ -26,7 +26,7 @@ class Submission(object):
     @staticmethod
     def _get_range_sub_records(start_time, end_time):
         """获取范围内过题数据"""
-
+    
         try:
             with get_icpc_db_connection() as db:
                 query = utils.GetSQL.read_sql_file(config.GET_RANGE_SUB_RECORDS)
