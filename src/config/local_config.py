@@ -35,6 +35,8 @@ class DiTingBotDBConfig:
     BOT_DB_POOL_SIZE: int = int(os.getenv('BOT_DB_POOL_SIZE') or 20)
 
 class CheckUpDay:
+    # check_up_enable
+    CHECK_UP_ENABLE: bool = bool(os.getenv('CHECK_UP_ENABLE') or False)
     # 表示第一天的八点
     DAY_START: int = int(os.getenv('DAY_START') or 8)
     # 表示第二天的两点
