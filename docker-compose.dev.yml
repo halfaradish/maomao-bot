@@ -1,0 +1,71 @@
+services:
+  # 容器名添加-dev后缀，避免与原容器重名
+  diting-nonebot-dev:
+    networks:
+      # 使用-dev后缀的网络，避免网络冲突
+      - ditingbot-dev
+    container_name: diting-nonebot-dev
+    depends_on:
+      - diting-redis-dev
+    build: .
+    env_file:
+      - .env
+    # 端口映射改为6091（原6090），避免端口占用
+    ports:
+      - "6095:6090"
+    volumes:
+      - "./logs-dev:/app/logs"  # 日志目录添加-dev，区分环境数据
+      - "./data-dev:/app/data"  # 数据目录添加-dev，避免覆盖原数据
+    environment:
+      - TZ=Asia/Shanghai
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+  # Redis容器名添加-dev后缀
+  diting-redis-dev:
+    networks:
+      - ditingbot-dev
+    container_name: diting-redis-dev
+    image: library/redis:latest
+    command: redis-server --requirepass 12345678
+    # 端口映射改为6380（原6379），避免端口冲突
+    ports:
+      - "6380:6379"
+    environment:
+      - TZ=Asia/Shanghai
+
+  # 若启用mysql，同样添加-dev后缀和新端口
+  # mysql-dev:
+  #   networks:
+  #     - ditingbot-dev
+  #   image: library/mysql:latest
+  #   environment:
+  #     - MYSQL_ROOT_PASSWORD=12345678
+  #   ports:
+  #     - "13307:3306"  # 原13306改为13307
+
+  # 若启用napcat，添加-dev后缀和新端口
+  # napcat-dev:
+  #   networks:
+  #     - ditingbot-dev
+  #   image: mlikiowa/napcat-docker:latest
+  #   container_name: napcat-dev
+  #   restart: always
+  #   mac_address: 00:e0:70:9a:5d:2c  # 修改MAC地址，避免冲突
+  #   privileged: true
+  #   ports:
+  #     - "6100:6099"  # 原6099改为6100
+  #     - "30001:3000" # 原30000改为30001
+  #   environment:
+  #     - TZ=Asia/Shanghai
+  #     - NAPCAT_UID=0
+  #     - NAPCAT_GID=0
+  #   volumes:
+  #     - /app/.config/QQ-dev:/app/.config/QQ  # 数据目录添加-dev
+  #     - /app/napcat/config-dev:/app/napcat/config
+  #     - /app/napcat/logs-dev:/app/napcat/logs
+
+# 网络名添加-dev后缀，避免与原网络冲突
+networks:
+  ditingbot-dev:
+    driver: bridge
