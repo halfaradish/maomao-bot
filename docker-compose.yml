@@ -33,11 +33,11 @@ services:
   # mysql:
   #   networks:
   #     - ditingbot
-  #   image: library/mysql:latest
+  #   image: library/mysql:8.0.32
   #   environment:
-  #     - MYSQL_ROOT_PASSWORD=12345678
+  #     - MYSQL_ROOT_PASSWORD=123456
   #   ports:
-  #     - "13306:3306"
+  #     - "3306:3306"
 
   # napcat:
   #   networks:
