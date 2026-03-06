@@ -35,6 +35,8 @@ def _get_font(size):
     system = platform.system().lower()
     if system == "windows":
         font_paths = ["C:/Windows/Fonts/msyh.ttc", "C:/Windows/Fonts/simhei.ttf"]
+    elif system == "linux":
+        font_paths = ["/usr/share/fonts/truetype/wqy/wqy-microhei.ttc", "/usr/share/fonts/truetype/wqy/wqy-zenhei.ttc"]
     for font_path in font_paths:
         try:
             if os.path.exists(font_path):
