@@ -4,7 +4,7 @@ services:
       - ditingbot
     container_name: diting-nonebot
     depends_on:
-    #   - mysql
+      - mysql
       - diting-redis
     build: .
     env_file:
@@ -30,14 +30,14 @@ services:
     environment:
       - TZ=Asia/Shanghai  # 统一时区
 
-  # mysql:
-  #   networks:
-  #     - ditingbot
-  #   image: library/mysql:latest
-  #   environment:
-  #     - MYSQL_ROOT_PASSWORD=12345678
-  #   ports:
-  #     - "13306:3306"
+  mysql:
+    networks:
+      - ditingbot
+    image: library/mysql:8.0.32
+    environment:
+      - MYSQL_ROOT_PASSWORD=123456
+    ports:
+      - "3306:3306"
 
   # napcat:
   #   networks:
