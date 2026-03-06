@@ -19,6 +19,11 @@ RUN apt-get update && apt-get install -y \
     libcairo2-dev \
     libgomp1 \
     libjsoncpp-dev \
+    fonts-wqy-microhei \
+    fonts-wqy-zenhei \
+    fonts-arphic-ukai \
+    fonts-arphic-uming \
+    fonts-noto-cjk \
     && rm -rf /var/lib/apt/lists/*
 
 RUN python -m pip install --upgrade pip && \
