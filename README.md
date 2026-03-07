@@ -13,26 +13,8 @@
 3. 启动Docker Compose：
    
    **方式一：使用Docker管理脚本（推荐）**
-   - 确保Docker Desktop已启动（Windows系统下Docker命令需要Docker Desktop运行）
-   - 打开命令提示符（CMD）或PowerShell，导航到项目根目录
-   - 运行管理脚本：
-     ```bash
-     # 生产环境（默认）
-     ./scripts/docker-manager.sh
-     
-     # 开发环境
-     ./scripts/docker-manager.sh dev
-     ```
-   - 脚本将显示交互式菜单，您可以选择：
-     - 构建镜像
-     - 启动容器
-     - 停止容器
-     - 查看容器状态
-     - 查看日志
-     - 进入容器
-     - 清理环境
-     - 切换环境
-     - 查看帮助信息
+
+   [Docker管理脚本使用指南](#docker脚本使用指南)
    
    **方式二：通过Docker Desktop图形界面**
    - 打开Docker Desktop，启动服务
@@ -81,8 +63,7 @@
 
 6. 代码更改后，重新**构建**nonebot容器即可
 
-### Docker管理脚本使用指南
-
+### Docker管理脚本使用指南<a id="docker脚本使用指南"></a>
 我们提供了一个便捷的Docker管理脚本，可以简化Docker操作：
 
 #### 快速开始
