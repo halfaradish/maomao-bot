@@ -1,3 +1,5 @@
-from src.interfaces.bot.summary_command import smy_cmd
+"""Interfaces 层入口，导入后触发 Bot 命令注册。"""
 
-__all__ = ["smy_cmd"]
+from src.interfaces import bot
+
+__all__ = ["bot"]
