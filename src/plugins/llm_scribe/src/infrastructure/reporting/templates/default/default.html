@@ -1,0 +1,363 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>群聊简报 - {{ header.group_id }}</title>
+    <style>
+        :root {
+            --glass-bg: rgba(255, 255, 255, 0.75);
+            --primary-gradient: linear-gradient(135deg, #6366f1 0%, #4338ca 100%);
+            --text-dark: #0f172a;
+            --text-soft: #64748b;
+            --bg-color: #f1f5f9;
+            --accent-green: #10b981;
+            --card-border: rgba(255, 255, 255, 0.6);
+        }
+
+        body {
+            font-family: 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', sans-serif;
+            background-color: var(--bg-color);
+            background-image:
+                radial-gradient(at 0% 0%, rgba(99, 102, 241, 0.08) 0px, transparent 50%),
+                radial-gradient(at 100% 100%, rgba(59, 130, 246, 0.08) 0px, transparent 50%);
+            color: var(--text-dark);
+            margin: 0;
+            padding: 50px 20px;
+            -webkit-font-smoothing: antialiased;
+            line-height: 1.5;
+        }
+
+        .container { max-width: 680px; margin: 0 auto; }
+
+        header {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-end;
+            margin-bottom: 40px;
+            padding: 0 4px;
+        }
+
+        h1 {
+            font-size: 38px;
+            font-weight: 900;
+            margin: 0;
+            letter-spacing: -1px;
+            color: var(--text-dark);
+            line-height: 1.1;
+        }
+
+        .date-display { text-align: right; }
+        .date-day {
+            font-size: 38px;
+            font-weight: 200;
+            color: #94a3b8;
+            line-height: 0.9;
+            font-variant-numeric: tabular-nums;
+        }
+        .date-month { font-size: 14px; font-weight: 800; color: var(--text-dark); margin-top: 4px; letter-spacing: 2px; }
+
+        .stats-row {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 20px;
+            margin-bottom: 40px;
+        }
+
+        .stat-group {
+            border-top: 2px solid #cbd5e1;
+            padding-top: 16px;
+        }
+
+        .stat-value {
+            font-size: 24px;
+            font-weight: 800;
+            display: block;
+            color: #1e1b4b;
+            margin-bottom: 2px;
+            font-variant-numeric: tabular-nums;
+        }
+        .stat-label {
+            font-size: 12px;
+            color: var(--text-soft);
+            font-weight: 700;
+            letter-spacing: 1px;
+        }
+
+        .chart-section {
+            background: var(--glass-bg);
+            padding: 28px;
+            border-radius: 28px;
+            box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.05);
+            border: 1px solid var(--card-border);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+            margin-bottom: 40px;
+        }
+
+        .chart-header {
+            font-size: 13px;
+            font-weight: 800;
+            color: var(--text-dark);
+            margin-bottom: 24px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .chart-grid {
+            display: grid;
+            grid-template-columns: repeat(24, 1fr);
+            gap: 5px;
+            align-items: flex-end;
+            height: 80px;
+        }
+
+        .bar-item {
+            background: #e2e8f0;
+            border-radius: 4px 4px 2px 2px;
+            min-height: 4px;
+            width: 100%;
+            transition: all 0.3s ease;
+        }
+        .bar-item.highlight {
+            background: var(--primary-gradient);
+            box-shadow: 0 4px 12px rgba(99, 102, 241, 0.3);
+        }
+
+        .time-axis {
+            display: grid;
+            grid-template-columns: repeat(24, 1fr);
+            gap: 5px;
+            margin-top: 12px;
+        }
+
+        .time-mark {
+            font-size: 10px;
+            color: #94a3b8;
+            font-family: monospace;
+            font-weight: 600;
+            text-align: center;
+        }
+
+        .topic-label {
+            font-size: 20px;
+            font-weight: 900;
+            color: var(--text-dark);
+            margin-bottom: 24px;
+            padding-left: 4px;
+            display: flex;
+            align-items: center;
+        }
+        .topic-label::before {
+            content: ""; display: inline-block; width: 5px; height: 20px;
+            background: var(--primary-gradient); margin-right: 12px; border-radius: 10px;
+        }
+
+        .topic-card {
+            background: white;
+            padding: 30px;
+            border-radius: 24px;
+            margin-bottom: 22px;
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.02);
+            border: 1px solid #f1f5f9;
+        }
+
+        .topic-title {
+            font-size: 20px;
+            font-weight: 800;
+            margin-bottom: 12px;
+            color: #1e293b;
+        }
+
+        .participants-row {
+            display: flex;
+            align-items: center;
+            flex-wrap: wrap;
+            column-gap: 6px;
+            row-gap: 6px;
+            margin: 4px 0 12px 0;
+        }
+
+        .participants-row .participants-label {
+            font-size: 12px;
+            color: #64748b;
+            font-weight: 700;
+            margin-right: 2px;
+        }
+
+        /* --- 用户胶囊样式优化（与正文更贴合） --- */
+        .user-capsule {
+            display: inline-flex;
+            align-items: center;
+            background: #f8fafc;
+            border: 1px solid #e2e8f0;
+            border-radius: 999px;
+            padding: 1px 7px 1px 4px;
+            margin: 0 2px;
+            vertical-align: middle;
+            transform: none;
+            transition: all 0.2s ease;
+            box-shadow: 0 1px 2px rgba(0, 0, 0, 0.03);
+            line-height: 1.2;
+        }
+
+        .capsule-avatar {
+            width: 16px;
+            height: 16px;
+            border-radius: 50%;
+            margin-right: 5px;
+            object-fit: cover;
+            display: block;
+            border: 1px solid rgba(0, 0, 0, 0.08);
+            flex-shrink: 0;
+            vertical-align: middle;
+        }
+
+        .capsule-name {
+            font-size: 11.5px;
+            font-weight: 600;
+            color: #6366f1;
+            max-width: 96px;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+            line-height: 1.25;
+        }
+
+        /* 正文中的胶囊：进一步缩小左右空隙，提升词流连贯性 */
+        .topic-body .user-capsule {
+            margin: 0 1px;
+        }
+
+        /* 参与者栏中的胶囊：使用容器 gap 控制间距，避免双重叠加 */
+        .topic-card > div .user-capsule {
+            margin: 0;
+        }
+
+        /* --- 话题正文排版优化 --- */
+        .topic-body {
+            font-size: 15.5px;
+            color: #334155;
+            line-height: 1.95;
+            margin: 0;
+            text-align: justify;
+            word-break: break-all;
+        }
+
+        footer {
+            margin-top: 50px;
+            padding-top: 20px;
+            border-top: 1px solid #e2e8f0;
+            text-align: center;
+            font-size: 12px;
+            color: #94a3b8;
+            font-weight: 600;
+            letter-spacing: 1px;
+        }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <header>
+        <div>
+            <h1>{{ header.title }}</h1>
+            <div style="font-size: 13px; color: var(--text-soft); margin-top: 10px; font-weight: 600;">
+                <span style="background: #e0e7ff; color: #4338ca; padding: 2px 8px; border-radius: 4px; margin-right: 8px;">统计区间</span>
+                {{ header.time_range }}
+                <span style="color: var(--accent-green); margin-left: 12px;">● 群号: {{ header.group_id }}</span>
+            </div>
+        </div>
+        <div class="date-display">
+            <div class="date-day">{{ header.time_range[8:10] if header.time_range else '--' }}</div>
+            <div class="date-month">{{ header.time_range[5:7] if header.time_range else '--' }}月回顾</div>
+        </div>
+    </header>
+
+    <div class="stats-row">
+        <div class="stat-group">
+            <span class="stat-value">{{ statistics.message_count }}</span>
+            <span class="stat-label">消息总数</span>
+        </div>
+        <div class="stat-group">
+            <span class="stat-value">{{ statistics.participant_count }}</span>
+            <span class="stat-label">活跃成员</span>
+        </div>
+        <div class="stat-group">
+            <span class="stat-value">{{ (metadata.total_tokens / 1000) | round(1) if metadata.total_tokens else 0 }}k</span>
+            <span class="stat-label">tokens</span>
+        </div>
+        <div class="stat-group">
+            <span class="stat-value">¥{{ metadata.cost | round(3) if metadata.cost else 0 }}</span>
+            <span class="stat-label">预估成本</span>
+        </div>
+    </div>
+
+    <div class="chart-section">
+        <div class="chart-header">
+            <span style="display: flex; align-items: center; gap: 6px;">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>
+                24H 活跃密度分布
+            </span>
+            <span style="color: #4f46e5; background: rgba(99, 102, 241, 0.1); padding: 4px 10px; border-radius: 20px;">
+                活跃峰值: {{ statistics.most_active_period }}
+            </span>
+        </div>
+
+        <div class="chart-grid">
+            {% if statistics.activity_visualization.hourly_activity %}
+                {% set max_val = statistics.activity_visualization.hourly_activity | max %}
+                {% for count in statistics.activity_visualization.hourly_activity %}
+                    {% set height_percent = (count / max_val * 100) if max_val > 0 else 8 %}
+                    <div class="bar-item {{ 'highlight' if count > (max_val * 0.75) and max_val > 0 else '' }}"
+                         style="height: {{ height_percent if height_percent > 8 else 8 }}%;"></div>
+                {% endfor %}
+            {% else %}
+                {% for i in range(24) %}<div class="bar-item" style="height: 10%;"></div>{% endfor %}
+            {% endif %}
+        </div>
+
+        <div class="time-axis">
+            {% for i in range(24) %}
+                <div class="time-mark" style="visibility: {{ 'visible' if i in [0, 6, 12, 18, 23] else 'hidden' }};">
+                    {{ "%02d" % i }}
+                </div>
+            {% endfor %}
+        </div>
+    </div>
+
+    <div class="topic-label">焦点话题回顾</div>
+
+    {% for topic in topics %}
+    <div class="topic-card">
+        <div class="topic-title">{{ topic.topic }}</div>
+
+        {% if topic.participants_html or topic.participants %}
+        <div class="participants-row">
+            <span class="participants-label">参与者</span>
+            {% if topic.participants_html %}
+                {{ topic.participants_html | safe }}
+            {% else %}
+                {% for participant in topic.participants %}
+                    <span class="user-capsule">
+                        <span class="capsule-name">{{ participant }}</span>
+                    </span>
+                {% endfor %}
+            {% endif %}
+        </div>
+        {% endif %}
+
+        <p class="topic-body">
+            {{ topic.detail_html | safe if topic.detail_html else topic.detail }}
+        </p>
+    </div>
+    {% endfor %}
+
+    <footer>
+
+    </footer>
+</div>
+
+</body>
+</html>
