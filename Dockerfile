@@ -41,6 +41,7 @@ WORKDIR /app
 RUN python -m pip install --upgrade pip -i https://pypi.tuna.tsinghua.edu.cn/simple && \
     python -m pip install -r requirements.txt -i https://pypi.tuna.tsinghua.edu.cn/simple && \
     python -m pip install nb-cli -i https://pypi.tuna.tsinghua.edu.cn/simple && \
+    python -m playwright install chromium --with-deps && \
     rm -rf /root/.cache/pip /tmp/*  # 显式清理缓存
 
 # 3. 最后复制代码（代码变动不会使上面层失效）
