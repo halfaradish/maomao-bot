@@ -47,4 +47,8 @@ RUN python -m pip install --upgrade pip -i https://pypi.tuna.tsinghua.edu.cn/sim
 # 3. 最后复制代码（代码变动不会使上面层失效）
 COPY . /app
 
+# 3. 编译 C++ 插件二进制文件
+# 使用 g++ 编译 table_gen.cpp。
+RUN g++ /app/src/plugins/sub_records/table_gen.cpp -o /app/src/plugins/sub_records/table_gen -ljsoncpp -O3
+
 CMD ["nb", "run"]
