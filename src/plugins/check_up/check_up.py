@@ -11,6 +11,7 @@ from typing import Union
 from .working_time import get_working_time
 from .config import Config
 from ...common import JsonUtils
+from ...config.local_config import CheckUpDay
 
 __plugin_meta__ = PluginMetadata(
     name="check_up",
@@ -145,15 +146,20 @@ async def check_up(bot: Bot, event: Union[GroupMessageEvent, PrivateMessageEvent
     except Exception as e:
         logger.opt(exception=True).warning("[考勤]响应错误")
 
-@scheduler.scheduled_job("cron", hour=plugin_config.TIMING_HOUR, minute=plugin_config.TIMING_MINUTE ,second=plugin_config.TIMING_SECOND, id="send_check_on_work_msg")
-async def daily_timing():
-    """每天指定时间向指定群发送考勤记录"""
-    bot = get_bot()
-    date_val: datetime = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0) - timedelta(hours=24)
-    range_val: int = 1
+if plugin_config.check_up_enable:
+    @scheduler.scheduled_job("cron", hour=plugin_config.TIMING_HOUR, minute=plugin_config.TIMING_MINUTE ,second=plugin_config.TIMING_SECOND, id="send_check_on_work_msg")
+    async def daily_timing():
+        """每天指定时间向指定群发送考勤记录"""
+        bot = get_bot()
+        date_val: datetime = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0) - timedelta(hours=24)
+        range_val: int = 1
 
-    # 获取消息
-    msg = get_working_time(date=date_val, range=range_val)
-    group_ids = plugin_config.GROUP_IDS
+        # 获取消息
+        msg = get_working_time(date=date_val, range=range_val)
+        group_ids = plugin_config.GROUP_IDS
 
-    await send_msg_to_group(group_ids=group_ids, bot=bot, msg=msg)
+        await send_msg_to_group(group_ids=group_ids, bot=bot, msg=msg)
+    
+    logger.info("已启动定时考勤任务")
+else:
+    logger.info("定时考勤任务已禁用")

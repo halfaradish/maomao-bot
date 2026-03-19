@@ -2,12 +2,14 @@
 test/
 test_event.py
 data/*
+data-dev/*
 docs/locals/*
 poetry.toml
 activate_env.bat
 activate_env.sh
 src/plugins/auto_manage_group/sell_ad_group_model
 logs
+logs-dev
 *.bak
 
 # Created by https://www.toptal.com/developers/gitignore/api/python

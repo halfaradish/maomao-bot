@@ -1,11 +1,22 @@
+from nonebot import logger
 import os
 from dotenv import load_dotenv
 
 load_dotenv()
 
+environment: str = os.getenv('ENVIRONMENT') or 'prod'
+
+_env_file = f".env.{environment}"
+
+if os.path.exists(_env_file):
+    load_dotenv(_env_file)
+    logger.info(f"successful load {_env_file}")
+else:
+    logger.error(f"{_env_file} not found. Falling back to default or system env.")
+
 class Config:
-    HOST: str = os.getenv('HOST')
-    PORT: str = os.getenv('PORT')
+    HOST: str = os.getenv('HOST') or "0.0.0.0"
+    PORT: str = os.getenv('PORT') or "6090"
 
 class IcpcDBConfig:
     ICPC_DB_HOST: str = os.getenv('ICPC_DB_HOST') or 'localhost'
@@ -24,6 +35,8 @@ class DiTingBotDBConfig:
     BOT_DB_POOL_SIZE: int = int(os.getenv('BOT_DB_POOL_SIZE') or 20)
 
 class CheckUpDay:
+    # check_up_enable
+    CHECK_UP_ENABLE: bool = bool(os.getenv('CHECK_UP_ENABLE') or False)
     # 表示第一天的八点
     DAY_START: int = int(os.getenv('DAY_START') or 8)
     # 表示第二天的两点
@@ -62,14 +75,14 @@ class DiTingData:
 
 class RedisConfig:
     HOST: str = os.getenv('NEW_OJ_REDIS_HOST') or 'localhost'
-    PORT: int = os.getenv('NEW_OJ_REDIS_PORT') or 6379
+    PORT: int = int(os.getenv('NEW_OJ_REDIS_PORT') or 6379)
     PASSWORD: str = os.getenv('NEW_OJ_REDIS_PASSWORD') or '123456'
-    DB: int = os.getenv('NEW_OJ_REDIS_DB') or 0
+    DB: int = int(os.getenv('NEW_OJ_REDIS_DB') or 0)
     MAX_CONNECTIONS: int = int(os.getenv('NEW_OJ_REDIS_MAX_CONNECTIONS') or 20)
     SOCKET_TIMEOUT: int = int(os.getenv('NEW_OJ_REDIS_SOCKET_timeout') or 5)
     SOCKET_CONNECT_TIMEOUT: int = int(os.getenv('NEW_OJ_REDIS_SOCKET_CONNECT_TIMEOUT') or 5)
-    DECODE_RESPONSES: int = os.getenv('NEW_OJ_REDIS_DECODE_RESPONSES') or True
-    RETRY_ON_TIME: bool = os.getenv('NEW_OJ_REDIS_RETRY_ON_TIME') or True
+    DECODE_RESPONSES: bool = bool(os.getenv('NEW_OJ_REDIS_DECODE_RESPONSES') or True)
+    RETRY_ON_TIME: bool = bool(os.getenv('NEW_OJ_REDIS_RETRY_ON_TIME') or True)
     HEALTH_CHECK_INTERVAL: int = int(os.getenv('NEW_OJ_REDIS_HEALTH_CHECK_INTERVAL') or 30)
 
 class NoneBotToken:

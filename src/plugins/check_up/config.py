@@ -13,6 +13,9 @@ class Config(BaseModel):
 
         return content['group_id']
 
+    # enable
+    check_up_enable: bool = False
+
     # 优先级
     priority: int = 10
     # 是否阻塞

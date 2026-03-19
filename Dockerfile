@@ -19,6 +19,11 @@ RUN apt-get update && apt-get install -y \
     libcairo2-dev \
     libgomp1 \
     libjsoncpp-dev \
+    fonts-wqy-microhei \
+    fonts-wqy-zenhei \
+    fonts-arphic-ukai \
+    fonts-arphic-uming \
+    fonts-noto-cjk \
     && rm -rf /var/lib/apt/lists/*
 
 RUN python -m pip install --upgrade pip && \
@@ -36,9 +41,14 @@ WORKDIR /app
 RUN python -m pip install --upgrade pip -i https://pypi.tuna.tsinghua.edu.cn/simple && \
     python -m pip install -r requirements.txt -i https://pypi.tuna.tsinghua.edu.cn/simple && \
     python -m pip install nb-cli -i https://pypi.tuna.tsinghua.edu.cn/simple && \
+    python -m playwright install chromium --with-deps && \
     rm -rf /root/.cache/pip /tmp/*  # 显式清理缓存
 
 # 3. 最后复制代码（代码变动不会使上面层失效）
 COPY . /app
+
+# 3. 编译 C++ 插件二进制文件
+# 使用 g++ 编译 table_gen.cpp。
+RUN g++ /app/src/plugins/sub_records/table_gen.cpp -o /app/src/plugins/sub_records/table_gen -ljsoncpp -O3
 
 CMD ["nb", "run"]
