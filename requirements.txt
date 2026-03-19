@@ -21,7 +21,7 @@ tzdata
 mysqlclient
 pymysql==1.1.2
 torch
-
+transformers
 openai
 langgraph
 langchain-core
