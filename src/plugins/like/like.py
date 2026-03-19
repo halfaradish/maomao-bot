@@ -1,4 +1,4 @@
-from nonebot import Bot, logger, get_plugin_config, on_regex, get_bot
+from nonebot import Bot, logger, get_plugin_config, on_regex, get_bot, on_command
 from nonebot.plugin import PluginMetadata
 from nonebot.adapters.onebot.v11 import GROUP, GroupMessageEvent, Message, MessageSegment
 from nonebot.adapters.onebot.v11.exception import ActionFailed
@@ -24,26 +24,27 @@ __plugin_meta__ = PluginMetadata(
 
 filename = plugin_config.data_filename
 
-like_me = on_regex(
-    "^(超|赞)(市|)我$",
+like_me = on_command(
+    "赞我",
     permission=GROUP,
     priority=plugin_config.priority,
     block=plugin_config.block
 )
-like_other = on_regex(
-    "^(超|赞)(市|)(你|他|她|它|TA|)\s*(.*)$",
+like_other = on_command(
+    "赞他",
+    aliases={"赞她", "超市"},
     permission=GROUP,
     priority=plugin_config.priority,
     block=plugin_config.block
 )
-like_follow = on_regex(
-    r"^^(?:天天.+我|订阅赞)$$",
+like_follow = on_command(
+    "订阅赞",
     permission=GROUP,
     priority=plugin_config.priority,
     block=plugin_config.block
 )
-like_unfollow = on_regex(
-    r"^(?:不要?|补药|取消)\s*(?:天天.我|订阅赞)$",
+like_unfollow = on_command(
+    "取消订阅赞",
     permission=GROUP,
     priority=plugin_config.priority,
     block=plugin_config.block
@@ -269,6 +270,8 @@ async def _(bot: Bot, event: GroupMessageEvent):
 @scheduler.scheduled_job("cron", hour=5, minute=0 ,second=0, id="job_subscribed_likes")
 async def _():
     "给订阅的用户进行每日点赞"
+    if not plugin_config.like_auto_send_like:
+        return
     # 获取数据
     bot = get_bot()
     data, _ = JsonUtils.read(filename, {
