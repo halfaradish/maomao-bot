@@ -9,5 +9,7 @@ class Config(BaseModel):
     message_split: str = " "
     fakemsg_whitelist: List[str] = []
 
+    fakemsg_enable: bool = False
+
 
 config = get_plugin_config(Config)
