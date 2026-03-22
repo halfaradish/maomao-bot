@@ -17,6 +17,7 @@ RUN apt-get update && apt-get install -y \
     build-essential \
     libpangocairo-1.0-0 \
     libcairo2-dev \
+    libpango1.0-dev \
     libgomp1 \
     libjsoncpp-dev \
     fonts-wqy-microhei \
@@ -48,7 +49,10 @@ RUN python -m pip install --upgrade pip -i https://pypi.tuna.tsinghua.edu.cn/sim
 COPY . /app
 
 # 3. 编译 C++ 插件二进制文件
-# 使用 g++ 编译 table_gen.cpp。
-RUN g++ /app/src/plugins/sub_records/table_gen.cpp -o /app/src/plugins/sub_records/table_gen -ljsoncpp -O3
+RUN g++ -fPIC -shared \
+    /app/src/plugins/sub_records/table_gen.cpp \
+    -o /app/src/plugins/sub_records/table_gen.so \
+    $(pkg-config --cflags --libs cairo pango pangocairo jsoncpp) \
+    -O3
 
 CMD ["nb", "run"]

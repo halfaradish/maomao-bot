@@ -59,10 +59,10 @@ __plugin_meta__ = PluginMetadata(
     name="auto_manage_group",
     description="",
     usage="",
-    config=Config,
+    config=None,
 )
 
-config = get_plugin_config(Config)
+plugin_config = get_plugin_config(Config)
 
 def is_group_increase(event) -> bool:
     return isinstance(event, GroupIncreaseNoticeEvent)
@@ -83,6 +83,8 @@ def get_monitored_groups():
 
 @group_increase.handle()
 async def _(event: GroupIncreaseNoticeEvent):
+    if not plugin_config.auto_manage_increase:
+        return
     # 获取信息
     user_id: str = str(event.user_id)
     operator_id: str = str(event.operator_id)
@@ -102,6 +104,8 @@ async def _(event: GroupIncreaseNoticeEvent):
 
 @group_decrease.handle()
 async def _(event: GroupDecreaseNoticeEvent):
+    if not plugin_config.auto_manage_decrease:
+        return
     user_id: str = str(event.user_id)
     operator_id: str = str(event.operator_id)
     group_id: str = str(event.group_id)
@@ -129,9 +133,11 @@ async def contains_banned_word(event: GroupMessageEvent) -> bool:
     """
     使用模型判断是否包含违禁内容
     """
+    if not plugin_config.auto_manage_banned_word_enable:
+        return False
     # 1. 获取配置数据
     data, _ = JsonUtils.read(
-        filename=config.data_filename,
+        filename=plugin_config.data_filename,
         default={"ban_words_monitored_groups": []}
     )
     ban_words_monitored_groups = data.get('ban_words_monitored_groups', [])
@@ -183,11 +189,11 @@ async def context_erase_messages(bot: Bot, user_id: int, group_id: int, base_tim
     """上下文撤回消息"""
     try:
         # 等待延迟时间，确保logging_info插件完成消息存储
-        await asyncio.sleep(config.context_erase_delay)
+        await asyncio.sleep(plugin_config.context_erase_delay)
         
         # 计算时间范围
-        start_time = base_time - config.context_erase_time_range
-        end_time = base_time + config.context_erase_time_range
+        start_time = base_time - plugin_config.context_erase_time_range
+        end_time = base_time + plugin_config.context_erase_time_range
         
         logger.info(f"开始上下文撤回: 用户{user_id}, 群组{group_id}, 时间范围{start_time}-{end_time}")
         
@@ -216,7 +222,7 @@ async def context_erase_messages(bot: Bot, user_id: int, group_id: int, base_tim
                 logger.info(f"消息{i+1}: ID={msg.message_id}, 时间={msg.time}, 内容长度={len(msg.raw_message)}")
         
         if not messages:
-            logger.info(f"未找到需要撤回的上下文消息")
+            logger.info("未找到需要撤回的上下文消息")
             return {"total": 0, "success": 0, "failed": 0, "messages": []}
             
         logger.info(f"找到 {len(messages)} 条需要撤回的上下文消息")
@@ -241,7 +247,7 @@ async def context_erase_messages(bot: Bot, user_id: int, group_id: int, base_tim
         results = []
         for msg in messages:
             # 在每次撤回前添加配置的间隔延迟
-            await asyncio.sleep(config.context_erase_retry_delay)
+            await asyncio.sleep(plugin_config.context_erase_retry_delay)
             
             # 执行撤回任务
             result = await delete_message(msg)
@@ -305,7 +311,7 @@ async def _(bot: Bot, event: GroupMessageEvent):
         await bot.delete_msg(message_id=message_id)
 
         user_segment = MessageSegment.at(user_id=user_id)
-        await banned_word_detector.send(f"检测到消息包含违规词，已对 " + user_segment + f"({user_id})禁言 1 小时")
+        await banned_word_detector.send("检测到消息包含违规词，已对 " + user_segment + f"({user_id})禁言 1 小时")
 
         # 启动上下文撤回任务并获取结果
         erase_result = await context_erase_messages(bot, user_id, group_id, current_time, message_id)
@@ -343,7 +349,7 @@ async def _(bot: Bot, event: GroupMessageEvent):
             remind_msgs.append("上下文撤回机制已启动")
 
         data, _ = JsonUtils.read(
-            filename=config.data_filename,
+            filename=plugin_config.data_filename,
             default={"ban_words_remind_groups": []}
         )
         # 发送消息

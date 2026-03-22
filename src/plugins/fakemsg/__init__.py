@@ -77,6 +77,8 @@ def load_config():
 async def check_if_fakemsg(
     event: Union[GroupMessageEvent, PrivateMessageEvent],
 ) -> bool:
+    if not config.fakemsg_enable:
+        return False
     if len(event.original_message) > 1 and event.original_message[0].type == "at":
         if event.original_message[1].data.get("text").strip().startswith("说"):
             return True
