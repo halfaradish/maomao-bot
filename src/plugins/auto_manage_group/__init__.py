@@ -74,7 +74,7 @@ group_decrease = on_notice(rule=Rule(is_group_decrease), priority=5, block=False
 
 def get_monitored_groups():
     data, _ = JsonUtils.read(
-        filename=config.data_filename,
+        filename=plugin_config.data_filename,
         default= {
             "monitored_groups": []
         }
