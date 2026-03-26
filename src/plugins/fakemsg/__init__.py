@@ -88,57 +88,7 @@ async def check_if_fakemsg(
         return True
     return False
 
-operate_user = on_command("伪造消息", aliases={"伪消息"}, priority=10, block=True, permission=SUPERUSER)
-send_fake_msg = on_message(rule=check_if_fakemsg, priority=5, block=True)
-
-@send_fake_msg.handle()
-async def _(bot: Bot, event: Union[PrivateMessageEvent, GroupMessageEvent]):
-    fakemsg_user, whitelist, gourp_users = load_config()
-    if str(event.group_id) not in gourp_users and str(event.user_id) not in fakemsg_user and str(event.user_id) not in superusers:
-        # 当发送者既不是 fakemsg 的用户，也不是 superuser 时
-        await send_fake_msg.finish("你没有权限使用该功能")
-
-    await send_fake_msg.send("正在伪造消息……")
-    fetched_message = event.original_message
-    fake_msg_list = []  # 创建伪造消息列表
-    at_qq_message = fetched_message["at"]  # 获取at的qq号
-    text_message = fetched_message["text"]  # 获取文本消息
-    user_index = 0
-
-    for text in text_message:
-        raw_text: str = text.data["text"]
-        user_msgs = raw_text.split(user_split)
-        for raw_user_msg in user_msgs:
-            user_msg = raw_user_msg.strip()  # 去除空格
-            if user_msg.startswith("说"):
-                user_msg = user_msg.split("说", 1)[1]
-                user_qq = at_qq_message[user_index].data["qq"]
-                user_info = await bot.get_stranger_info(user_id=int(user_qq))
-                user_name = user_info["nickname"]
-                user_index += 1
-            elif user_msg not in {"", " "}:
-                try:
-                    user_qq, user_msg = user_msg.split("说", 1)
-                except ValueError:
-                    await send_fake_msg.finish("消息格式错误，缺少“说”。")
-            else:
-                continue
-
-            # 白名单检测
-            if (user_qq in whitelist or str(user_qq) in superusers) and str(event.user_id) not in superusers:
-                await send_fake_msg.finish(f"你没有权限伪造该用户（{user_qq}）的消息。")
-
-            user_info = await bot.get_stranger_info(user_id=int(user_qq))
-            user_name = user_info["nickname"]
-            fake_msg_list.extend(
-                (user_name, user_qq, msg) for msg in user_msg.split(message_split)
-            )
-
-    try:
-        await send_forward_msg(bot, event, fake_msg_list)
-    except Exception as e:
-        await send_fake_msg.finish(f"发送失败,{e}")
-
+send_fake_msg = on_command("伪造消息", aliases={"伪消息"}, priority=10, block=True, permission=SUPERUSER)
 
 async def send_forward_msg(
     bot: Bot,
@@ -190,21 +140,26 @@ def modified_data(add: bool, is_person: bool, id: str = None, ids_list: list[str
         ("fakemsg_user" if is_person else "group_users"): ids_list
     })
 
-@operate_user.handle()
-async def operate_user_(bot: Bot, event: Union[PrivateMessageEvent, GroupMessageEvent], args: Message = CommandArg()):
+@send_fake_msg.handle()
+async def send_fake_msg_(bot: Bot, event: Union[PrivateMessageEvent, GroupMessageEvent], args: Message = CommandArg()):
+    fakemsg_user, whitelist, group_users = load_config()
+    if str(event.group_id) not in group_users and str(event.user_id) not in fakemsg_user and str(event.user_id) not in superusers:
+        # 当发送者既不是 fakemsg 的用户，也不是 superuser 时
+        await send_fake_msg.finish("你没有权限使用该功能")
+
     raw_args = args.extract_plain_text().strip()
     params = raw_args.split() if raw_args else []
     if not params:
-        await operate_user.finish("请输入参数")
+        await send_fake_msg.finish("可使用的命令：\nqq+说+内容|qq+说+内容\nls: 展示白名单\n")
 
     operation = params[0]
     fakemsg_user, whitelist, group_users = load_config()
     if operation in ["ls", "list"]:
         res_msg = "已添加的个人用户:\n" + str(fakemsg_user) + "\n已添加的群组:\n" + str(group_users)
-        await operate_user.finish(res_msg)
-    else:
+        await send_fake_msg.finish(res_msg)
+    elif operation in ["add", "rm", "remove"]:
         if len(params) < 3:
-            await operate_user("请输入user_id/group_id，并附带qq号或群号")
+            await send_fake_msg.finish("请输入user_id/group_id，并附带qq号或群号")
         # 判断是增还是删
         add: bool = True
         if operation in ["add"]:
@@ -212,7 +167,7 @@ async def operate_user_(bot: Bot, event: Union[PrivateMessageEvent, GroupMessage
         elif operation in ["rm", "remove"]:
             add = False
         else:
-            await operate_user("请输入正确的参数")
+            await send_fake_msg.send("请输入正确的参数")
         # 判断修改的类型
         user_type = params[1]
         is_person: bool = True
@@ -221,7 +176,53 @@ async def operate_user_(bot: Bot, event: Union[PrivateMessageEvent, GroupMessage
         elif user_type == "group":
             is_person = False
         else:
-            await operate_user("请输入正确的参数")
+            await send_fake_msg.send("请输入正确的参数")
 
         person_or_group_id = params[2]
         modified_data(add=add, is_person=is_person, id=person_or_group_id, ids_list=fakemsg_user if is_person else group_users)
+        return
+    
+    # 检查是否能被伪造
+    if not check_if_fakemsg(event=event):
+        return
+    
+    await send_fake_msg.send("正在伪造消息……")
+    fetched_message = event.original_message
+    fake_msg_list = []  # 创建伪造消息列表
+    at_qq_message = fetched_message["at"]  # 获取at的qq号
+    text_message = fetched_message["text"]  # 获取文本消息
+    user_index = 0
+
+    for text in text_message:
+        raw_text: str = text.data["text"]
+        user_msgs = raw_text.split(user_split)
+        for raw_user_msg in user_msgs:
+            user_msg = raw_user_msg.strip()  # 去除空格
+            if user_msg.startswith("说"):
+                user_msg = user_msg.split("说", 1)[1]
+                user_qq = at_qq_message[user_index].data["qq"]
+                user_info = await bot.get_stranger_info(user_id=int(user_qq))
+                user_name = user_info["nickname"]
+                user_index += 1
+            elif user_msg not in {"", " "}:
+                try:
+                    user_qq, user_msg = user_msg.split("说", 1)
+                except ValueError:
+                    await send_fake_msg.finish("消息格式错误，缺少“说”。")
+            else:
+                continue
+
+            # 白名单检测
+            if (user_qq in whitelist or str(user_qq) in superusers) and str(event.user_id) not in superusers:
+                await send_fake_msg.finish(f"你没有权限伪造该用户（{user_qq}）的消息。")
+
+            user_info = await bot.get_stranger_info(user_id=int(user_qq))
+            user_name = user_info["nickname"]
+            fake_msg_list.extend(
+                (user_name, user_qq, msg) for msg in user_msg.split(message_split)
+            )
+
+    try:
+        await send_forward_msg(bot, event, fake_msg_list)
+    except Exception as e:
+        await send_fake_msg.finish(f"发送失败,{e}")
