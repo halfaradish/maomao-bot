@@ -318,9 +318,7 @@ async def _(bot: Bot, event: GroupMessageEvent):
 
         # 构建日志消息
         remind_msgs = []
-        remind_msgs.append(f"在群组：{group_id} 检测到违禁消息")
-        remind_msgs.append(f"违禁用户：{user_id}")
-        remind_msgs.append(f"{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+        remind_msgs.append(f"在群组：{group_id} 检测到违禁消息\n违禁用户：{user_id}\n时间：{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
         remind_msgs.append("违禁消息如下")
         remind_msgs.append(str(event.get_message()))
         
@@ -330,7 +328,7 @@ async def _(bot: Bot, event: GroupMessageEvent):
             success_count = erase_result["success"]
             failed_count = erase_result["failed"]
             
-            remind_msgs.append(f"上下文撤回统计：共{total_messages}条消息，成功撤回{success_count}条，失败{failed_count}条")
+            remind_msgs.append(f"上下文撤回统计：\n共{total_messages}条消息\n成功撤回{success_count}条\n失败{failed_count}条")
             
             # 展示被撤回的消息内容
             if erase_result["messages"]:
