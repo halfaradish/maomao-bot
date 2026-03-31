@@ -3,7 +3,7 @@ import json
 from typing import Union, List, Tuple
 from pathlib import Path
 
-from nonebot import logger, on_message
+from nonebot import logger, on_message, on_command
 from nonebot.permission import SUPERUSER
 from nonebot.adapters.onebot.v11 import (
     Bot,
