@@ -70,23 +70,26 @@ def is_valid_gap_time(upstream_days):
 
 
 # ========= 每周定时推送 =========
-@scheduler.scheduled_job("cron", day_of_week=0, hour=10, minute=00, id="send_submissions_msg")
-async def _():
-    bot = get_bot()
-    submission = Submission()
+if config.sub_record_schedule_enable:
+    @scheduler.scheduled_job("cron", day_of_week=0, hour=10, minute=00, id="send_submissions_msg")
+    async def _():
+        bot = get_bot()
+        submission = Submission()
 
-    data, _ = JsonUtils.read(config.DATA_FILENAME, {"submission_groups": []})
-    group_ids = data["submission_groups"]
+        data, _ = JsonUtils.read(config.DATA_FILENAME, {"submission_groups": []})
+        group_ids = data["submission_groups"]
 
-    success, msg, pic = await submission.create_ranking_table(upstream_days=7)
-    if not success:
-        for gid in group_ids:
-            await bot.send_group_msg(group_id=gid, message=config.scheduled_default_msg)
-    elif pic:
-        img = MessageSegment.image(pic)
-        for gid in group_ids:
-            await bot.send_group_msg(group_id=gid, message=img)
-
+        success, msg, pic = await submission.create_ranking_table(upstream_days=7)
+        if not success:
+            for gid in group_ids:
+                await bot.send_group_msg(group_id=gid, message=config.scheduled_default_msg)
+        elif pic:
+            img = MessageSegment.image(pic)
+            for gid in group_ids:
+                await bot.send_group_msg(group_id=gid, message=img)
+    logger.info("已启用过题(sub_records)播报功能")
+else:
+    logger.info(f"过题(sub_records)播报已禁用")
 
 
 # ========= 指令执行 =========

@@ -22,3 +22,5 @@ class Config(BaseModel):
     GET_RANGE_SUB_RECORDS: str = "read/sub_records_get_range_records.sql"
 
     DATA_FILENAME: str = 'sub_records.json'
+
+    sub_record_schedule_enable: bool = False
