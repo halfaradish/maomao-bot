@@ -5,13 +5,12 @@ from pathlib import Path
 
 from nonebot import logger, on_message
 from nonebot.permission import SUPERUSER
-from nonebot.params import MessageEvent
 from nonebot.adapters.onebot.v11 import (
     Bot,
     GroupMessageEvent,
     Message,
-    MessageSegment,
     PrivateMessageEvent,
+    MessageEvent
 )
 from nonebot.plugin import PluginMetadata, get_driver
 
