@@ -31,3 +31,4 @@ pymysql
 cryptography
 jinja2
 loguru
+ aiofiles
