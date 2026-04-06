@@ -91,8 +91,8 @@ class NoneBotToken:
 
 class SiqiAuthConfig:
     """司契权限系统配置"""
-    HOST: str = os.getenv('SIQI_AUTH_HOST') or 'host.docker.internal'
-    PORT: int = int(os.getenv('SIQI_AUTH_PORT') or 8888)
+    HOST: str = os.getenv('SIQI_AUTH_HOST') or 'localhost'
+    PORT: int = int(os.getenv('SIQI_AUTH_PORT') or 8001)
     APP_CODE: str = os.getenv('SIQI_AUTH_APP_CODE') or 'qq_bot'
     TIMEOUT: int = int(os.getenv('SIQI_AUTH_TIMEOUT') or 2)
     _enabled_env = os.getenv('SIQI_AUTH_ENABLED')
