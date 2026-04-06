@@ -2,22 +2,18 @@
 司契权限系统 HTTP 客户端
 
 通过 HTTP 调用 Auth Server / Auth Agent 的 AuthService/Check 接口进行权限检查。
-支持延迟测量、故障降级、开关控制。
+支持故障降级、开关控制。
 使用持久化连接池复用 TCP 连接，避免每次请求重新握手。
 
 使用方式:
     from ..common.siqi_auth_client import siqi_auth
 
-    # 简单检查
-    allowed = await siqi_auth.check("member:ban", user_id="123456")
-
-    # 带延迟测量
-    allowed, latency_ms = await siqi_auth.check_with_latency("member:ban", user_id="123456")
+    allowed, reason = await siqi_auth.check("member:ban", user_id="123456")
 """
 
 import random
 import time
-from typing import List, Optional, Tuple
+from typing import Any, List, Optional, Tuple
 
 import aiohttp
 from nonebot import get_driver, logger
@@ -38,6 +34,40 @@ class SiqiAuthClient:
 
     def __init__(self):
         self._session: Optional[aiohttp.ClientSession] = None
+
+    def _build_check_payload(self, perm_key: str, user_id: str, app_code: Optional[str] = None) -> dict[str, str]:
+        return {
+            "app_code": app_code or _APP_CODE,
+            "user_id": str(user_id),
+            "perm_key": perm_key,
+        }
+
+    async def _request_check(self, perm_key: str, user_id: str, app_code: Optional[str] = None) -> Tuple[dict[str, Any], float]:
+        url = f"{_BASE_URL}/AuthService/Check"
+        payload = self._build_check_payload(perm_key, user_id, app_code)
+        session = await self._get_session()
+        start_time = time.perf_counter()
+        async with session.post(url, json=payload) as resp:
+            elapsed_ms = (time.perf_counter() - start_time) * 1000
+            if resp.status >= 400:
+                text = await resp.text()
+                raise aiohttp.ClientResponseError(
+                    request_info=resp.request_info,
+                    history=resp.history,
+                    status=resp.status,
+                    message=text[:500],
+                    headers=resp.headers,
+                )
+            data = await resp.json(content_type=None)
+            if not isinstance(data, dict):
+                raise ValueError(f"invalid siqi auth response type: {type(data).__name__}")
+            return data, elapsed_ms
+
+    @staticmethod
+    def _parse_check_result(data: dict[str, Any]) -> Tuple[bool, str]:
+        allowed = bool(data.get("allowed", False))
+        reason = str(data.get("reason") or "")
+        return allowed, reason
 
     async def _get_session(self) -> aiohttp.ClientSession:
         """
@@ -77,7 +107,7 @@ class SiqiAuthClient:
     def port(self) -> int:
         return SiqiAuthConfig.PORT
 
-    async def check(self, perm_key: str, user_id: str, app_code: str = None) -> bool:
+    async def check(self, perm_key: str, user_id: str, app_code: str = None) -> Tuple[bool, str]:
         """
         检查用户是否拥有某个权限
 
@@ -87,10 +117,33 @@ class SiqiAuthClient:
             app_code: 应用代码，默认使用配置中的 qq_bot
 
         Returns:
-            True 表示允许，False 表示拒绝
+            (allowed, reason) 元组
         """
-        allowed, _ = await self.check_with_latency(perm_key, user_id, app_code)
-        return allowed
+        payload = self._build_check_payload(perm_key, user_id, app_code)
+        try:
+            data, _ = await self._request_check(perm_key, user_id, app_code)
+            allowed, reason = self._parse_check_result(data)
+
+            logger.info(
+                f"[siqi_auth] Check {payload['app_code']}/{user_id}/{perm_key} "
+                f"→ allowed={allowed}, reason={reason!r}, raw_response={data}"
+            )
+            return allowed, reason
+        except aiohttp.ClientError as e:
+            logger.error(
+                f"[siqi_auth] 网络错误: {type(e).__name__}: {e}"
+            )
+            return False, "权限系统网络错误"
+        except Exception as e:
+            logger.error(
+                f"[siqi_auth] 权限检查异常: {type(e).__name__}: {e}"
+            )
+            return False, "权限系统异常"
+
+    async def check_user_permission(
+        self, user_id: str, perm_key: str, app_code: Optional[str] = None
+    ) -> Tuple[bool, str]:
+        return await self.check(perm_key, str(user_id), app_code)
 
     async def check_with_latency(
         self, perm_key: str, user_id: str, app_code: str = None
@@ -101,43 +154,28 @@ class SiqiAuthClient:
         Returns:
             (allowed, latency_ms) 元组
         """
-        url = f"{_BASE_URL}/AuthService/Check"
-        payload = {
-            "app_code": app_code or _APP_CODE,
-            "user_id": str(user_id),
-            "perm_key": perm_key,
-        }
-
-        session = await self._get_session()
-        start_time = time.perf_counter()
+        payload = self._build_check_payload(perm_key, user_id, app_code)
         try:
-            async with session.post(url, json=payload) as resp:
-                elapsed_ms = (time.perf_counter() - start_time) * 1000
-                data = await resp.json(content_type=None)
+            data, elapsed_ms = await self._request_check(perm_key, user_id, app_code)
+            allowed, _ = self._parse_check_result(data)
 
-                # Protobuf3 规范: allowed 为 false 时字段可能不存在
-                allowed = data.get("allowed", False)
-
-                logger.info(
-                    f"[siqi_auth] Check {payload['app_code']}/{user_id}/{perm_key} "
-                    f"→ allowed={allowed}, latency={elapsed_ms:.2f}ms, "
-                    f"raw_response={data}"
-                )
-                return allowed, elapsed_ms
+            logger.info(
+                f"[siqi_auth] Check {payload['app_code']}/{user_id}/{perm_key} "
+                f"→ allowed={allowed}, latency={elapsed_ms:.2f}ms, "
+                f"raw_response={data}"
+            )
+            return allowed, elapsed_ms
 
         except aiohttp.ClientError as e:
-            elapsed_ms = (time.perf_counter() - start_time) * 1000
             logger.error(
-                f"[siqi_auth] 网络错误 ({elapsed_ms:.2f}ms): {type(e).__name__}: {e}"
+                f"[siqi_auth] 网络错误: {type(e).__name__}: {e}"
             )
-            return False, elapsed_ms
+            return False, 0.0
         except Exception as e:
-            elapsed_ms = (time.perf_counter() - start_time) * 1000
             logger.error(
-                f"[siqi_auth] 权限检查异常 ({elapsed_ms:.2f}ms): {type(e).__name__}: {e}"
+                f"[siqi_auth] 权限检查异常: {type(e).__name__}: {e}"
             )
-            # 故障降级：默认拒绝（更安全）
-            return False, elapsed_ms
+            return False, 0.0
 
     @staticmethod
     def _compute_stats(latencies: List[float], rounds: int, last_allowed: bool, fail_count: int) -> dict:
