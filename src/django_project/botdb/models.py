@@ -375,3 +375,56 @@ class GroupMember(models.Model):
 
     def __str__(self):
         return f"{self.qq_id} @ {self.group.name}"
+class MonitoredGroup(models.Model):
+    """QQ群监控列表"""
+    id = models.BigAutoField(primary_key=True)
+    group_id = models.BigIntegerField(unique=True, verbose_name='QQ群号')
+    group_name = models.CharField(max_length=100, default='', verbose_name='群名称')
+    is_active = models.BooleanField(default=True, verbose_name='是否监控')
+    created_at = models.DateTimeField(default=beijing_now)
+    updated_at = models.DateTimeField(default=beijing_now)
+
+    def save(self, *args, **kwargs):
+        if self.pk:
+            self.updated_at = beijing_now()
+        elif not self.created_at:
+            self.created_at = beijing_now()
+            self.updated_at = beijing_now()
+        super().save(*args, **kwargs)
+
+    class Meta:
+        db_table = 'monitored_groups'
+        verbose_name = '监控群'
+        verbose_name_plural = '监控群列表'
+        indexes = [
+            models.Index(fields=['group_id'], name='idx_monitored_group_id'),
+            models.Index(fields=['is_active'], name='idx_monitored_is_active'),
+        ]
+class GroupFile(models.Model):
+    """群文件记录"""
+    id = models.BigAutoField(primary_key=True)
+    group = models.ForeignKey(
+        MonitoredGroup, 
+        on_delete=models.CASCADE, 
+        related_name='files',
+        verbose_name='所属群'
+    )
+    file_id = models.CharField(max_length=100, verbose_name='QQ文件ID')
+    file_name = models.CharField(max_length=255, verbose_name='文件名')
+    file_size = models.BigIntegerField(default=0, verbose_name='文件大小')
+    file_path = models.CharField(max_length=500, verbose_name='本地存储路径')
+    file_hash = models.CharField(max_length=32, db_index=True, verbose_name='MD5哈希')
+    uploader_id = models.BigIntegerField(default=0, verbose_name='上传者QQ')
+    downloaded_at = models.DateTimeField(default=beijing_now, verbose_name='下载时间')
+
+    class Meta:
+        db_table = 'group_files'
+        verbose_name = '群文件'
+        verbose_name_plural = '群文件列表'
+        indexes = [
+            models.Index(fields=['file_hash'], name='idx_file_hash'),
+            models.Index(fields=['group', 'downloaded_at'], name='idx_group_downloaded'),
+        ]
+        constraints = [
+            models.UniqueConstraint(fields=['file_id', 'group'], name='uq_file_per_group'),
+        ]

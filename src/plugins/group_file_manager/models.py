@@ -1,43 +1,33 @@
-from sqlalchemy import create_engine, Column, Integer, String, DateTime, BigInteger, UniqueConstraint
-from sqlalchemy.ext.declarative import declarative_base
+from sqlalchemy import create_engine
+from sqlalchemy.ext.automap import automap_base
 from sqlalchemy.orm import sessionmaker
-from datetime import datetime
+import os
 
-Base = declarative_base()
+# ========== 从环境变量读取，和 Django 保持一致 ==========
+DB_CONFIG = {
+    'user': os.getenv('BOT_DB_USER', 'root'),
+    'password': os.getenv('BOT_DB_PASSWORD', '123456'),
+    'host': os.getenv('BOT_DB_HOST', 'localhost'),
+    'port': int(os.getenv('BOT_DB_PORT', '3306')),
+    'database': os.getenv('BOT_DB_NAME', 'diting_qq_bot')
+}
 
-class MonitoredGroup(Base):
-    """监控的QQ群"""
-    __tablename__ = "monitored_groups"
-    
-    id = Column(Integer, primary_key=True)
-    group_id = Column(BigInteger, unique=True, nullable=False, comment="QQ群号")
-    group_name = Column(String(255), comment="群名称")
-    created_at = Column(DateTime, default=datetime.now)
-    is_active = Column(Integer, default=1, comment="是否启用监控")
+# ========== MySQL 连接 ==========
+engine = create_engine(
+    f"mysql+pymysql://{DB_CONFIG['user']}:{DB_CONFIG['password']}"
+    f"@{DB_CONFIG['host']}:{DB_CONFIG['port']}/{DB_CONFIG['database']}"
+    f"?charset=utf8mb4",
+    echo=False,
+    pool_pre_ping=True,
+    pool_recycle=3600
+)
 
-class GroupFile(Base):
-    """群文件记录"""
-    __tablename__ = "group_files"
-    
-    id = Column(Integer, primary_key=True)
-    group_id = Column(BigInteger, nullable=False, comment="QQ群号")
-    file_id = Column(String(255), nullable=False, comment="文件ID（去重标识）")
-    file_name = Column(String(500), nullable=False, comment="文件名")
-    file_size = Column(BigInteger, comment="文件大小")
-    file_path = Column(String(1000), comment="本地存储路径")
-    uploader_id = Column(BigInteger, comment="上传者QQ")
-    uploader_name = Column(String(255), comment="上传者昵称")
-    upload_time = Column(DateTime, comment="原始上传时间")
-    downloaded_at = Column(DateTime, default=datetime.now, comment="下载时间")
-    
-    # 去重：同一文件在不同群只存一次
-    file_hash = Column(String(64), comment="文件MD5哈希")
-    
-    __table_args__ = (
-        UniqueConstraint('file_hash', name='unique_file_hash'),  # 文件级别去重
-    )
+# ========== 反射：自动读取 Django 的表 ==========
+Base = automap_base()
+Base.prepare(autoload_with=engine)
 
-# 数据库连接
-engine = create_engine('sqlite:///group_files.db', echo=False)
-Base.metadata.create_all(engine)
+# 获取映射类（表名必须和 Django 一致）
+MonitoredGroup = Base.classes.monitored_groups
+GroupFile = Base.classes.group_files
+
 Session = sessionmaker(bind=engine)
