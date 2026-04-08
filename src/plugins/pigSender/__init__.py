@@ -12,7 +12,7 @@ __plugin_meta__ = PluginMetadata(
     config=None,
     extra={
         "author": "xqcherry",
-        "version": "0.1.1"
+        "version": "0.1.2"  # 修复了富媒体传输失败问题
     }
 )
 
@@ -89,11 +89,20 @@ async def handle_pig():
         if not filename:
             await get_pig.finish("获取图片信息失败...")
 
-        # 5. 拼接发送
+        # 5. 【核心修复】由 NoneBot 下载图片字节流
         img_url = f"{IMG_BASE_URL}/{filename}"
+        
+        async with _session.get(img_url, timeout=10) as img_resp:
+            if img_resp.status != 200:
+                logger.error(f"图片下载失败: HTTP {img_resp.status}")
+                await get_pig.finish("猪猪被图床守卫拦住了...")
+            
+            img_bytes = await img_resp.read()
+
+        # 发送二进制数据，NapCat 就不需要再去外网下载了
         await get_pig.send(
             Message(f"No.{random_offset} 【{title}】\n") +
-            MessageSegment.image(img_url)
+            MessageSegment.image(img_bytes)
         )
 
     except Exception as e:
