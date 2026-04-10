@@ -5,6 +5,7 @@ from typing import List, Dict, Any, Optional
 
 from nonebot import on_command, get_driver
 from nonebot.rule import Rule
+from nonebot.exception import FinishedException
 from nonebot.plugin import PluginMetadata
 from nonebot.adapters.onebot.v11 import MessageSegment, Message, MessageEvent
 from nonebot.log import logger
@@ -109,7 +110,9 @@ async def handle_random_pig():
         
         target = random.choice(images)
         await send_pig_image(get_pig, target)
-        
+    
+    except FinishedException:
+        return
     except Exception as e:
         logger.error(f"随机猪猪出错: {e}")
         await get_pig.finish("猪猪钻进泥潭里找不到了...")
@@ -117,8 +120,7 @@ async def handle_random_pig():
 # 2. 标签猪猪
 def check_pig(event: MessageEvent) -> bool:
     msg = str(event.get_message()).strip()
-    # 只要以猪猪结尾，且长度≥4就能触发 (例如 "来只粉色猪猪")
-    return bool(re.search(r"来只(.+?)猪猪", msg))
+    return bool(re.search(r"来只(.*?)(?:猪{1,2})?$", msg))
 
 get_pig_by_tag = on_command("来只", priority=15, block=True, rule=Rule(check_pig))
 
@@ -127,7 +129,7 @@ async def handle_tag_pig(event: MessageEvent):
     try:
         msg = str(event.get_message()).strip()
         
-        match = re.search(r"来只(.+?)猪猪", msg)
+        match = re.search(r"来只(.*?)(?:猪{1,2})?$", msg)
         if not match:
             logger.info("无法匹配到猪猪tag")
             return
@@ -153,6 +155,8 @@ async def handle_tag_pig(event: MessageEvent):
         target = random.choice(shortest_matches)
         await send_pig_image(get_pig_by_tag, target)
 
+    except FinishedException:
+        return
     except Exception as e:
         logger.error(f"标签猪猪出错: {e}")
         await get_pig_by_tag.finish("找猪猪的时候不小心掉进泥潭了...")
