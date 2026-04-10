@@ -8,6 +8,7 @@ from nonebot.rule import Rule
 from nonebot.plugin import PluginMetadata
 from nonebot.adapters.onebot.v11 import MessageSegment, Message, MessageEvent
 from nonebot.log import logger
+import re
 
 __plugin_meta__ = PluginMetadata(
     name="PigSender",
@@ -115,17 +116,25 @@ async def handle_random_pig():
 
 # 2. 标签猪猪
 def check_pig(event: MessageEvent) -> bool:
-    msg = event.raw_message.strip()
-    # 只要以猪结尾，且长度≥2就能触发 (例如 "来只粉色猪")
-    return msg.endswith("猪") and len(msg) >= 2
+    msg = str(event.get_message()).strip()
+    # 只要以猪猪结尾，且长度≥4就能触发 (例如 "来只粉色猪猪")
+    return bool(re.search(r"来只(.+?)猪猪", msg))
 
-get_pig_by_tag = on_command("来只", priority=6, block=True, rule=Rule(check_pig))
+get_pig_by_tag = on_command("来只", priority=15, block=True, rule=Rule(check_pig))
 
 @get_pig_by_tag.handle()
 async def handle_tag_pig(event: MessageEvent):
     try:
-        msg = event.raw_message.strip()
-        tag = msg[2:-1] # 提取 "来只" 和 "猪" 中间的内容
+        msg = str(event.get_message()).strip()
+        
+        match = re.search(r"来只(.+?)猪猪", msg)
+        if not match:
+            logger.info("无法匹配到猪猪tag")
+            return
+        tag = match.group(1).strip()
+        
+        if not tag:
+            await get_pig_by_tag.finish("猪猪的名字是空的哦~")
 
         images = await fetch_image_list()
         if not images:
@@ -137,7 +146,11 @@ async def handle_tag_pig(event: MessageEvent):
         if not match_list:
             await get_pig_by_tag.finish(f"没有找到【{tag}】相关的猪猪哦~")
 
-        target = random.choice(match_list)
+        match_list.sort(key=lambda x : len(x.get('title', '')))
+        min_length = len(match_list[0].get("title", ""))
+        shortest_matches = [img for img in match_list if len(img.get('title', '')) == min_length]
+
+        target = random.choice(shortest_matches)
         await send_pig_image(get_pig_by_tag, target)
 
     except Exception as e:
