@@ -1,10 +1,19 @@
 ﻿from nonebot import on_message, require
 from nonebot.adapters.onebot.v11 import Bot, MessageEvent, MessageSegment, Message
 from nonebot.exception import FinishedException
+from nonebot.plugin import PluginMetadata # 引入元数据
 import json
 import random
 from datetime import datetime
 from pathlib import Path
+
+__plugin_meta__ = PluginMetadata(
+    name="内推码收集器",
+    description="自动收集群友发的内推码图片，并支持私聊或群聊随机获取",
+    usage="发送'内推'+'图片'来保存\n发送'查内推'来获取",
+    type="application",
+    supported_adapters={"~onebot.v11"},
+)
 
 require("nonebot_plugin_localstore")
 import nonebot_plugin_localstore as store
@@ -19,19 +28,21 @@ DATA_FILE = plugin_data_dir / "referral_records.json"
 
 matcher = on_message(priority=10, block=False)
 
+# --- 核心逻辑 ---
+
 @matcher.handle()
 async def handle_referral(bot: Bot, event: MessageEvent):
     raw_msg = str(event.get_message()).strip()
     
+    # 获取逻辑
     if any(keyword in raw_msg for keyword in GET_KEYWORDS):
         await handle_get_referral(bot, event, raw_msg)
         return
 
+    # 保存逻辑
     if any(keyword in raw_msg for keyword in SAVE_KEYWORDS):
         await handle_save_referral(bot, event, raw_msg)
         return
-
-    return
 
 async def handle_get_referral(bot: Bot, event: MessageEvent, raw_msg: str):
     data_list = load_data()
@@ -39,13 +50,13 @@ async def handle_get_referral(bot: Bot, event: MessageEvent, raw_msg: str):
     if not data_list:
         await matcher.finish("📭 暂无内推码记录，快去群里发一张带内推码的图片吧！", at_sender=True)
 
+    # 过滤掉已被删除的文件
     valid_records = [r for r in data_list if Path(r["saved_file"]).exists()]
     
     if not valid_records:
         await matcher.finish("⚠️ 数据库有记录，但图片文件似乎丢失了，请联系管理员。", at_sender=True)
 
     is_group = getattr(event, 'group_id', None) is not None
-    
     
     if is_group:
         record = random.choice(valid_records)
@@ -75,7 +86,6 @@ async def handle_get_referral(bot: Bot, event: MessageEvent, raw_msg: str):
         
     except FinishedException:
         raise
-        
     except Exception as e:
         print(f"❌ 发送内推码失败: {e}")
         await matcher.finish(f"❌ 提取内推码时出错：{str(e)}", at_sender=True)
@@ -95,11 +105,9 @@ async def handle_save_referral(bot: Bot, event: MessageEvent, raw_msg: str):
             try:
                 print(f"🔍 [流程] 检测到关键词，开始处理图片... (ID: {file_id[:8]}...)")
 
+                # 获取图片信息
                 result = await bot.call_api("get_image", file_id=file_id)
-                data_content = result
-                if isinstance(result, dict) and "data" in result:
-                    data_content = result["data"]
-                
+                data_content = result.get("data", result) # 兼容不同返回结构
                 local_path_str = data_content.get("file")
                 
                 if not local_path_str:
@@ -112,6 +120,7 @@ async def handle_save_referral(bot: Bot, event: MessageEvent, raw_msg: str):
                 if not source_path.exists():
                     raise FileNotFoundError(f"源文件不存在: {source_path}")
 
+                # 保存图片
                 timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
                 sender_id = event.get_user_id()
                 filename = f"{timestamp}_{sender_id}.jpg"
@@ -124,11 +133,8 @@ async def handle_save_referral(bot: Bot, event: MessageEvent, raw_msg: str):
 
                 record = {
                     "saved_file": str(dest_path),
-                    "cache_file": str(source_path),
-                    "file_size": len(content),
                     "sender_id": sender_id,
                     "group_id": getattr(event, 'group_id', None),
-                    "keyword": raw_msg,
                     "time": datetime.now().isoformat()
                 }
                 
@@ -146,8 +152,11 @@ async def handle_save_referral(bot: Bot, event: MessageEvent, raw_msg: str):
                 await matcher.finish(f"❌ 图片处理失败: {str(e)}", at_sender=True)
                 return
     
+    # 如果匹配了关键词但没找到图片
     if not image_found:
-        pass
+        await matcher.finish("👀 检测到你想要保存内推，但图片在哪呢？请带上图片发送哦！", at_sender=True)
+
+# --- 工具函数 ---
 
 def load_data():
     if DATA_FILE.exists():
