@@ -26,13 +26,19 @@ from .config import Config
 from .contest_fetcher import contest_fetcher, ContestInfo
 from ...common.send_forward_msg import send_forword_msg
 from ...common import JsonUtils
+from ..cmd_list.model import PluginGroupEnum
 
 
 __plugin_meta__ = PluginMetadata(
-    name="contest_reminder",
-    description="比赛提醒插件",
-    usage="",
+    name="比赛提醒",
+    description="比赛提醒插件，支持查询和定时提醒比赛信息",
+    usage="/gci 天数 —— 查询指定天数内的比赛信息",
     config=Config,
+    supported_adapters={"~onebot.v11"},
+    extra={
+        "group": PluginGroupEnum.CONTEST.value,
+        "badge_color": "blue"
+    }
 )
 
 config = get_plugin_config(Config)

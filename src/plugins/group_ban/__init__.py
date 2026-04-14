@@ -19,13 +19,20 @@ from nonebot.plugin import PluginMetadata
 from nonebot.rule import Rule
 
 from ...common import JsonUtils
+from .config import Config
+from ..cmd_list.model import PluginGroupEnum
 
 __plugin_meta__ = PluginMetadata(
     name="群聊禁言",
-    description="通过白名单控制, 允许指定用户/群组使用禁言功能",
-    usage="@bot ban @成员 60",
+    description="通过白名单控制, 允许指定用户/群组使用禁言和踢人功能",
+    usage="@bot ban @成员 60 —— 禁言指定成员60秒\n@bot unban @成员 —— 解除指定成员禁言\n@bot kick @成员 —— 踢出指定成员",
+    config=Config,
     type="application",
     supported_adapters={"~onebot.v11"},
+    extra={
+        "group": PluginGroupEnum.GROUP_MANAGE.value,
+        "badge_color": "blue"
+    },
 )
 
 # 白名单配置文件

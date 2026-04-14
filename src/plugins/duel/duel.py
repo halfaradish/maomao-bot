@@ -8,14 +8,20 @@ import re
 from .config import Config
 from .get_problem import get_one_problem_by_random, get_problem_id_by_rating_tags, get_daily_problem
 from ...common.json_utils import JsonUtils
+from ..cmd_list.model import PluginGroupEnum
 
 plugin_config = get_plugin_config(Config)
 
 __plugin_meta__ = PluginMetadata(
-    name="duel",
-    description="",
-    usage="",
+    name="竞赛对战",
+    description="Codeforces 题目推荐插件，支持根据难度和标签推荐题目，以及每日一题功能",
+    usage="/duel daily —— 获取每日一题\n/duel problem 难度 标签1 标签2... —— 根据难度和标签推荐题目\n/duel map tags —— 查看所有可用标签\n/duel map current —— 查看当前标签映射\n/duel map add 标签 别名 —— 添加标签别名映射\n/duel map remove 标签 别名 —— 删除标签别名映射",
     config=Config,
+    supported_adapters={"~onebot.v11"},
+    extra={
+        "group": PluginGroupEnum.CONTEST.value,
+        "badge_color": "yellow"
+    }
 )
 
 duel_command = on_command(

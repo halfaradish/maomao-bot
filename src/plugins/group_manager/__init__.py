@@ -21,12 +21,18 @@ except ModuleNotFoundError:  # 在静态检查或路径未注入时的回退（�
 Group = botdb_models.Group
 GroupMember = botdb_models.GroupMember
 from .config import Config
+from ..cmd_list.model import PluginGroupEnum
 
 __plugin_meta__ = PluginMetadata(
-    name="group_manager",
+    name="分组管理",
     description="基于数据库的分组管理插件",
-    usage="group 命令查看帮助",
+    usage="group ls —— 查看所有分组\ngroup create 组名 [展示名] [描述] —— 创建分组\ngroup add QQ/@用户 组名 [昵称] —— 添加成员\ngroup show 组名 —— 查看成员\ngroup rm 组名 —— 删除分组\ngroup rm QQ/@用户 [组名] —— 删除成员",
     config=Config,
+    supported_adapters={"~onebot.v11"},
+    extra={
+        "group": PluginGroupEnum.GROUP_MANAGE.value,
+        "badge_color": "green"
+    }
 )
 
 

@@ -5,6 +5,8 @@ class PluginGroupEnum(Enum):
     BASE = "基础命令"
     GROUP_MANAGE = "群管理"
     CONTEST = "竞赛相关"
+    UTILITY = "实用工具"
+    MONITOR = "监控提醒"
 
 class PluginBadgeColor(Enum):
     GREEN = "green"

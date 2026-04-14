@@ -10,9 +10,22 @@ from nonebot import on_command, get_driver, on_notice, require
 from nonebot.adapters.onebot.v11 import Bot, GroupMessageEvent, GroupUploadNoticeEvent
 from nonebot.params import CommandArg
 from nonebot.adapters import Message
+from nonebot.plugin import PluginMetadata
 
 # 导入数据库模型
 from .models import Session, MonitoredGroup, GroupFile, engine, Base
+from ..cmd_list.model import PluginGroupEnum
+
+__plugin_meta__ = PluginMetadata(
+    name="群文件管理",
+    description="自动监控和管理群文件，支持实时监听上传和历史文件爬取",
+    usage="/今日文件 —— 查看今天收集到的新文件\n/文件位置 —— 查看文件存储位置\n/爬取历史文件 —— 手动触发历史文件爬取\n/添加监控群 —— 将当前群添加到监控列表\n/移除监控群 —— 将当前群从监控列表移除\n/监控群列表 —— 查看所有监控群",
+    supported_adapters={"~onebot.v11"},
+    extra={
+        "group": PluginGroupEnum.GROUP_MANAGE.value,
+        "badge_color": "blue"
+    }
+)
 
 # 创建数据库表
 Base.metadata.create_all(engine)

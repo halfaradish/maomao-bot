@@ -9,6 +9,20 @@ from .reminder_scheduler import get_scheduler
 
 from nonebot import get_driver
 from nonebot.log import logger
+from nonebot.plugin import PluginMetadata
+from ..cmd_list.model import PluginGroupEnum
+
+__plugin_meta__ = PluginMetadata(
+    name="全员确认",
+    description="群内确认和公告功能，支持表情回复追踪",
+    usage="/ack 内容 —— 发起全群确认，要求表情回复\n/ack @QQ @分组 内容 —— 仅通知指定成员或数据库分组\n/ann 内容 —— 发布公告，不追踪表情\n/ack —— 查看帮助",
+    config=Config,
+    supported_adapters={"~onebot.v11"},
+    extra={
+        "group": PluginGroupEnum.GROUP_MANAGE.value,
+        "badge_color": "blue"
+    }
+)
 
 driver = get_driver()
 plugin_config = Config.parse_obj(driver.config.dict())

@@ -16,33 +16,6 @@ from nonebot.adapters.onebot.v11 import (
     Bot,
     ActionFailed
 )
-
-from datetime import datetime, timedelta
-import asyncio
-import threading
-import time
-
-from .config import Config
-from ...common import JsonUtils, SendForwardMsg
-from ..logging_info.message_dao import message_dao
-from nonebot import (
-    get_plugin_config,
-    on_notice,
-    logger,
-    on_message
-)
-from nonebot.plugin import PluginMetadata
-from nonebot.rule import Rule
-from nonebot.adapters.onebot.v11.permission import GROUP
-from nonebot.adapters.onebot.v11 import (
-    GroupIncreaseNoticeEvent,
-    GroupDecreaseNoticeEvent,
-    Message,
-    MessageSegment,
-    GroupMessageEvent,
-    Bot,
-    ActionFailed
-)
 from nonebot.utils import run_sync  # 引入 run_sync 用于在异步中运行同步的模型推理
 
 from datetime import datetime, timedelta
@@ -52,14 +25,22 @@ import time
 
 from .config import Config
 from ...common import JsonUtils, SendForwardMsg
+from ..logging_info.message_dao import message_dao
+from ..cmd_list.model import PluginGroupEnum
+
 # 假设你的 predict.py 在同级目录下，如果不是，请修改 import 路径
 # 例如：from src.plugins.ai_train.predict import predict
 from .predict import predict
 __plugin_meta__ = PluginMetadata(
-    name="auto_manage_group",
-    description="",
-    usage="",
-    config=None,
+    name="群管理助手",
+    description="自动管理群成员，包括欢迎新成员、处理离开成员以及检测违禁词",
+    usage="自动运行，无需手动操作",
+    config=Config,
+    supported_adapters={"~onebot.v11"},
+    extra={
+        "group": PluginGroupEnum.GROUP_MANAGE.value,
+        "badge_color": "blue"
+    }
 )
 
 plugin_config = get_plugin_config(Config)

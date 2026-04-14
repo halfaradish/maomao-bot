@@ -21,12 +21,18 @@ import aiohttp
 from typing import Tuple, Union, BinaryIO, List
 
 from .config import Config
+from ..cmd_list.model import PluginGroupEnum
 
 __plugin_meta__ = PluginMetadata(
-    name="clipboard",
-    description="",
-    usage="",
+    name="剪切板",
+    description="将文本转换为图片，支持普通文本和Markdown格式",
+    usage="/cv —— 回复消息使用普通文本剪切板\n/cvmd —— 回复消息使用Markdown剪切板",
     config=Config,
+    supported_adapters={"~onebot.v11"},
+    extra={
+        "group": PluginGroupEnum.UTILITY.value,
+        "badge_color": "green"
+    }
 )
 
 config: Config = get_plugin_config(Config)

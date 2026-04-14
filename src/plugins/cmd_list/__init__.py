@@ -13,13 +13,14 @@ from .model import PluginGroupEnum
 config = get_plugin_config(Config)
 
 __plugin_meta__ = PluginMetadata(
-    name="help",
+    name="帮助菜单",
     description="生成插件帮助菜单",
-    usage="/help 查看已加载插件列表",
+    usage="/help 查看已加载插件列表\n/help -n 插件名 查看插件详情",
     config=Config,
     supported_adapters={"~onebot.v11"},
     extra={
-        "group": PluginGroupEnum.BASE.value
+        "group": PluginGroupEnum.BASE.value,
+        "badge_color": "green"
     }
 )
 

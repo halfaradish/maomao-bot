@@ -10,15 +10,18 @@ import json
 
 from .config import Config
 from ...config.local_config import QQControlConfig
+from ..cmd_list.model import PluginGroupEnum
 
 __plugin_meta__ = PluginMetadata(
-    name="group_send",
+    name="分组发送",
     description="分组发送插件，向指定分组的所有成员发送消息（支持文本和图片）",
-    usage=(
-        "分组发送 分组名 消息内容\n"
-        "或者直接回复要发送的消息并使用：分组发送 分组名"
-    ),
+    usage="回复要发送的消息，然后使用：分组发送 分组名\n支持发送文本、图片等富媒体内容",
     config=Config,
+    supported_adapters={"~onebot.v11"},
+    extra={
+        "group": PluginGroupEnum.GROUP_MANAGE.value,
+        "badge_color": "blue"
+    }
 )
 
 from ..group_manager import _get_group_detail
