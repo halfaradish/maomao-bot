@@ -1,0 +1,117 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>谛听 插件中心</title>
+<style>
+*{
+    margin:0;
+    padding:0;
+    box-sizing:border-box;
+    font-family:"PingFang SC","Microsoft YaHei",sans-serif;
+}
+body{
+    background:linear-gradient(135deg, #f0f4ff 0%, #e6f0ff 100%);
+    padding: 30px;
+    min-height: 100vh;
+}
+.container{
+    max-width:1000px;
+    margin:0 auto;
+}
+
+/* 页面标题样式 */
+.page-header {
+    text-align: center;
+    margin-bottom: 30px;
+}
+.page-header h1 {
+    font-size: 28px;
+    color: #1a1a2e;
+    margin-bottom: 8px;
+    letter-spacing: 1px;
+}
+.page-header p {
+    color: #666;
+    font-size: 14px;
+}
+
+/* 表头 */
+.table-header{
+    display: flex;
+    padding: 14px 24px;
+    background:#fff;
+    border-radius:16px 16px 0 0;
+    font-weight:600;
+    font-size:15px;
+    color:#333;
+    box-shadow: 0 2px 10px rgba(0,0,0,0.02);
+}
+.th-name{ width:160px; }
+.th-cmd{ width:240px; }
+.th-desc{ flex:1; }
+
+/* 插件行 */
+.plugin-row{
+    display: flex;
+    padding: 18px 24px;
+    background:#fff;
+    border-top: 1px solid #f0f0f0;
+    align-items: flex-start;
+    transition: background 0.2s;
+}
+.plugin-row:hover {
+    background: #fafbff;
+}
+.td-name{
+    width:160px;
+    font-weight:600;
+    color:#1a1a2e;
+    flex-shrink: 0; /* 防止名字被压缩 */
+}
+.td-cmd{
+    width:240px;
+    font-size:14px;
+    color:#3069d4;
+    font-family: Consolas, Monaco, monospace;
+    line-height:1.6;
+    flex-shrink: 0;
+}
+.td-desc{
+    flex:1;
+    font-size:14px;
+    color:#444;
+    line-height:1.6;
+    padding-left: 10px; /* 增加一点左侧间距 */
+}
+
+/* 最后一行圆角 */
+.plugin-row:last-child{
+    border-radius:0 0 16px 16px;
+}
+</style>
+</head>
+<body>
+<div class="container">
+    <!-- 标题区域 -->
+    <div class="page-header">
+        <h1>谛听 插件中心</h1>
+        <p>当前已加载插件概览</p>
+    </div>
+
+    <!-- 表头 -->
+    <div class="table-header">
+        <div class="th-name">插件名</div>
+        <div class="th-cmd">触发命令</div>
+        <div class="th-desc">功能描述</div>
+    </div>
+
+    <!-- 插件列表内容 -->
+    
+    <!-- 动态插入行数据 -->
+    {{ rows_html }}
+
+</div>
+</body>
+</html>
