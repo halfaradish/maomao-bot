@@ -26,7 +26,7 @@ from .config import Config
 from .contest_fetcher import contest_fetcher, ContestInfo
 from ...common.send_forward_msg import send_forword_msg
 from ...common import JsonUtils
-from ..cmd_list.model import PluginGroupEnum
+from src.common.model.model import PluginGroupEnum, PluginBadgeColor
 
 
 __plugin_meta__ = PluginMetadata(
@@ -37,7 +37,7 @@ __plugin_meta__ = PluginMetadata(
     supported_adapters={"~onebot.v11"},
     extra={
         "group": PluginGroupEnum.CONTEST.value,
-        "badge_color": "blue"
+        "badge_color": PluginBadgeColor.YELLOW.value
     }
 )
 

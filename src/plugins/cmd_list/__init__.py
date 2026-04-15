@@ -8,7 +8,7 @@ from pathlib import Path
 from .config import Config
 from .get_plugin_usage import get_help_usage, get_plugin_detail
 from .img_generator import get_img, get_detail_img
-from .model import PluginGroupEnum
+from src.common.model.model import PluginGroupEnum, PluginBadgeColor
 
 config = get_plugin_config(Config)
 
@@ -20,7 +20,7 @@ __plugin_meta__ = PluginMetadata(
     supported_adapters={"~onebot.v11"},
     extra={
         "group": PluginGroupEnum.BASE.value,
-        "badge_color": "green"
+        "badge_color": PluginBadgeColor.GREEN.value
     }
 )
 

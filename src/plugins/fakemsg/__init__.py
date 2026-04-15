@@ -20,7 +20,7 @@ from nonebot.plugin import PluginMetadata, get_driver, on_message
 
 from .config import Config, config
 from ...common import JsonUtils
-from ..cmd_list.model import PluginGroupEnum
+from src.common.model.model import PluginGroupEnum, PluginBadgeColor
 
 __plugin_meta__ = PluginMetadata(
     name="消息伪造",
@@ -32,7 +32,7 @@ __plugin_meta__ = PluginMetadata(
     supported_adapters={"~onebot.v11"},
     extra={
         "group": PluginGroupEnum.UTILITY.value,
-        "badge_color": "yellow",
+        "badge_color": PluginBadgeColor.YELLOW.value,
         "menu_data": [
             {
                 "func": "伪造消息",

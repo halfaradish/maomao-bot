@@ -10,7 +10,7 @@ from .reminder_scheduler import get_scheduler
 from nonebot import get_driver
 from nonebot.log import logger
 from nonebot.plugin import PluginMetadata
-from ..cmd_list.model import PluginGroupEnum
+from src.common.model.model import PluginGroupEnum, PluginBadgeColor
 
 __plugin_meta__ = PluginMetadata(
     name="全员确认",
@@ -20,7 +20,7 @@ __plugin_meta__ = PluginMetadata(
     supported_adapters={"~onebot.v11"},
     extra={
         "group": PluginGroupEnum.GROUP_MANAGE.value,
-        "badge_color": "blue"
+        "badge_color": PluginBadgeColor.BLUE.value
     }
 )
 

@@ -10,15 +10,19 @@ from nonebot.plugin import PluginMetadata
 from nonebot.adapters.onebot.v11 import MessageSegment, Message, MessageEvent
 from nonebot.log import logger
 import re
+from src.common.model.model import PluginGroupEnum, PluginBadgeColor
 
 __plugin_meta__ = PluginMetadata(
-    name="PigSender",
+    name="猪猪图片",
     description="从 pighub.top 获取随机猪猪图片",
-    usage="指令：来张猪猪 / 随机猪猪 / 来只XX猪（如：来只粉色猪）",
+    usage="来张猪猪 —— 随机获取一张猪猪图片\n随机猪猪 —— 随机获取一张猪猪图片\n来只XX猪 —— 获取指定标签的猪猪图片（如：来只粉色猪）",
     config=None,
+    supported_adapters={"~onebot.v11"},
     extra={
+        "group": PluginGroupEnum.UTILITY.value,
+        "badge_color": PluginBadgeColor.GREEN.value,
         "author": "xqcherry",
-        "version": "0.3.2"  # 版本号迭代
+        "version": "0.3.2"
     }
 )
 

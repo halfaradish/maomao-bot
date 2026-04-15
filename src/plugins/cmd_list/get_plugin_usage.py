@@ -2,7 +2,7 @@ from nonebot import get_loaded_plugins, logger
 from nonebot.plugin.model import Plugin
 from typing import Optional, List
 
-from .model import PluginUsageInfo
+from src.common.model.model import PluginUsageInfo
 
 help_usages: Optional[List[PluginUsageInfo]] = None
 
@@ -23,13 +23,15 @@ def _load_help_usage():
             pg_module_name = plugin.module_name
             pg_description = metadata.description
             pg_usage = metadata.usage
+            pg_badge_color = metadata.extra.get('badge_color', None)
             pg_group = metadata.extra.get('group', None)
             pg_info = PluginUsageInfo(
                 name=pg_name,
                 module_name=pg_module_name,
                 description=pg_description,
                 usage=pg_usage,
-                group=pg_group if pg_group is not None else None
+                group=pg_group if pg_group is not None else None,
+                badge_color=pg_badge_color
             )
             help_usages.append(pg_info)
 

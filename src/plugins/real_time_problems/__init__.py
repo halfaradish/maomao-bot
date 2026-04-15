@@ -12,17 +12,22 @@ from datetime import datetime, timedelta
 from typing import List, Dict, Any
 
 from .config import Config
-from .config import Config
 # 导入HourSubCondition类
 from .get_hour_problems import HourSubCondition
 from ...common import utils, JsonUtils
+from src.common.model.model import PluginGroupEnum, PluginBadgeColor
 
 # 插件基本信息
 __plugin_meta__ = PluginMetadata(
-    name="real_time_problems",#插件名字
-    description="实时过题数据展示插件",
-    usage="每小时自动展示集训队人员的过题情况",
+    name="实时过题",
+    description="实时过题数据展示插件，每小时自动展示集训队人员的过题情况",
+    usage="检查过题 —— 手动查看最近60分钟的过题情况\n检查过题 <分钟数> —— 查看指定分钟数内的过题情况（最大120分钟）",
     config=Config,
+    supported_adapters={"~onebot.v11"},
+    extra={
+        "group": PluginGroupEnum.CONTEST.value,
+        "badge_color": PluginBadgeColor.YELLOW.value
+    }
 )
 
 # 获取插件配置

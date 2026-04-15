@@ -8,7 +8,7 @@ import os
 # 添加当前目录到Python路径
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-from model import PluginUsageInfo
+from src.common.model.model import PluginUsageInfo
 
 img = None
 TEMPLATE_PATH = Path(__file__).parent / "template"

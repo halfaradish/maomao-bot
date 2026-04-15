@@ -14,7 +14,7 @@ from nonebot.plugin import PluginMetadata
 
 # 导入数据库模型
 from .models import Session, MonitoredGroup, GroupFile, engine, Base
-from ..cmd_list.model import PluginGroupEnum
+from src.common.model.model import PluginGroupEnum, PluginBadgeColor
 
 __plugin_meta__ = PluginMetadata(
     name="群文件管理",
@@ -23,7 +23,7 @@ __plugin_meta__ = PluginMetadata(
     supported_adapters={"~onebot.v11"},
     extra={
         "group": PluginGroupEnum.GROUP_MANAGE.value,
-        "badge_color": "blue"
+        "badge_color": PluginBadgeColor.BLUE.value
     }
 )
 

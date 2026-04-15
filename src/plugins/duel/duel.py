@@ -8,7 +8,7 @@ import re
 from .config import Config
 from .get_problem import get_one_problem_by_random, get_problem_id_by_rating_tags, get_daily_problem
 from ...common.json_utils import JsonUtils
-from ..cmd_list.model import PluginGroupEnum
+from src.common.model.model import PluginGroupEnum, PluginBadgeColor
 
 plugin_config = get_plugin_config(Config)
 
@@ -20,7 +20,7 @@ __plugin_meta__ = PluginMetadata(
     supported_adapters={"~onebot.v11"},
     extra={
         "group": PluginGroupEnum.CONTEST.value,
-        "badge_color": "yellow"
+        "badge_color": PluginBadgeColor.YELLOW.value
     }
 )
 

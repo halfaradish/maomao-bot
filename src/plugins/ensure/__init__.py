@@ -6,7 +6,7 @@ nonebot项目启动时会立刻加载src/plugins内的插件
 from ...api import app
 from nonebot.log import logger, default_format
 from nonebot.plugin import PluginMetadata
-from ..cmd_list.model import PluginGroupEnum
+from src.common.model.model import PluginGroupEnum, PluginBadgeColor
 
 __plugin_meta__ = PluginMetadata(
     name="启动确保",
@@ -15,7 +15,7 @@ __plugin_meta__ = PluginMetadata(
     supported_adapters={"~onebot.v11"},
     extra={
         "group": PluginGroupEnum.BASE.value,
-        "badge_color": "green"
+        "badge_color": PluginBadgeColor.GREEN.value
     }
 )
 

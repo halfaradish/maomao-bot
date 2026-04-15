@@ -20,6 +20,7 @@ from dataclasses import dataclass
 from .config import Config
 from ...common import JsonUtils
 from ...config import QQControlConfig
+from src.common.model.model import PluginGroupEnum, PluginBadgeColor
 
 # 加载插件配置
 config = get_plugin_config(Config)
@@ -31,9 +32,14 @@ api_token: str = 'Bearer ' + QQControlConfig.QQ_CONTROL_TOKEN
 # 插件元数据
 __plugin_meta__ = PluginMetadata(
     name="搬史小助手",
-    description="用于在多个群组间转发消息的插件",
-    usage=config.HELP_MSG,
+    description="用于在多个群组间转发消息的插件，支持配置可发送和可接收的群组",
+    usage="搬史 —— 转发引用的消息到所有可接收群组\n搬史 list —— 查看转发群组列表\n搬史 addpost <群号> —— 添加可发送群组\n搬史 addreceive <群号> —— 添加可接收群组\n搬史 rmpost <群号> —— 移除可发送群组\n搬史 rmreceive <群号> —— 移除可接收群组\n搬史 count —— 查看使用次数统计",
     config=Config,
+    supported_adapters={"~onebot.v11"},
+    extra={
+        "group": PluginGroupEnum.UTILITY.value,
+        "badge_color": PluginBadgeColor.GREEN.value
+    }
 )
 
 # 命令处理器

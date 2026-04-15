@@ -11,7 +11,7 @@ from typing import Callable, List
 
 from .config import Config
 from ...common import JsonUtils
-from ..cmd_list.model import PluginGroupEnum
+from src.common.model.model import PluginGroupEnum, PluginBadgeColor
 
 plugin_config = get_plugin_config(Config)
 
@@ -23,7 +23,7 @@ __plugin_meta__ = PluginMetadata(
     supported_adapters={ "~onebot.v11" },
     extra={
         "group": PluginGroupEnum.UTILITY.value,
-        "badge_color": "green"
+        "badge_color": PluginBadgeColor.GREEN.value
     }
 )
 

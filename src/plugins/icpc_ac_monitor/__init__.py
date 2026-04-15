@@ -2,7 +2,7 @@ from nonebot import get_plugin_config
 from nonebot.plugin import PluginMetadata
 from .icpc_ac_monitor import start_monitor, stop_monitor
 from .config import Config
-from ..cmd_list.model import PluginGroupEnum
+from src.common.model.model import PluginGroupEnum, PluginBadgeColor
 
 __plugin_meta__ = PluginMetadata(
     name="AC监控",
@@ -12,7 +12,7 @@ __plugin_meta__ = PluginMetadata(
     supported_adapters={"~onebot.v11"},
     extra={
         "group": PluginGroupEnum.CONTEST.value,
-        "badge_color": "yellow"
+        "badge_color": PluginBadgeColor.YELLOW.value
     }
 )
 

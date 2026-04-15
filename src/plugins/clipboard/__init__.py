@@ -21,7 +21,7 @@ import aiohttp
 from typing import Tuple, Union, BinaryIO, List
 
 from .config import Config
-from ..cmd_list.model import PluginGroupEnum
+from src.common.model.model import PluginGroupEnum, PluginBadgeColor
 
 __plugin_meta__ = PluginMetadata(
     name="剪切板",
@@ -31,7 +31,7 @@ __plugin_meta__ = PluginMetadata(
     supported_adapters={"~onebot.v11"},
     extra={
         "group": PluginGroupEnum.UTILITY.value,
-        "badge_color": "green"
+        "badge_color": PluginBadgeColor.GREEN.value
     }
 )
 

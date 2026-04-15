@@ -20,7 +20,7 @@ from nonebot.rule import Rule
 
 from ...common import JsonUtils
 from .config import Config
-from ..cmd_list.model import PluginGroupEnum
+from src.common.model.model import PluginGroupEnum, PluginBadgeColor
 
 __plugin_meta__ = PluginMetadata(
     name="群聊禁言",
@@ -31,7 +31,7 @@ __plugin_meta__ = PluginMetadata(
     supported_adapters={"~onebot.v11"},
     extra={
         "group": PluginGroupEnum.GROUP_MANAGE.value,
-        "badge_color": "blue"
+        "badge_color": PluginBadgeColor.BLUE.value
     },
 )
 

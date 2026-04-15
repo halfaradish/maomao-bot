@@ -12,7 +12,7 @@ from .working_time import get_working_time
 from .config import Config
 from ...common import JsonUtils
 from ...config.local_config import CheckUpDay
-from ..cmd_list.model import PluginGroupEnum
+from src.common.model.model import PluginGroupEnum, PluginBadgeColor
 
 __plugin_meta__ = PluginMetadata(
     name="考勤管理",
@@ -22,7 +22,7 @@ __plugin_meta__ = PluginMetadata(
     supported_adapters={ "~onebot.v11" },
     extra={
         "group": PluginGroupEnum.MONITOR.value,
-        "badge_color": "green"
+        "badge_color": PluginBadgeColor.GREEN.value
     }
 )
 

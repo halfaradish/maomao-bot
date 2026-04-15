@@ -10,7 +10,7 @@ import json
 
 from .config import Config
 from ...config.local_config import QQControlConfig
-from ..cmd_list.model import PluginGroupEnum
+from src.common.model.model import PluginGroupEnum, PluginBadgeColor
 
 __plugin_meta__ = PluginMetadata(
     name="分组发送",
@@ -20,7 +20,7 @@ __plugin_meta__ = PluginMetadata(
     supported_adapters={"~onebot.v11"},
     extra={
         "group": PluginGroupEnum.GROUP_MANAGE.value,
-        "badge_color": "blue"
+        "badge_color": PluginBadgeColor.BLUE.value
     }
 )
 

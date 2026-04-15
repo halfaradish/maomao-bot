@@ -6,7 +6,7 @@ from nonebot.plugin import PluginMetadata
 
 from .database import db_manager
 from .config import Config
-from ..cmd_list.model import PluginGroupEnum
+from src.common.model.model import PluginGroupEnum, PluginBadgeColor
 
 # 导入commands模块以确保命令被注册
 from . import commands
@@ -19,7 +19,7 @@ __plugin_meta__ = PluginMetadata(
     supported_adapters={"~onebot.v11"},
     extra={
         "group": PluginGroupEnum.GROUP_MANAGE.value,
-        "badge_color": "blue"
+        "badge_color": PluginBadgeColor.BLUE.value
     }
 )
 

@@ -1,4 +1,4 @@
-﻿from nonebot import on_message, require
+from nonebot import on_message, require
 from nonebot.adapters.onebot.v11 import Bot, MessageEvent, MessageSegment, Message
 from nonebot.exception import FinishedException
 from nonebot.plugin import PluginMetadata # 引入元数据
@@ -6,13 +6,18 @@ import json
 import random
 from datetime import datetime
 from pathlib import Path
+from src.common.model.model import PluginGroupEnum, PluginBadgeColor
 
 __plugin_meta__ = PluginMetadata(
     name="内推码收集器",
     description="自动收集群友发的内推码图片，并支持私聊或群聊随机获取",
-    usage="发送'内推'+'图片'来保存\n发送'查内推'来获取",
+    usage="内推 <图片> —— 保存内推码图片\n查内推 —— 获取随机内推码\n获取内推 —— 获取随机内推码\n我要内推 —— 获取随机内推码\n求内推 —— 获取随机内推码\n内推码求一份 —— 获取随机内推码",
     type="application",
     supported_adapters={"~onebot.v11"},
+    extra={
+        "group": PluginGroupEnum.UTILITY.value,
+        "badge_color": PluginBadgeColor.GREEN.value
+    }
 )
 
 require("nonebot_plugin_localstore")
