@@ -26,7 +26,8 @@ import time
 from .config import Config
 from ...common import JsonUtils, SendForwardMsg
 from ..logging_info.message_dao import message_dao
-from ..cmd_list.model import PluginGroupEnum
+from ...common.utils import QQAvatarLoader
+from src.common.model.model import PluginGroupEnum, PluginBadgeColor
 
 # 假设你的 predict.py 在同级目录下，如果不是，请修改 import 路径
 # 例如：from src.plugins.ai_train.predict import predict
@@ -39,7 +40,7 @@ __plugin_meta__ = PluginMetadata(
     supported_adapters={"~onebot.v11"},
     extra={
         "group": PluginGroupEnum.GROUP_MANAGE.value,
-        "badge_color": "blue"
+        "badge_color": PluginBadgeColor.BLUE.value
     }
 )
 
@@ -276,10 +277,24 @@ async def context_erase_messages(bot: Bot, user_id: int, group_id: int, base_tim
 @banned_word_detector.handle()
 async def _(bot: Bot, event: GroupMessageEvent):
     user_id = event.user_id
+    user_group_card = event.sender.card or event.sender.nickname
     group_id = event.group_id
     message_id = event.message_id
     current_time = event.time
 
+    # 获取群信息
+    try:
+        group_info = await bot.get_group_info(group_id=group_id)
+        group_name = group_info.get('group_name', '???')
+    except Exception as e:
+        logger.error(f"获取群信息失败: {e}")
+        group_name = '???'
+    # 获取用户头像
+    try:
+        user_avatar = await QQAvatarLoader.download_avatar(user_id=user_id, size=40)
+    except Exception as e:
+        logger.error(f"下载头像失败: {e}")
+        user_avatar = None  # 或默认头像路径
     try:
         # 禁言用户
         await bot.set_group_ban(
@@ -299,7 +314,11 @@ async def _(bot: Bot, event: GroupMessageEvent):
 
         # 构建日志消息
         remind_msgs = []
-        remind_msgs.append(f"在群组：{group_id} 检测到违禁消息\n违禁用户：{user_id}\n时间：{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+        base_msg = f"在群组：{group_name}({group_id}) 检测到违禁消息\n违禁用户：{user_group_card}({user_id})\n"
+        if user_avatar:
+            base_msg += MessageSegment.image(user_avatar) + "\n"
+        base_msg += f"时间：{datetime.fromtimestamp(current_time).strftime('%Y-%m-%d %H:%M:%S')}"
+        remind_msgs.append(base_msg)
         remind_msgs.append("违禁消息如下")
         remind_msgs.append(str(event.get_message()))
         
@@ -309,7 +328,10 @@ async def _(bot: Bot, event: GroupMessageEvent):
             success_count = erase_result["success"]
             failed_count = erase_result["failed"]
             
-            remind_msgs.append(f"上下文撤回统计：\n共{total_messages}条消息\n成功撤回{success_count}条\n失败{failed_count}条")
+            if total_messages == 0:
+                remind_msgs.append(f"上下文撤回统计：\n共{total_messages}条消息")
+            else:
+                remind_msgs.append(f"上下文撤回统计：\n共{total_messages}条消息\n成功撤回{success_count}条\n失败{failed_count}条")
             
             # 展示被撤回的消息内容
             if erase_result["messages"]:
@@ -337,6 +359,6 @@ async def _(bot: Bot, event: GroupMessageEvent):
             await SendForwardMsg.by_onebot_api(bot=bot, event=event, messges=remind_msgs, group_id=remind_group)
 
     except ActionFailed as e:
-        print(f"操作失败: {e}")
+        logger.error(f"操作失败: {e}")
     except Exception as e:
-        print(f"未知错误: {e}")
+        logger.error(f"未知错误: {e}")
