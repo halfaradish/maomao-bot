@@ -11,15 +11,20 @@ from typing import Callable, List
 
 from .config import Config
 from ...common import JsonUtils
+from src.common.model.model import PluginGroupEnum, PluginBadgeColor
 
 plugin_config = get_plugin_config(Config)
 
 __plugin_meta__ = PluginMetadata(
-    name="like",
-    description="NoneBot 的点赞功能",
-    usage="发送 '/赞我' 获取10个赞",
+    name="点赞功能",
+    description="NoneBot 的点赞功能，支持给自己和他人点赞，以及订阅每日点赞",
+    usage="/赞我 —— 获取10个赞\n/赞他 @用户 —— 给指定用户点赞\n/订阅赞 —— 订阅每日点赞\n/取消订阅赞 —— 取消订阅每日点赞",
     config=Config,
-    supported_adapters={ "~onebot.v11" }
+    supported_adapters={ "~onebot.v11" },
+    extra={
+        "group": PluginGroupEnum.UTILITY.value,
+        "badge_color": PluginBadgeColor.GREEN.value
+    }
 )
 
 filename = plugin_config.data_filename

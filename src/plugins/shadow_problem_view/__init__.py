@@ -18,12 +18,18 @@ import asyncio
 from ...common import utils, JsonUtils
 from .config import Config
 from .get_range_sub import DailySubCondition
+from src.common.model.model import PluginGroupEnum, PluginBadgeColor
 
 __plugin_meta__ = PluginMetadata(
-    name="shadow_problem_view",
-    description="",
-    usage="",
+    name="影子过题",
+    description="每天定时发送队员在过去年份的同一天完成的题目记录，回顾历史过题情况",
+    usage="插件自动运行，无需手动触发",
     config=Config,
+    supported_adapters={"~onebot.v11"},
+    extra={
+        "group": PluginGroupEnum.CONTEST.value,
+        "badge_color": PluginBadgeColor.YELLOW.value
+    }
 )
 
 require("nonebot_plugin_apscheduler")

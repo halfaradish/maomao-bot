@@ -13,12 +13,18 @@ from typing import Union
 
 from .message_dao import message_dao
 from .config import Config
+from src.common.model.model import PluginGroupEnum, PluginBadgeColor
 
 __plugin_meta__ = PluginMetadata(
-    name="logging_info",
-    description="",
-    usage="",
+    name="聊天记录持久化",
+    description="自动记录群聊和私聊消息到数据库，实现消息持久化存储",
+    usage="插件自动运行，无需手动触发",
     config=Config,
+    supported_adapters={"~onebot.v11"},
+    extra={
+        "group": PluginGroupEnum.MONITOR.value,
+        "badge_color": PluginBadgeColor.GREEN.value
+    }
 )
 
 config = get_plugin_config(Config)

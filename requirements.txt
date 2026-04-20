@@ -31,3 +31,5 @@ pymysql
 cryptography
 jinja2
 loguru
+ aiofiles
+nonebot-plugin-localstore
