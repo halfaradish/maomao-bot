@@ -11,7 +11,7 @@ def _load_help_usage():
     try:
         plugins: set[Plugin] = get_loaded_plugins()
 
-        help_usages = []
+        temp_usages = []
 
         for plugin in plugins:
             # 获取插件元信息
@@ -33,7 +33,9 @@ def _load_help_usage():
                 group=pg_group if pg_group is not None else None,
                 badge_color=pg_badge_color
             )
-            help_usages.append(pg_info)
+            temp_usages.append(pg_info)
+
+            help_usages = sorted(temp_usages, key=lambda x: (x.group or "", x.name))
 
     except Exception as e:
         logger.info(e)
