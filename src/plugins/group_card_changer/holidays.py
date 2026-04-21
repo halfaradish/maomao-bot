@@ -48,13 +48,14 @@ class HolidayInfo:
             raise
 
 holidays: List[HolidayInfo] = []
-async def _reload_holidays_info() -> bool:
+async def _reload_holidays_info():
     global client, holidays
     # 确保客户端已初始化
     if not client or client.is_closed:
         await _init_client()
 
     holidays.clear()
+    loaded_years = 0
 
     cur_year = datetime.now().year
     years_to_fetch = [cur_year, cur_year + 1]
@@ -69,25 +70,29 @@ async def _reload_holidays_info() -> bool:
             for info in data.values():
                 holidays.append(HolidayInfo.from_dict(info))
             logger.info(f"成功加载{year}年节假日数据")
+            loaded_years += 1
 
         except httpx.HTTPStatusError as e:
             logger.error(f"请求节假日API失败（状态码错误）: {e}")
-            return False
+            # 继续尝试加载其他年份的数据
         except (httpx.RequestError, json.JSONDecodeError) as e:
             logger.error(f"请求节假日API发生网络或数据解析错误: {e}")
-            return False
+            # 继续尝试加载其他年份的数据
         except Exception as e:
             logger.error(f"加载节假日数据时发生未知错误: {e}")
-            return False
+            # 继续尝试加载其他年份的数据
     
-    holidays.sort(key=lambda x: x.date)
-    return True
+    if holidays:
+        holidays.sort(key=lambda x: x.date)
+        logger.info(f"成功加载 {loaded_years} 年节假日数据")
+    else:
+        logger.warning("未能加载任何节假日数据")
     
 async def get_holidays() -> List[HolidayInfo]:
     global holidays
     if not holidays:
-        success = await _reload_holidays_info()
-        if not success:
+        await _reload_holidays_info()
+        if not holidays:
             logger.warning("未能成功加载节假日数据，请检查日志。")
     
     return holidays

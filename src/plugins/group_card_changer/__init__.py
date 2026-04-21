@@ -1,6 +1,6 @@
 from nonebot import logger, get_plugin_config, get_bot, require, get_driver
 from nonebot.plugin import PluginMetadata
-from nonebot.adapters.onebot.v11 import Bot
+from nonebot.internal.adapter import Bot
 from datetime import date
 import asyncio
 
@@ -43,6 +43,7 @@ async def change_bot_nickname():
     
     try:
         bot_group_card = await get_bot_group_card()
+        logger.info(f"bot将更名为: {bot_group_card}")
         
         # 获取机器人实例
         bot: Bot = get_bot()
@@ -53,10 +54,12 @@ async def change_bot_nickname():
         # 更新每个群的机器人昵称
         json_data = _read_plugin_data()
         group_whitelist = json_data.get('group_whitelist', [])
-        for group in group_whitelist:
-            group_id = int(group.get('group_id', ''))
+        logger.info(f"更改群昵称的群列表：{group_whitelist}")
+
+        for group_id in group_whitelist:
+            group_id = int(group_id)
             if not group_id:
-                logger.warning(f"跳过无效的群ID: {group}")
+                logger.warning(f"跳过无效的群ID: {group_id}")
                 continue
             
             logger.info(f"正在更新群 {group_id} 的机器人昵称")
@@ -87,7 +90,7 @@ async def get_bot_group_card():
 
         # 查找下一个节日
         for holiday in holidays_info:
-            if holiday.date >= today:
+            if holiday.date >= today and holiday.is_off_day:
                 days_diff = (holiday.date - today).days        
                 if days_diff == 0:
                     return f"{config.bot_name} | 现在是{holiday.name}!"
@@ -96,15 +99,18 @@ async def get_bot_group_card():
     except Exception as e:
         logger.error(f"获取群昵称失败: {e}")
         return f"{config.bot_name}"
+    
+    return f"{config.bot_name}"
 
-@driver.on_startup
-async def _startup():
+# 机器人连接时执行昵称更新
+@driver.on_bot_connect
+async def _bot_connect():
     if config.nickname_changer_schedule_enable:
-        logger.info("项目启动时执行一次机器人昵称更新")
+        logger.info("机器人连接后执行一次昵称更新")
         try:
             await change_bot_nickname()
         except Exception as e:
-            logger.error(f"启动时执行昵称更新失败: {e}")
+            logger.error(f"机器人连接时执行昵称更新失败: {e}")
 
 if config.nickname_changer_schedule_enable:
     @scheduler.scheduled_job(
