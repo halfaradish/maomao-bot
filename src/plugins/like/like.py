@@ -242,19 +242,36 @@ async def like_other_handle(bot: Bot, event: GroupMessageEvent):
 @like_follow.handle()
 @perm_decorator
 async def _(bot: Bot, event: GroupMessageEvent):
-    """添加订阅"""
     follow: bool = True
     user_id = event.sender.user_id
     nickname = event.sender.nickname
-    logger.info(f"用户信息: user_id={user_id}, nickname={nickname}")
 
-    msg = f"收到订阅请求！用户: {nickname}({user_id})\n"
+    user_group_level = None 
+
     try:
-        msg += follow_or_not(follow=follow, user_id=str(user_id), nickname=nickname)
-        logger.info(msg)
-        await bot.send(event, message=msg)
+        member_info = await bot.get_group_member_info(
+            group_id=event.group_id,
+            user_id=user_id,
+            no_cache=True
+        )
+        level_str = member_info.get('level', '0')
+        user_group_level = int(level_str)
+
     except Exception as e:
-        logger.error(f"处理订阅时发生错误: {e}", exc_info=True)
+        logger.warning(f"获取等级失败，已自动放行：{e}")
+        user_group_level = None
+
+    REQUIRED_LEVEL = 10 #群等级门槛
+
+    if user_group_level is not None and user_group_level < REQUIRED_LEVEL:
+        await like_follow.finish(f"❌ 订阅失败：你的群荣誉等级为 {user_group_level}，未达到要求的 {REQUIRED_LEVEL} 级。")
+
+   
+    msg = f"收到订阅请求！用户: {nickname}({user_id})\n"
+    msg += follow_or_not(follow=follow, user_id=str(user_id), nickname=nickname)
+
+    logger.info(msg)
+    await bot.send(event, message=msg)
 
 @like_unfollow.handle()
 async def _(bot: Bot, event: GroupMessageEvent):
