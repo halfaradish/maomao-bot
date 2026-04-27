@@ -24,7 +24,8 @@ import threading
 import time
 
 from .config import Config
-from ...common import JsonUtils, SendForwardMsg
+from ...common import JsonUtils
+from ...common.send_forward_msg import send_forward_msg
 from ..logging_info.message_dao import message_dao
 from ...common.utils import QQAvatarLoader
 from src.common.model.model import PluginGroupEnum, PluginBadgeColor
@@ -356,7 +357,7 @@ async def _(bot: Bot, event: GroupMessageEvent):
         # 发送消息
         ban_words_remind_groups = data.get('ban_words_remind_groups', [])
         for remind_group in ban_words_remind_groups:
-            await SendForwardMsg.by_onebot_api(bot=bot, event=event, messges=remind_msgs, group_id=remind_group)
+            await send_forward_msg.by_onebot_api(bot=bot, event=event, messges=remind_msgs, group_id=remind_group)
 
     except ActionFailed as e:
         logger.error(f"操作失败: {e}")
