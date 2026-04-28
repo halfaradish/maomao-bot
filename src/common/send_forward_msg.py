@@ -12,7 +12,7 @@ from dataclasses import dataclass
 @dataclass
 class SenderInfo:
     user_id: str    # 自定义发送者QQ号
-    nickname: str  # 自定义发送者昵称
+    nickname: str | None  # 自定义发送者昵称
     message: Message  # 自定义发送者的消息内容
 
 class SendForwardMsg:
