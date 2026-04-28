@@ -142,6 +142,10 @@ async def handle_tag_pig(event: MessageEvent):
         if not tag:
             await get_pig_by_tag.finish("猪猪的名字是空的哦~")
 
+        for segment in event.get_message():
+            if segment.type != "text":
+                await get_pig_by_tag.finish("不能包含非文本消息哦awa")
+
         images = await fetch_image_list()
         if not images:
             await get_pig_by_tag.finish("猪猪仓库好像空了...")

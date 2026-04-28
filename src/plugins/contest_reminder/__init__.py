@@ -24,7 +24,7 @@ from datetime import datetime, timedelta
 
 from .config import Config
 from .contest_fetcher import contest_fetcher, ContestInfo
-from ...common.send_forward_msg import send_forword_msg
+from ...common.send_forward_msg import send_forward_msg
 from ...common import JsonUtils
 from src.common.model.model import PluginGroupEnum, PluginBadgeColor
 
@@ -84,11 +84,11 @@ async def _(bot: Bot, event: GroupMessageEvent, args: Message = CommandArg()):
     for contest in contests:
         msg_list.append(contest.to_string())
 
-    await send_forword_msg.by_onebot_api(
+    await send_forward_msg.by_onebot_api(
         bot,
         event,
         msg_list,
-        str(event.group_id)
+        group_id=str(event.group_id)
     )
 
 
