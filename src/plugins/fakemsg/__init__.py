@@ -17,6 +17,9 @@ __plugin_meta__ = PluginMetadata(
     }
 )
 
+MAX_DAILY_TIME = 5
+bot_info: Optional[SenderInfo] = None
+
 fakemsg = on_command(
     cmd="伪消息",
     priority=30,
@@ -26,14 +29,25 @@ fakemsg = on_command(
 def _get_plugin_config():
     data, _ = JsonUtils.read("fakemsg.json", {
         "person_users": [],
-        "group_users": []
+        "group_users": [],
+        "daily_times_log": {}
     })
     return (
         data.get("person_users", []),
-        data.get("group_users", [])
+        data.get("group_users", []),
+        data.get('daily_times_log', {})
     )
 
-bot_info: Optional[SenderInfo] = None
+def _daily_times_addone(user_id: str) -> dict:
+    """增加使用次数并返回更新后的字典"""
+    _, _, daily_times_log = _get_plugin_config()
+    current_times = daily_times_log.get(user_id, 0)
+    current_times += 1
+    daily_times_log[user_id] = current_times
+    # 保存到文件
+    JsonUtils.update("fakemsg.json", updates={"daily_times_log": daily_times_log})
+    return daily_times_log
+
 async def _get_bot_info() -> SenderInfo:
     global bot_info
     if bot_info is None:
@@ -47,54 +61,74 @@ async def _get_bot_info() -> SenderInfo:
 
     return bot_info
 
-def remove_until_pseudo_message(s: str) -> str:
-    """
-    删除第一个 '伪消息' 及其之前的所有内容
-    """
-    index = s.find("伪消息")
-    if index == -1:
-        return s  # 未找到则返回原字符串
-    return s[index + len("伪消息"):]
-
 @fakemsg.handle()
 async def _(event: GroupMessageEvent, bot: Bot):
-
-    await fakemsg.send("正在伪造消息...")
-
+    # 标记是否实际使用了额度
+    should_consume_quota = False
+    
     try:
-        person_users, group_users = _get_plugin_config()
+        person_users, group_users, daily_times_log = _get_plugin_config()
         person_users = [str(person_id) for person_id in person_users]
         group_users = [str(group_id) for group_id in group_users]
-        logger.info(f"用户id: {event.self_id}, 用户所在群组: {event.group_id}")
-        logger.info(f"白名单群组: {group_users}")
-        logger.info(f"白名单用户: {person_users}")
+
+        logger.info(f"用户 {event.user_id} 在群 {event.group_id} 使用伪消息功能")
         
         is_plugin_user = False
         if str(event.group_id) in group_users or str(event.user_id) in person_users:
             is_plugin_user = True
-    except Exception as e:
-        logger.error(f"伪消息插件权限检测失败: {e}")
-        await fakemsg.finish("权限检测失败...")
 
-    try:
+        # 先检查额度，但不立即增加
+        if not is_plugin_user:
+            times = daily_times_log.get(str(event.user_id), 0)
+
+            logger.info(f"用户 {event.user_id} 今日已使用 {times}/{MAX_DAILY_TIME} 次")
+            if times >= MAX_DAILY_TIME:
+                await fakemsg.finish(f"您已超过额度使用上限: {times}/{MAX_DAILY_TIME}")
+            # 记录当前次数，用于后续显示
+            current_times = times
+
+        await fakemsg.send("正在伪造消息...")
+
         original_message = event.original_message
         messages = extract_fake_messages(original_message)
         if not messages:
             logger.error("伪造消息失败")
-            await fakemsg.finish("请检查消息是否符合生成规则")
+            await fakemsg.finish(
+                "伪造消息失败，请检查格式\n"
+                "正确格式:\n"
+                "• 伪消息 123456789 说内容\n"
+                "• 伪消息 @用户 说内容\n"
+                "• 多条消息用 | 分隔"
+            )
 
+        # 如果没有权限，需要添加水印消息
         if not is_plugin_user:
             bot_info = await _get_bot_info()
-            bot_info.message = Message("本消息由 " + MessageSegment.at(event.user_id) + f"({event.user_id}) 使用{bot_info.nickname} bot生成，{bot_info.nickname} bot对本消息概不负责")
+            bot_info.message = Message(
+                f"本消息由 {MessageSegment.at(event.user_id)} 通过 Bot 生成\n"
+                f"Bot 对消息内容概不负责\n"
+                f"今日剩余额度: {MAX_DAILY_TIME - current_times - 1}/{MAX_DAILY_TIME}"
+            )
             messages.append(bot_info)
             logger.info(f"伪造消息插件使用者: {event.sender.nickname}({event.sender.user_id}) 没有使用权限，将限制ta的使用次数，并自动插入默认消息")
 
+        # 尝试发送消息
         await send_forward_msg.custom_sender_by_onebot_api(bot=bot, event=event, senders_info=messages, group_id=str(event.group_id))
+        
+        # 发送成功后，标记需要消耗额度
+        should_consume_quota = True
 
     except FinishedException:
+        # 如果是主动 finish，不消耗额度
         pass
     except Exception as e:
         logger.error(f"伪消息插件报错：{e}")
+        # 发生异常，不消耗额度
+        await fakemsg.finish(f"发送失败：{str(e)}")
+    finally:
+        # 只在成功发送后才消耗额度
+        if should_consume_quota and not is_plugin_user:
+            _daily_times_addone(user_id=str(event.user_id))
 
 def extract_fake_messages(message: Message) -> List[SenderInfo]:
     """
@@ -142,7 +176,7 @@ def extract_fake_messages(message: Message) -> List[SenderInfo]:
         # ========== 模式2: 数字 + "说" ==========
         elif segs[i].type == "text":
             text = segs[i].data.get("text", "")
-            m = re.search(r'(\d{6,10})说', text)
+            m = re.search(r'(\d{6,10})\s*说', text)
             if m:
                 qq = m.group(1)
                 # 保留"说"之后的内容，之前的内容丢弃
