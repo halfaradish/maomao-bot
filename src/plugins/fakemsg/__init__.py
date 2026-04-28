@@ -1,9 +1,13 @@
 from nonebot import logger, on_command, get_bot
-from nonebot.plugin import PluginMetadata
+from nonebot.plugin import PluginMetadata, require
 from nonebot.exception import FinishedException
 from nonebot.adapters.onebot.v11 import GroupMessageEvent, Message, MessageSegment, Bot
 from typing import List, Optional, cast
 import re
+import datetime
+
+require("nonebot_plugin_apscheduler")
+from nonebot_plugin_apscheduler import scheduler
 
 from ...common.send_forward_msg import send_forward_msg, SenderInfo
 from ...common.json_utils import JsonUtils
@@ -120,13 +124,16 @@ async def _(event: GroupMessageEvent, bot: Bot):
         cmd_result = process_command(raw_message, str(event.user_id))
         logger.info(cmd_result)
         if cmd_result is not None:
-            await fakemsg.finish(cmd_result)  # 直接返回命令结果
+            await fakemsg.finish(cmd_result)
         return
 
     # 标记是否实际使用了额度
     should_consume_quota = False
     
     try:
+        # 使用前检查日期，确保额度已刷新（防范24:00掉线未更新）
+        _check_and_refresh_on_demand()
+        
         person_users, group_users, daily_times_log = _get_plugin_config()
         person_users = [str(person_id) for person_id in person_users]
         group_users = [str(group_id) for group_id in group_users]
@@ -289,3 +296,73 @@ def extract_fake_messages(message: Message) -> List[SenderInfo]:
             i += 1
     
     return result
+
+# ========== 每日刷新功能 ==========
+
+def _get_last_refresh_date() -> str:
+    """获取上次刷新日期"""
+    data, _ = JsonUtils.read("fakemsg.json", {})
+    return data.get("last_refresh_date", "")
+
+def _set_last_refresh_date(date_str: str) -> bool:
+    """设置上次刷新日期"""
+    return JsonUtils.update("fakemsg.json", updates={"last_refresh_date": date_str})
+
+def _refresh_daily_times_log() -> bool:
+    """
+    刷新daily_times_log，将所有用户的使用次数重置为0
+    考虑数据一致性和并发安全问题
+    """
+    try:
+        logger.info("[fakemsg] 开始执行每日额度刷新任务")
+        
+        # 获取当前日期
+        today = datetime.date.today().strftime("%Y-%m-%d")
+        
+        # 清空daily_times_log
+        success = JsonUtils.update("fakemsg.json", updates={"daily_times_log": {}, "last_refresh_date": today})
+        
+        if success:
+            logger.info(f"[fakemsg] 每日额度刷新成功，日期: {today}")
+        else:
+            logger.error("[fakemsg] 每日额度刷新失败")
+        
+        return success
+    except Exception as e:
+        logger.error(f"[fakemsg] 每日额度刷新发生异常: {e}", exc_info=True)
+        return False
+
+def _check_and_refresh_on_demand() -> bool:
+    """
+    按需检查并刷新daily_times_log
+    用于防范24:00时bot掉线导致未更新的情况
+    """
+    try:
+        today = datetime.date.today().strftime("%Y-%m-%d")
+        last_refresh = _get_last_refresh_date()
+        
+        # 如果上次刷新日期不是今天，则需要刷新
+        if last_refresh != today:
+            logger.info(f"[fakemsg] 检测到日期变更，上次刷新日期: {last_refresh}，当前日期: {today}，需要执行刷新")
+            return _refresh_daily_times_log()
+        return True
+    except Exception as e:
+        logger.error(f"[fakemsg] 按需检查刷新发生异常: {e}", exc_info=True)
+        return False
+
+# ========== 定时任务 ==========
+
+if config.fakemsg_schedule_enable:
+    @scheduler.scheduled_job(
+        "cron",
+        hour=config.fakemsg_schedule_hour,
+        minute=config.fakemsg_schedule_minute,
+        second=config.fakemsg_schedule_second,
+        id="fakemsg_daily_refresh"
+    )
+    async def _fakemsg_daily_refresh():
+        """每日定时刷新额度"""
+        _refresh_daily_times_log()
+
+# 插件加载时执行一次日期检查，处理bot重启后可能遗漏的刷新
+_check_and_refresh_on_demand()
