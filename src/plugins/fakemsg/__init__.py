@@ -7,6 +7,7 @@ import re
 
 from ...common.send_forward_msg import send_forward_msg, SenderInfo
 from ...common.json_utils import JsonUtils
+from .config import config
 
 __plugin_meta__ = PluginMetadata(
     name="",
@@ -17,11 +18,13 @@ __plugin_meta__ = PluginMetadata(
     }
 )
 
-MAX_DAILY_TIME = 5
+MAX_DAILY_TIME = config.fakemsg_max_daily_time
+MESSAGE_SEPARATOR = config.fakemsg_user_split
+FAKEMSG_CMD = config.fakemsg_cmd
 bot_info: Optional[SenderInfo] = None
 
 fakemsg = on_command(
-    cmd="伪消息",
+    cmd=FAKEMSG_CMD,
     priority=30,
     block=False
 )
@@ -32,6 +35,9 @@ def _get_plugin_config():
         "group_users": [],
         "daily_times_log": {}
     })
+    if not isinstance(data, dict):
+        logger.warning("无法正确读取文件，使用默认值")
+        return {}
     return (
         data.get("person_users", []),
         data.get("group_users", []),
@@ -61,8 +67,62 @@ async def _get_bot_info() -> SenderInfo:
 
     return bot_info
 
+def process_command(raw_message: str, user_id: str) -> Optional[str]:
+    """
+    处理用户管理命令：返回处理结果消息（None表示未处理命令）
+    :param raw_message: 原始消息内容
+    :param user_id: 操作者QQ号（用于权限验证）
+    :return: 命令处理结果消息 / None
+    """
+    # 仅允许管理员执行命令（复用现有权限逻辑）
+    person_users, _, _ = _get_plugin_config()
+    person_users = [str(person) for person in person_users]
+    if str(user_id) not in person_users:
+        logger.info(f"{user_id}没有权限使用增删查命令")
+        return None
+
+    add_pattern = r"(?:^|\b|\s)-add\s+(\d{6,10})(?!\d)"
+    rm_pattern = r"(?:^|\b|\s)-rm\s+(\d{6,10})(?!\d)"
+    ls_pattern = r"(?:^|\b|\s)(-ls|-list)\b"
+
+    # 优先处理 -ls/-list
+    if re.search(ls_pattern, raw_message):
+        if not person_users:
+            return "当前person_users列表为空"
+        return "当前person_users列表：\n" + "\n".join(f"• {qq}" for qq in sorted(person_users))
+
+    # 处理 -add 命令
+    if add_match := re.search(add_pattern, raw_message):
+        qq_number = add_match.group(1)
+        if qq_number in person_users:
+            return f"QQ {qq_number} 已在person_users列表中"
+        person_users.append(qq_number)
+        JsonUtils.update("fakemsg.json", updates={"person_users": person_users})
+        return f"已添加 QQ {qq_number} 到person_users列表"
+
+    # 处理 -rm 命令
+    if rm_match := re.search(rm_pattern, raw_message):
+        qq_number = rm_match.group(1)
+        if qq_number not in person_users:
+            return f"QQ {qq_number} 不在person_users列表中"
+        person_users.remove(qq_number)
+        JsonUtils.update("fakemsg.json", updates={"person_users": person_users})
+        return f"已移除 QQ {qq_number} 从person_users列表"
+
+    logger.info("无匹配命令")
+    return "无匹配命令"
+
 @fakemsg.handle()
 async def _(event: GroupMessageEvent, bot: Bot):
+    raw_message = event.raw_message
+
+    if '说' not in raw_message:
+        cmd_result = process_command(raw_message, str(event.user_id))
+        logger.info(cmd_result)
+        if cmd_result is not None:
+            await fakemsg.finish(cmd_result)  # 直接返回命令结果
+        return
+
     # 标记是否实际使用了额度
     should_consume_quota = False
     
@@ -70,7 +130,6 @@ async def _(event: GroupMessageEvent, bot: Bot):
         person_users, group_users, daily_times_log = _get_plugin_config()
         person_users = [str(person_id) for person_id in person_users]
         group_users = [str(group_id) for group_id in group_users]
-
         logger.info(f"用户 {event.user_id} 在群 {event.group_id} 使用伪消息功能")
         
         is_plugin_user = False
@@ -98,14 +157,14 @@ async def _(event: GroupMessageEvent, bot: Bot):
                 "正确格式:\n"
                 "• 伪消息 123456789 说内容\n"
                 "• 伪消息 @用户 说内容\n"
-                "• 多条消息用 | 分隔"
+                f"• 多条消息用 {MESSAGE_SEPARATOR} 分隔"
             )
 
         # 如果没有权限，需要添加水印消息
         if not is_plugin_user:
             bot_info = await _get_bot_info()
             bot_info.message = Message(
-                f"本消息由 {MessageSegment.at(event.user_id)} 通过 Bot 生成\n"
+                f"本消息由 {MessageSegment.at(event.user_id)}({event.user_id}) 通过 Bot 生成\n"
                 f"Bot 对消息内容概不负责\n"
                 f"今日剩余额度: {MAX_DAILY_TIME - current_times - 1}/{MAX_DAILY_TIME}"
             )
@@ -139,7 +198,7 @@ def extract_fake_messages(message: Message) -> List[SenderInfo]:
       - at消息段 + 后续文本以"说"开头（允许前面有空白）
     
     终止规则：
-      - 遇到 "|" 字符
+      - 遇到 "MESSAGE_SEPARATOR" 字符
       
     非文本段原样保留在正文中。
     
@@ -193,16 +252,16 @@ def extract_fake_messages(message: Message) -> List[SenderInfo]:
                 if seg.type == "text":
                     text = seg.data.get("text", "")
                     
-                    if '|' in text:
-                        idx = text.index('|')
-                        # |前面的内容加入正文
+                    if MESSAGE_SEPARATOR in text:
+                        idx = text.index(MESSAGE_SEPARATOR)
+                        # MESSAGE_SEPARATOR前面的内容加入正文
                         if idx > 0:
                             content.append(MessageSegment.text(text[:idx]))
                         
                         # 保存当前伪造消息
                         result.append(SenderInfo(user_id=qq, nickname=None, message=Message(content) if content else Message()))
                         
-                        # |后面的内容作为新段继续处理
+                        # MESSAGE_SEPARATOR后面的内容作为新段继续处理
                         after = text[idx + 1:]
                         if after:
                             segs[i] = MessageSegment.text(after)
@@ -212,7 +271,7 @@ def extract_fake_messages(message: Message) -> List[SenderInfo]:
                         break  # 跳出收集，外层while继续寻找下一个起始
                     
                     else:
-                        # 没有|，整段加入正文
+                        # 没有MESSAGE_SEPARATOR，整段加入正文
                         content.append(seg)
                         i += 1
                 
@@ -223,7 +282,7 @@ def extract_fake_messages(message: Message) -> List[SenderInfo]:
             
             else:
                 # while正常结束（没有break，即到达消息末尾也没有遇到|）
-                # 根据规则，末尾没有|也保存（见例子2）
+                # 根据规则，末尾没有MESSAGE_SEPARATOR也保存
                 result.append(SenderInfo(user_id=qq, nickname=None, message=Message(content) if content else Message()))
         
         else:
