@@ -101,17 +101,31 @@ class SendForwardMsg:
             ValueError: 群聊未传group_id / 私聊未传user_id
             TypeError: 不支持的事件类型
         """
-        # 遍历自定义发送者列表，构建转发节点
-        message_nodes = [
-            self.to_node(
-                name=sender.nickname,
-                uin=sender.user_id,
-                message=sender.message
-            )
-            for sender in senders_info
-        ]
+        users_need_nickname: set[str] = set()
+        for sender in senders_info:
+            if sender.nickname is None and sender.user_id not in users_need_nickname:
+                users_need_nickname.add(sender.user_id)
 
-        # 群聊/私聊分发调用API
+        nickname_cache: dict[str, str] = {}
+        if users_need_nickname:
+            for uid in users_need_nickname:
+                try:
+                    user_info = await bot.get_stranger_info(user_id=int(uid))
+                    nickname_cache[uid] = user_info.get("nickname", "QQ用户")
+                except Exception as e:
+                    logger.warning(f"获取用户 {uid} 信息失败: {e}")
+                    nickname_cache[uid] = "QQ用户"
+
+        message_nodes = []
+        for sender in senders_info:
+            if sender.nickname is not None:
+                name = sender.nickname
+            elif sender.user_id in nickname_cache:
+                name = nickname_cache[sender.user_id]
+            else:
+                name = "QQ用户"
+            message_nodes.append(self.to_node(name=name, uin=sender.user_id, message=sender.message))
+
         if isinstance(event, GroupMessageEvent):
             if not group_id:
                 raise ValueError("群聊发送合并转发必须传入 group_id")
