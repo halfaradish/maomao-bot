@@ -15,15 +15,21 @@ import asyncio
 import io
 
 from .config import Config
+from src.common.model.model import PluginGroupEnum, PluginBadgeColor
 
 config = get_plugin_config(Config)
 
 __plugin_meta__ = PluginMetadata(
     name="过题积分榜",
     description="查询洛谷过题积分排行榜",
-    usage="过题积分榜 [预备役/老登]",
+    usage="过题积分榜 现役 —— 查询现役成员的过题积分\n过题积分榜 退役 —— 查询退役成员的过题积分\n过题积分榜 预备役 —— 查询预备役成员的过题积分",
+    config=Config,
     type="application",
     supported_adapters={"~onebot.v11"},
+    extra={
+        "group": PluginGroupEnum.CONTEST.value,
+        "badge_color": PluginBadgeColor.YELLOW.value
+    }
 )
 
 leaderboard = on_command("过题积分榜", aliases={"积分榜"}, priority=10)

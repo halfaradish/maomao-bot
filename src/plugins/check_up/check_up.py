@@ -12,13 +12,18 @@ from .working_time import get_working_time
 from .config import Config
 from ...common import JsonUtils
 from ...config.local_config import CheckUpDay
+from src.common.model.model import PluginGroupEnum, PluginBadgeColor
 
 __plugin_meta__ = PluginMetadata(
-    name="check_up",
+    name="考勤管理",
     description="考勤相关插件, 支持手动输入日期查看考勤情况, 同时会每日推送考勤情况",
-    usage="",
+    usage="/考勤 日期(YYYY-MM-DD) 范围 —— 查看指定日期开始的考勤情况\n/考勤 范围 —— 查看今天开始的考勤情况\n/考勤 —— 查看帮助信息",
     config=Config,
-    supported_adapters={ "~onebot.v11" }
+    supported_adapters={ "~onebot.v11" },
+    extra={
+        "group": PluginGroupEnum.MONITOR.value,
+        "badge_color": PluginBadgeColor.GREEN.value
+    }
 )
 
 plugin_config = get_plugin_config(Config)

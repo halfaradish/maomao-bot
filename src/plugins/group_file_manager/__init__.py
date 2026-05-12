@@ -6,13 +6,36 @@ from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Optional, List
 
-from nonebot import on_command, get_driver, on_notice, require
+from nonebot import on_command, get_driver, on_notice, require, logger
 from nonebot.adapters.onebot.v11 import Bot, GroupMessageEvent, GroupUploadNoticeEvent
 from nonebot.params import CommandArg
 from nonebot.adapters import Message
+from nonebot.plugin import PluginMetadata
+# ========== 添加插件开关（在这里插入） ==========
+GROUP_FILE_MANAGER_ENABLED = os.getenv("GROUP_FILE_MANAGER_ENABLED", "true").lower() == "true"
+
+if not GROUP_FILE_MANAGER_ENABLED:
+    driver = get_driver()
+    @driver.on_startup
+    async def log_disabled():
+        logger.info("📴 群文件管理器插件已禁用")
+    raise RuntimeError("Plugin disabled by GROUP_FILE_MANAGER_ENABLED")
+# ========== 开关代码结束 ==========
 
 # 导入数据库模型
 from .models import Session, MonitoredGroup, GroupFile, engine, Base
+from src.common.model.model import PluginGroupEnum, PluginBadgeColor
+
+__plugin_meta__ = PluginMetadata(
+    name="群文件管理",
+    description="自动监控和管理群文件，支持实时监听上传和历史文件爬取",
+    usage="/今日文件 —— 查看今天收集到的新文件\n/文件位置 —— 查看文件存储位置\n/爬取历史文件 —— 手动触发历史文件爬取\n/添加监控群 —— 将当前群添加到监控列表\n/移除监控群 —— 将当前群从监控列表移除\n/监控群列表 —— 查看所有监控群",
+    supported_adapters={"~onebot.v11"},
+    extra={
+        "group": PluginGroupEnum.GROUP_MANAGE.value,
+        "badge_color": PluginBadgeColor.BLUE.value
+    }
+)
 
 # 创建数据库表
 Base.metadata.create_all(engine)
@@ -203,18 +226,18 @@ async def auto_crawl_all_groups(bot: Bot):
         groups = session.query(MonitoredGroup).filter_by(is_active=1).all()
         
         if not groups:
-            print("[定时任务] 没有活跃的监控群，跳过爬取")
+            logger.info("[定时任务] 没有活跃的监控群，跳过爬取")
             return
         
-        print(f"[定时任务] 开始爬取 {len(groups)} 个群的历史文件")
+        logger.info(f"[定时任务] 开始爬取 {len(groups)} 个群的历史文件")
         
         for group in groups:
             try:
-                print(f"[定时任务] 开始爬取群 {group.group_id} ({group.group_name})")
+                logger.info(f"[定时任务] 开始爬取群 {group.group_id} ({group.group_name})")
                 count = await crawl_group_files(bot, group.group_id)
-                print(f"[定时任务] 群 {group.group_id} 完成，新增 {count} 个文件")
+                logger.info(f"[定时任务] 群 {group.group_id} 完成，新增 {count} 个文件")
             except Exception as e:
-                print(f"[定时任务] 群 {group.group_id} 爬取失败: {e}")
+                logger.error(f"[定时任务] 群 {group.group_id} 爬取失败: {e}")
                 
     finally:
         session.close()
@@ -248,13 +271,13 @@ async def handle_group_upload(bot: Bot, event: GroupUploadNoticeEvent):
             )
             session.add(group)
             session.commit()
-            print(f"[自动添加] 新群加入监控: {group_name}({event.group_id})")
+            logger.info(f"[自动添加] 新群加入监控: {group_name}({event.group_id})")
         
         if not group.is_active:
             return  # 群被停用监控
         
         file_info = event.file
-        print(f"[新文件] {event.group_id}: {file_info.name}")
+        logger.info(f"[新文件] {event.group_id}: {file_info.name}")
         
         # 下载文件
         await download_and_save(bot, event, file_info, session)
@@ -275,11 +298,11 @@ async def download_and_save(bot: Bot, event, file_info, session):
         file_url = url.get("url") if isinstance(url, dict) else url
         
         if not file_url:
-            print(f"[错误] 无法获取文件URL: {file_info.name}")
+            logger.error(f"[错误] 无法获取文件URL: {file_info.name}")
             return
         
         # 生成安全文件名
-        safe_name = "".join(c for c in file_info.name if c.isalnum() or c in "._-")
+        safe_name = "".join(c for c in file_info.name if c.isalnum() or c in "._-" )
         file_path = DATA_DIR / f"{event.group_id}_{file_info.id}_{safe_name}"
         
         async with aiohttp.ClientSession() as http_session:
@@ -291,7 +314,7 @@ async def download_and_save(bot: Bot, event, file_info, session):
                     # 全局去重检查
                     existing = session.query(GroupFile).filter_by(file_hash=file_hash).first()
                     if existing:
-                        print(f"[去重] 文件已存在: {file_info.name}")
+                        logger.info(f"[去重] 文件已存在: {file_info.name}")
                         return
                     
                     # 保存文件
@@ -312,12 +335,12 @@ async def download_and_save(bot: Bot, event, file_info, session):
                     session.add(new_file)
                     session.commit()
                     
-                    print(f"[保存成功] {file_info.name} ({len(content)} bytes)")
+                    logger.info(f"[保存成功] {file_info.name} ({len(content)} bytes)")
                 else:
-                    print(f"[下载失败] HTTP {resp.status}")
+                    logger.error(f"[下载失败] HTTP {resp.status}")
                     
     except Exception as e:
-        print(f"[错误] 处理文件失败: {e}")
+        logger.error(f"[错误] 处理文件失败: {e}")
         session.rollback()
 
 
@@ -332,7 +355,7 @@ async def crawl_group_files(bot: Bot, group_id: int) -> int:
         files = root_files.get("files", [])
         folders = root_files.get("folders", [])
         
-        print(f"[爬取] 群 {group_id}: 发现 {len(files)} 个文件, {len(folders)} 个文件夹")
+        logger.info(f"[爬取] 群 {group_id}: 发现 {len(files)} 个文件, {len(folders)} 个文件夹")
         
         # 处理根目录文件
         for file in files:
@@ -350,7 +373,7 @@ async def crawl_group_files(bot: Bot, group_id: int) -> int:
                     if await process_historical_file(bot, group_id, file, session):
                         downloaded_count += 1
             except Exception as e:
-                print(f"[错误] 读取文件夹失败: {e}")
+                logger.error(f"[错误] 读取文件夹失败: {e}")
         
         session.commit()
         return downloaded_count
@@ -397,11 +420,11 @@ async def process_historical_file(bot, group_id, file_info, session) -> bool:
                     # 全局去重
                     dup = session.query(GroupFile).filter_by(file_hash=file_hash).first()
                     if dup:
-                        print(f"[去重] 历史文件已存在: {file_name}")
+                        logger.info(f"[去重] 历史文件已存在: {file_name}")
                         return False
                     
                     # 保存
-                    safe_name = "".join(c for c in file_name if c.isalnum() or c in "._-")
+                    safe_name = "".join(c for c in file_name if c.isalnum() or c in "._-" )
                     file_path = DATA_DIR / f"{group_id}_{file_id}_{safe_name}"
                     
                     async with aiofiles.open(file_path, 'wb') as f:
@@ -419,11 +442,11 @@ async def process_historical_file(bot, group_id, file_info, session) -> bool:
                         file_hash=file_hash
                     )
                     session.add(new_file)
-                    print(f"[历史文件] 已下载: {file_name}")
+                    logger.info(f"[历史文件] 已下载: {file_name}")
                     return True
                     
     except Exception as e:
-        print(f"[错误] 处理历史文件失败: {e}")
+        logger.error(f"[错误] 处理历史文件失败: {e}")
     
     return False
 
@@ -440,9 +463,9 @@ async def init_monitored_groups(bot: Bot):
         # 获取机器人加入的所有群
         try:
             group_list = await bot.get_group_list()
-            print(f"[初始化] 机器人共在 {len(group_list)} 个群中")
+            logger.info(f"[初始化] 机器人共在 {len(group_list)} 个群中")
         except Exception as e:
-            print(f"[初始化] 获取群列表失败: {e}")
+            logger.error(f"[初始化] 获取群列表失败: {e}")
             group_list = []
         
         # 同步所有群到数据库
@@ -462,16 +485,16 @@ async def init_monitored_groups(bot: Bot):
                     is_active=1
                 )
                 session.add(group)
-                print(f"[初始化] 自动添加群: {group_name}({group_id})")
+                logger.info(f"[初始化] 自动添加群: {group_name}({group_id})")
             else:
                 # 更新群名
                 group.group_name = group_name
-                print(f"[初始化] 更新群信息: {group_name}({group_id})")
+                logger.info(f"[初始化] 更新群信息: {group_name}({group_id})")
         
         session.commit()
         
         # 自动爬取历史文件（启动时执行一次）
-        print("[初始化] 开始自动爬取历史文件...")
+        logger.info("[初始化] 开始自动爬取历史文件...")
         await auto_crawl_all_groups(bot)
         
         # 设置定时任务：每天凌晨3点自动爬取更新
@@ -485,7 +508,7 @@ async def init_monitored_groups(bot: Bot):
                 id="daily_crawl",
                 replace_existing=True
             )
-            print("[初始化] 已设置定时任务：每天3:00自动爬取")
+            logger.info("[初始化] 已设置定时任务：每天3:00自动爬取")
         
     finally:
         session.close()

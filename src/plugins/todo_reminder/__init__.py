@@ -20,18 +20,21 @@ from .database import TodoDatabase
 from .time_parser import TimeParser
 from .reminder_scheduler import ReminderScheduler
 from .commands import TodoCommands
+from src.common.model.model import PluginGroupEnum, PluginBadgeColor
 
 __plugin_meta__ = PluginMetadata(
     name="Todo提醒插件",
     description="支持个人提醒、群组提醒、指定用户提醒等功能",
-    usage="todo 30分钟后 开会",
+    usage="todo 30分钟后 开会 —— 创建30分钟后开会的提醒\ntodo list —— 查看所有提醒\ntodo cancel <id> —— 取消指定提醒\ntodo clear —— 清除所有提醒",
     type="application",
-    homepage="https://github.com/your-repo/todo-reminder",
+    config=Config,
     supported_adapters={"~onebot.v11"},
     extra={
         "author": "Your Name",
         "version": "1.0.0",
         "priority": 10,
+        "group": PluginGroupEnum.UTILITY.value,
+        "badge_color": PluginBadgeColor.GREEN.value
     },
 )
 

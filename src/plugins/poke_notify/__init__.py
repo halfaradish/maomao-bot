@@ -13,12 +13,18 @@ from nonebot.exception import FinishedException
 
 from .config import Config
 from ...common import get_redis_connection
+from src.common.model.model import PluginGroupEnum, PluginBadgeColor
 
 __plugin_meta__ = PluginMetadata(
-    name="poke_notify",
-    description="处理戳一戳事件",
-    usage="",
+    name="戳一戳回应",
+    description="处理群聊和私聊中的戳一戳事件，根据戳的次数给出不同的回应",
+    usage="戳一戳机器人即可触发回应",
     config=Config,
+    supported_adapters={"~onebot.v11"},
+    extra={
+        "group": PluginGroupEnum.UTILITY.value,
+        "badge_color": PluginBadgeColor.GREEN.value
+    }
 )
 
 config = get_plugin_config(Config)

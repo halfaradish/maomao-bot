@@ -1,6 +1,7 @@
 from nonebot import logger
 from nonebot.adapters.onebot.v11 import MessageSegment
-
+import httpx
+import random
 from pathlib import Path
 
 from ..config import DiTingData
@@ -100,3 +101,37 @@ class GetSQL:
         except Exception as e:
             logger.error(f"读取文件时错误: {e}")
             return None
+
+class QQAvatarLoader:
+    """
+    QQ 头像与信息加载器
+    封装了腾讯公开的头像获取接口
+    """
+    
+    # 定义头像服务器列表，可以随机选择以减轻单点压力（可选）
+    AVATAR_SERVERS = [
+        "http://q1.qlogo.cn",
+        "http://q2.qlogo.cn",
+        "http://q3.qlogo.cn",
+        "http://q4.qlogo.cn"
+    ]
+
+    @classmethod
+    def get_user_avatar_url(cls, user_id: int, size: int = 640) -> str:
+        """
+        获取用户头像链接
+        :param user_id: QQ 号
+        :param size: 头像尺寸（如 40/100/140/640）
+        :return: 头像 URL 字符串
+        """
+        base_url = random.choice(cls.AVATAR_SERVERS)
+        # 核心逻辑：b=qq 表示 QQ 用户，nk 表示 QQ 号，s 表示尺寸
+        return f"{base_url}/g?b=qq&nk={user_id}&s={size}"
+    
+    @classmethod
+    async def download_avatar(cls, user_id: int, size: int = 100):
+        async with httpx.AsyncClient() as client:
+            response = await client.get(cls.get_user_avatar_url(user_id=user_id, size=size))
+            if response.status_code == 200:
+                return response
+        return None
