@@ -5,18 +5,24 @@ from typing import List, Dict, Any, Optional
 
 from nonebot import on_command, get_driver
 from nonebot.rule import Rule
+from nonebot.exception import FinishedException
 from nonebot.plugin import PluginMetadata
 from nonebot.adapters.onebot.v11 import MessageSegment, Message, MessageEvent
 from nonebot.log import logger
+import re
+from src.common.model.model import PluginGroupEnum, PluginBadgeColor
 
 __plugin_meta__ = PluginMetadata(
-    name="PigSender",
+    name="猪猪图片",
     description="从 pighub.top 获取随机猪猪图片",
-    usage="指令：来张猪猪 / 随机猪猪 / 来只XX猪（如：来只粉色猪）",
+    usage="来张猪猪 —— 随机获取一张猪猪图片\n随机猪猪 —— 随机获取一张猪猪图片\n来只XX猪 —— 获取指定标签的猪猪图片（如：来只粉色猪）",
     config=None,
+    supported_adapters={"~onebot.v11"},
     extra={
+        "group": PluginGroupEnum.UTILITY.value,
+        "badge_color": PluginBadgeColor.GREEN.value,
         "author": "xqcherry",
-        "version": "0.3.2"  # 版本号迭代
+        "version": "0.3.2"
     }
 )
 
@@ -108,24 +114,37 @@ async def handle_random_pig():
         
         target = random.choice(images)
         await send_pig_image(get_pig, target)
-        
+    
+    except FinishedException:
+        return
     except Exception as e:
         logger.error(f"随机猪猪出错: {e}")
         await get_pig.finish("猪猪钻进泥潭里找不到了...")
 
 # 2. 标签猪猪
 def check_pig(event: MessageEvent) -> bool:
-    msg = event.raw_message.strip()
-    # 只要以猪结尾，且长度≥2就能触发 (例如 "来只粉色猪")
-    return msg.endswith("猪") and len(msg) >= 2
+    msg = str(event.get_message()).strip()
+    return bool(re.search(r"来只(.*?)(?:猪{1,2})?$", msg))
 
-get_pig_by_tag = on_command("来只", priority=6, block=True, rule=Rule(check_pig))
+get_pig_by_tag = on_command("来只", priority=15, block=True, rule=Rule(check_pig))
 
 @get_pig_by_tag.handle()
 async def handle_tag_pig(event: MessageEvent):
     try:
-        msg = event.raw_message.strip()
-        tag = msg[2:-1] # 提取 "来只" 和 "猪" 中间的内容
+        msg = str(event.get_message()).strip()
+        
+        match = re.search(r"来只(.*?)(?:猪{1,2})?$", msg)
+        if not match:
+            logger.info("无法匹配到猪猪tag")
+            return
+        tag = match.group(1).strip()
+        
+        if not tag:
+            await get_pig_by_tag.finish("猪猪的名字是空的哦~")
+
+        for segment in event.get_message():
+            if segment.type != "text":
+                await get_pig_by_tag.finish("不能包含非文本消息哦awa")
 
         images = await fetch_image_list()
         if not images:
@@ -137,9 +156,15 @@ async def handle_tag_pig(event: MessageEvent):
         if not match_list:
             await get_pig_by_tag.finish(f"没有找到【{tag}】相关的猪猪哦~")
 
-        target = random.choice(match_list)
+        match_list.sort(key=lambda x : len(x.get('title', '')))
+        min_length = len(match_list[0].get("title", ""))
+        shortest_matches = [img for img in match_list if len(img.get('title', '')) == min_length]
+
+        target = random.choice(shortest_matches)
         await send_pig_image(get_pig_by_tag, target)
 
+    except FinishedException:
+        return
     except Exception as e:
         logger.error(f"标签猪猪出错: {e}")
         await get_pig_by_tag.finish("找猪猪的时候不小心掉进泥潭了...")

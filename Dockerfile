@@ -1,5 +1,5 @@
 # 阶段 1: 基础系统层
-FROM library/python:3.10.18-slim AS base
+FROM python:3.10-slim AS base
 EXPOSE 6090 6379
 
 ENV PYTHONDONTWRITEBYTECODE=1 \

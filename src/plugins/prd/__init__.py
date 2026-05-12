@@ -23,12 +23,18 @@ from .config import Config
 from .html_gen import SimpleHTMLImageGenerator
 from ...common import JsonUtils
 from nonebot.exception import FinishedException
+from src.common.model.model import PluginGroupEnum, PluginBadgeColor
 
 __plugin_meta__ = PluginMetadata(
-    name="prd",
-    description="记录需求，拟定一份需求文档",
-    usage="",
+    name="需求管理",
+    description="记录需求，拟定需求文档，支持需求的添加、删除、修改、完成、分组管理，以及生成需求图片",
+    usage="prd list —— 查看未完成的需求\nprd ok —— 查看已完成的需求\nprd add <内容> —— 添加新需求\nprd rm <编号> —— 删除指定需求\nprd modify <编号> <内容> —— 修改指定需求\nprd complete <编号> —— 标记需求为完成/未完成\nprd group <编号> <组别> —— 为需求分组\nprd <执行人> xxx <编号> —— 为需求分配执行人\nprd img <编号> —— 生成指定需求的图片\nprd img all —— 生成未完成需求的图片\nprd img ok —— 生成已完成需求的图片",
     config=Config,
+    supported_adapters={"~onebot.v11"},
+    extra={
+        "group": PluginGroupEnum.UTILITY.value,
+        "badge_color": PluginBadgeColor.GREEN.value
+    }
 )
 
 config = get_plugin_config(Config)

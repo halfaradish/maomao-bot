@@ -1,11 +1,28 @@
 from typing import Optional, Union
 from nonebot.adapters.onebot.v11 import MessageEvent, GroupMessageEvent, PrivateMessageEvent
+from nonebot.plugin import PluginMetadata
 
 from ...common.siqi_client import (
     AuthCheckResult,
     SiqiAuthRequestError,
     SiqiClient,
     siqi_client as shared_siqi_client,
+)
+from src.common.model.model import PluginGroupEnum, PluginBadgeColor
+
+# 插件元信息
+__plugin_meta__ = PluginMetadata(
+    name="司契权限系统",
+    description="司契权限系统集成插件，提供权限检查功能",
+    usage="from src.plugins.siqi_auth.plugin import check_permission, check_permission_detail, has_permission\n\n# 检查用户权限\nallowed = await check_permission(\"member:ban\", \"3352239338\")\n\n# 检查用户权限并获取拒绝原因/角色信息\ndetail = await check_permission_detail(\"member:ban\", \"3352239338\")\n\n# 从消息事件检查权限\nallowed = await has_permission(event, \"member:ban\")",
+    type="application",
+    supported_adapters={"~onebot.v11"},
+    extra={
+        "group": PluginGroupEnum.BASE.value,
+        "badge_color": PluginBadgeColor.BLUE.value,
+        "version": "1.0.0",
+        "author": "NoneBot"
+    }
 )
 
 # 导出全局单例

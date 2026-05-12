@@ -21,6 +21,7 @@ from ...common import JsonUtils
 from .config import Config
 from .sub_condition import Submission
 from ...common.timer import timer, timed_section
+from src.common.model.model import PluginGroupEnum, PluginBadgeColor
 
 require("nonebot_plugin_apscheduler")
 
@@ -36,10 +37,15 @@ logger.info(f"[sub_records] 当前系统加载方式：{LIB_MODE}")
 
 
 __plugin_meta__ = PluginMetadata(
-    name="sub_records",
-    description="过题统计插件（Linux + Windows 兼容模式）",
-    usage="过题 [天数] [学校] [身份] [人名] 可组合筛选",
+    name="过题统计",
+    description="过题统计插件（Linux + Windows 兼容模式），支持按天数、学校、身份、人名组合筛选",
+    usage="过题 7 —— 查看最近7天的过题情况\n过题 7 管理员 —— 查看最近7天管理员的过题情况\n过题 7 广西大学 —— 查看最近7天广西大学的过题情况\n过题 7 广西大学 管理员 —— 查看最近7天广西大学管理员的过题情况",
     config=Config,
+    supported_adapters={"~onebot.v11"},
+    extra={
+        "group": PluginGroupEnum.CONTEST.value,
+        "badge_color": PluginBadgeColor.YELLOW.value
+    }
 )
 
 config = get_plugin_config(Config)

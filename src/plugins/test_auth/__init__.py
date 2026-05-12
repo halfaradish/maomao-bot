@@ -49,6 +49,7 @@ from ...common import JsonUtils
 from ...common.siqi_auth_client import siqi_auth
 
 from .config import Config
+from src.common.model.model import PluginGroupEnum, PluginBadgeColor
 
 
 
@@ -58,11 +59,21 @@ __plugin_meta__ = PluginMetadata(
 
     description="通过 auth 前缀命令测试司契权限系统，功能与 group_ban 完全相同",
 
-    usage="authban @成员 60 / authunban @成员 / authkick @成员 / authauthtest",
+    usage="authban @成员 60 —— 禁言指定成员60秒\nauthunban @成员 —— 解除成员禁言\nauthkick @成员 —— 踢出成员\nauthauthtest [次数] —— 测试权限系统延迟",
 
     type="application",
 
+    config=Config,
+
     supported_adapters={"~onebot.v11"},
+
+    extra={
+
+        "group": PluginGroupEnum.GROUP_MANAGE.value,
+
+        "badge_color": PluginBadgeColor.BLUE.value
+
+    }
 
 )
 

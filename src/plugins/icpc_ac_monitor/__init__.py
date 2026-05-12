@@ -1,17 +1,19 @@
 from nonebot import get_plugin_config
 from nonebot.plugin import PluginMetadata
-# src/plugins/icpc_ac_monitor/__init__.py
 from .icpc_ac_monitor import start_monitor, stop_monitor
-
 from .config import Config
-# src/plugins/icpc_ac_monitor/__init__.py
-
-from nonebot.plugin import PluginMetadata
+from src.common.model.model import PluginGroupEnum, PluginBadgeColor
 
 __plugin_meta__ = PluginMetadata(
-    name="icpc_ac_monitor",      # ← 和目录名保持一致
-    description="广西大学比赛 AC 监控",
-    usage="开始监控 <url>  / 停止监控",
+    name="AC监控",
+    description="广西大学比赛 AC 监控插件",
+    usage="开始监控 <url> —— 开始监控指定比赛的AC情况\n停止监控 —— 停止当前监控",
+    config=Config,
+    supported_adapters={"~onebot.v11"},
+    extra={
+        "group": PluginGroupEnum.CONTEST.value,
+        "badge_color": PluginBadgeColor.YELLOW.value
+    }
 )
 
 

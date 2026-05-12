@@ -19,12 +19,18 @@ import asyncio
 
 from .config import Config
 from ...common import JsonUtils
+from src.common.model.model import PluginGroupEnum, PluginBadgeColor
 
 __plugin_meta__ = PluginMetadata(
-    name="mass_kick",
+    name="一键退群",
     description="一键退群功能，支持批量将用户从多个群组中踢出，以及管理群组列表",
-    usage="一键退群+QQ号\n一键退群 ls\n一键退群 add+群号\n一键退群 rm+群号",
+    usage="一键退群 <QQ号> —— 从所有管理群组中踢出指定用户\n一键退群 ls —— 查看当前管理的群组列表\n一键退群 add <群号1> [群号2 ...] —— 添加群组到管理列表\n一键退群 rm <群号1> [群号2 ...] —— 从管理列表中删除群组",
     config=Config,
+    supported_adapters={"~onebot.v11"},
+    extra={
+        "group": PluginGroupEnum.GROUP_MANAGE.value,
+        "badge_color": PluginBadgeColor.BLUE.value
+    }
 )
 
 config = get_plugin_config(Config)

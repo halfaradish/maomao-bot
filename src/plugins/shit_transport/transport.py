@@ -7,7 +7,8 @@ from nonebot.adapters.onebot.v11 import (
     GROUP,
     GroupMessageEvent,
     Message,
-    Bot
+    Bot,
+    MessageSegment
 )
 from nonebot.plugin import PluginMetadata
 from nonebot.params import CommandArg
@@ -18,11 +19,14 @@ from typing import List, Dict, Any, Optional
 from dataclasses import dataclass
 
 from .config import Config
+from .image_generator import BsCountImageGenerator
 from ...common import JsonUtils
 from ...config import QQControlConfig
+from src.common.model.model import PluginGroupEnum, PluginBadgeColor
 
 # 加载插件配置
 config = get_plugin_config(Config)
+bs_count_image_generator = BsCountImageGenerator()
 
 api_host: str = QQControlConfig.QQ_CONTROL_HOST
 api_port: int = QQControlConfig.QQ_CONTROL_PORT
@@ -31,9 +35,14 @@ api_token: str = 'Bearer ' + QQControlConfig.QQ_CONTROL_TOKEN
 # 插件元数据
 __plugin_meta__ = PluginMetadata(
     name="搬史小助手",
-    description="用于在多个群组间转发消息的插件",
-    usage=config.HELP_MSG,
+    description="用于在多个群组间转发消息的插件，支持配置可发送和可接收的群组",
+    usage="搬史 —— 转发引用的消息到所有可接收群组\n搬史 list —— 查看转发群组列表\n搬史 addpost <群号> —— 添加可发送群组\n搬史 addreceive <群号> —— 添加可接收群组\n搬史 rmpost <群号> —— 移除可发送群组\n搬史 rmreceive <群号> —— 移除可接收群组\n搬史 count —— 查看使用次数统计",
     config=Config,
+    supported_adapters={"~onebot.v11"},
+    extra={
+        "group": PluginGroupEnum.UTILITY.value,
+        "badge_color": PluginBadgeColor.GREEN.value
+    }
 )
 
 # 命令处理器
@@ -397,6 +406,29 @@ async def handle_list_receive_operation() -> str:
     
     return f"可接收转发内容的群组:\n{group_list}"
 
+def build_count_rows(statistics: Dict[str, Any], action_text: str, is_show_all: bool) -> List[Dict[str, Any]]:
+    sorted_items = sorted(statistics.items(), key=lambda x: x[1].get('count', 0), reverse=True)
+    rows: List[Dict[str, Any]] = []
+    for _, user_info in sorted_items:
+        rows.append({
+            'nickname': user_info.get('nickname') or '未知用户',
+            'count': int(user_info.get('count', 0)),
+            'action_text': action_text,
+        })
+    return rows
+
+async def handle_count_image_operation(is_show_all: bool) -> bytes:
+    banshi_freq = TransportService.get_banshi_frequency_statistics()
+    postshi_freq = TransportService.get_postshi_frequency_statistics()
+    transmit_rows = build_count_rows(banshi_freq, '搬史', is_show_all)
+    post_rows = build_count_rows(postshi_freq, '发史', is_show_all)
+    return bs_count_image_generator.generate_image(
+        transmit_rows=transmit_rows,
+        post_rows=post_rows,
+        is_show_all=is_show_all,
+        max_show_count=config.bs_max_show_cnt,
+    )
+
 async def handle_count_operation(is_show_all: bool) -> str:
     """处理使用次数统计操作
     
@@ -404,36 +436,24 @@ async def handle_count_operation(is_show_all: bool) -> str:
         str: 统计结果消息
     """
     banshi_freq = TransportService.get_banshi_frequency_statistics()
-
-    show_cnt = 0
+    postshi_freq = TransportService.get_postshi_frequency_statistics()
+    transmit_rows = build_count_rows(banshi_freq, '搬史', is_show_all)
+    post_rows = build_count_rows(postshi_freq, '发史', is_show_all)
     
     res_msg = "搬史插件使用次数统计(使用bs命令的用户)"
-    if not banshi_freq:
+    if not transmit_rows:
         res_msg += "\n无使用记录"
     else:
-        # 按使用次数降序排序
-        sorted_items = sorted(banshi_freq.items(), key=lambda x: x[1]['count'], reverse=True)
-        for _, user_info in sorted_items:
-            show_cnt += 1
-            if show_cnt > config.bs_max_show_cnt and not is_show_all:
-                break
-            res_msg += f"\n{user_info['nickname']} 搬史 {user_info['count']} 次"
-
-    show_cnt = 0
-
-    postshi_freq = TransportService.get_postshi_frequency_statistics()
+        for row in transmit_rows:
+            res_msg += f"\n{row['nickname']} {row['action_text']} {row['count']} 次"
+    
     res_msg += "\n\n发史数据统计(被bs命名转发消息的用户)"
-    if not postshi_freq:
+    if not post_rows:
         res_msg += "\n无使用记录"
     else:
-        # 降序排序
-        sorted_items = sorted(postshi_freq.items(), key=lambda x: x[1]['count'], reverse=True)
-        for _, user_info in sorted_items:
-            show_cnt += 1
-            if show_cnt > config.bs_max_show_cnt and not is_show_all:
-                break
-            res_msg += f"\n{user_info['nickname']} 发史 {user_info['count']} 次"
-
+        for row in post_rows:
+            res_msg += f"\n{row['nickname']} {row['action_text']} {row['count']} 次"
+    
     return res_msg
 
 @transport_manual.handle()
@@ -529,10 +549,10 @@ async def handle_transport(bot: Bot, event: GroupMessageEvent, args: Message = C
                 
         elif command in ["count", "计数", "统计"]:
             # 查看使用次数统计
-            # 是否列出所有消息
-            is_show_all = len(params) >= 2 and params[1] in ["all"]
-            result_msg = await handle_count_operation(is_show_all)
-            await bot.send(event=event, message=result_msg)
+            # 默认展示全部数据，不再限制数量
+            is_show_all = True
+            image_bytes = await handle_count_image_operation(is_show_all)
+            await bot.send(event=event, message=MessageSegment.image(image_bytes))
 
         
     except Exception as e:
