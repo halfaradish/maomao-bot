@@ -15,6 +15,7 @@ INSTALLED_APPS = [
     "django.contrib.messages",
     "django.contrib.staticfiles",
     "botdb",
+    "like_plugin",
 ]
 
 MIDDLEWARE = [
