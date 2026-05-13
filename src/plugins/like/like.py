@@ -58,6 +58,7 @@ like_other = on_command(
 )
 like_follow = on_command(
     "订阅赞",
+    aliases={"dev-订阅赞"},  # ✅ 修复：添加测试环境前缀支持
     permission=GROUP,
     priority=plugin_config.priority,
     block=plugin_config.block
@@ -100,8 +101,8 @@ def perm_decorator(func: Callable) -> Callable:
             
             if str(event.group_id) in ban_group_users:
                 logger.info(f"群 {event.group_id} 没有权限使用该功能")
-                # 可选：发送无权限提示
-                # await bot.send(event, message="❌ 本群未开启点赞功能")
+                # ✅ 修复：明确告知用户无权限
+                await bot.send(event, message="❌ 本群未开启点赞功能")
                 return
             
             logger.info(f"群 {event.group_id} 有权限，继续执行原函数")
@@ -168,6 +169,7 @@ async def send_like(bot: Bot, user_id) -> tuple[int, any]:
             })
             count += 10
             logger.success(f"给 {user_id} 点赞成功, 当前点赞次数:{count}")
+            await asyncio.sleep(1)  # ✅ 修复：增加延迟，防止风控
     except ActionFailed as e:
         logger.opt(exception=True).error(f"给 {user_id} 点赞 API 调用失败: {e}")
         err_msg = e.info
@@ -280,7 +282,8 @@ async def _():
         return
     
     bot = get_bot()
-    if not bot:
+    # ✅ 修复：增加 Bot 连接状态检查
+    if not bot or not hasattr(bot, '_connected') or not bot._connected:
         logger.error("Bot 未连接，跳过定时点赞")
         return
     
