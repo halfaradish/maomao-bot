@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import base64
 import hashlib
 import json
 import random
@@ -57,7 +58,11 @@ clear_matcher = on_command("清空图片", aliases=CLEAR_COMMANDS, priority=10, 
 
 @save_matcher.handle()
 async def handle_save(bot: Bot, event: MessageEvent, args: Message = CommandArg()):
-    images = [seg for seg in event.get_message() + args if seg.type == "image"]
+    # CommandArg() 已经是“命令后的参数”；与 event.get_message() 直接相加会把同一图片重复统计
+    images = [seg for seg in args if seg.type == "image"]
+    if not images:
+        # 兼容部分实现：当 args 未带到图片时，再回退到整条消息里提取
+        images = [seg for seg in event.get_message() if seg.type == "image"]
     if not images:
         await save_matcher.finish("请在命令后附带图片，例如：保存图片 + 图片", at_sender=True)
 
@@ -82,7 +87,7 @@ async def handle_save(bot: Bot, event: MessageEvent, args: Message = CommandArg(
             saved_path = await _save_image(source_path, event, idx)
             records.append(
                 {
-                    "saved_file": str(saved_path),
+                   "saved_file": saved_path.name,
                     "sender_id": event.get_user_id(),
                     "group_id": getattr(event, "group_id", None),
                     "time": datetime.now().isoformat(timespec="seconds"),
@@ -138,7 +143,7 @@ async def handle_clear():
     records = load_data()
     deleted = 0
     for record in records:
-        file_path = Path(record.get("saved_file", ""))
+        file_path = _record_to_path(record.get("saved_file", ""))
         if file_path.exists():
             try:
                 file_path.unlink()
@@ -155,7 +160,7 @@ async def _send_record(mode: str) -> None:
         await save_matcher.finish("当前还没有保存任何图片。", at_sender=True)
 
     record = records[-1] if mode == "latest" else random.choice(records)
-    img_path = Path(record["saved_file"])
+    img_path = _record_to_path(record.get("saved_file", ""))
     caption = (
         f"模式：{'最新' if mode == 'latest' else '随机'}\n"
         f"提供者：{record.get('sender_id', '未知')}\n"
@@ -163,12 +168,25 @@ async def _send_record(mode: str) -> None:
         f"总计：{len(records)} 张"
     )
     try:
-        await save_matcher.send(Message(caption) + MessageSegment.image(img_path.as_uri()))
+        # 1) 先尝试 file:// URI（部分 OneBot 实现支持）
+        img_uri = img_path.resolve().as_uri()
+        await save_matcher.send(Message(caption) + MessageSegment.image(file=img_uri))
         await save_matcher.finish("图片已发送。", at_sender=True)
     except FinishedException:
         raise
-    except Exception as exc:
-        await save_matcher.finish(f"提取失败：{exc}", at_sender=True)
+    except Exception as first_exc:
+        # 2) 容器/跨进程场景下常见 file 路径不可见，回退为 base64（兼容性更高）
+        try:
+            b64 = base64.b64encode(img_path.read_bytes()).decode("ascii")
+            await save_matcher.send(Message(caption) + MessageSegment.image(file=f"base64://{b64}"))
+            await save_matcher.finish("图片已发送", at_sender=True)
+        except FinishedException:
+            raise
+        except Exception as second_exc:
+            await save_matcher.finish(
+                f"提取失败：file URI 发送失败：{first_exc}；base64 发送失败：{second_exc}",
+                at_sender=True,
+            )
 
 
 async def _save_image(source_path: Path, event: MessageEvent, index: int) -> Path:
@@ -223,6 +241,11 @@ async def _resolve_image_path(bot: Bot, seg: MessageSegment) -> Path:
 
     raise ValueError("无法解析图片本地路径，请确认 OneBot 端支持 get_image 或图片消息包含本地 file/url")
 
+def _record_to_path(saved_file: str) -> Path:
+    p = Path(saved_file)
+    if p.is_absolute():
+        return p
+    return IMAGE_DIR / p
 
 def _file_md5(path: Path) -> str:
     digest = hashlib.md5()
@@ -233,7 +256,7 @@ def _file_md5(path: Path) -> str:
 
 
 def _valid_records() -> list[dict[str, Any]]:
-    return [r for r in load_data() if Path(r.get("saved_file", "")).exists()]
+    return [r for r in load_data() if _record_to_path(r.get("saved_file", "")).exists()]
 
 
 def load_data() -> list[dict[str, Any]]:
