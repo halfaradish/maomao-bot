@@ -84,7 +84,7 @@ async def schedule_job():
         start_datetime: datetime = end_datetime - timedelta(days=1)
 
     logger.debug(f"开始获取数据......")
-    records: list[dict] = DailySubCondition.get_daily_sub_records(start_datetime=start_datetime, end_datetime=end_datetime)
+    records: list[dict] = await DailySubCondition.get_daily_sub_records(start_datetime=start_datetime, end_datetime=end_datetime)
     logger.debug(f"获取数据成功: {records}")
 
     # 安排任务

@@ -10,7 +10,7 @@ ddddocr==1.5.6
 python-multipart
 pytz
 pipx
-mysql-connector-python==9.3.0
+
 nonebot-adapter-onebot
 nonebot-plugin-apscheduler
 nonebot-adapter-console

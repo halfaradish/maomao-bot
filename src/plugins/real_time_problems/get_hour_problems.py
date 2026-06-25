@@ -16,16 +16,16 @@ class HourSubCondition:
     """
 
     @classmethod
-    def get_hour_sub_records(cls, start_time: datetime, end_time: datetime):
+    async def get_hour_sub_records(cls, start_time: datetime, end_time: datetime):
         """
         根据传入的start_time和end_time查询数据
         """
         query = utils.GetSQL.read_sql_file(config.GET_HOUR_SUB_RECORDS)
 
         try:
-            with get_icpc_db_connection() as db:
+            async with get_icpc_db_connection() as db:
                 # 查询
-                records = db.execute(query, ([start_time, end_time] * 2)).fetchall()
+                records = await db.execute(query, ([start_time, end_time] * 2))
                 logger.info(records)
                 return records
         except Exception as e:

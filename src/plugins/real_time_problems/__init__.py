@@ -99,17 +99,17 @@ class RealTimeProblemsPlugin:
 # 创建插件实例
 plugin = RealTimeProblemsPlugin()
 
-def get_recent_ac_records(minutes: int = check_gap_minutes) -> List[Dict[str, Any]]:
+async def get_recent_ac_records(minutes: int = check_gap_minutes) -> List[Dict[str, Any]]:
     """
     从数据库获取最近指定小时内的过题记录
     """
     try:
         end_time = datetime.now()
         start_time = end_time - timedelta(minutes=minutes)
-        
+
         # 使用HourSubCondition获取数据库记录
-        records = HourSubCondition.get_hour_sub_records(start_time, end_time)
-        
+        records = await HourSubCondition.get_hour_sub_records(start_time, end_time)
+
         return records
     except Exception as e:
         logger.error(f"获取过题记录失败: {e}")
@@ -131,7 +131,7 @@ if config.rtp_report_enable:
             logger.info("开始检查过题记录...")
             
             # 1. 从数据库获取最近check_gap_minutes分钟的过题记录
-            records = get_recent_ac_records()
+            records = await get_recent_ac_records()
 
             # 2. 创建要发送的消息
             message = plugin.create_message(records)
@@ -193,7 +193,7 @@ async def handle_check_ac(args: Message = CommandArg()):
         if minutes > 120:
             await check_ac_command.finish(f"防刷屏设计！实时过题只能查询 120 分钟内的过题记录。参数过大：{minutes} 分钟")
         # 获取过题记录
-        records = get_recent_ac_records(minutes=minutes)
+        records = await get_recent_ac_records(minutes=minutes)
         # 创建消息
         message = plugin.create_message(records, minutes=minutes)
         # 如果有消息就发送，没有就提示无记录

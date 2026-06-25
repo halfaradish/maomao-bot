@@ -12,6 +12,14 @@ from .botdb_models import (
     GroupFile,
 )
 from .like_plugin_models import LikeRecord, PluginConfig
+from .icpc_models import (
+    DingCheckup,
+    CfOfficialProblem,
+    IcpcUser,
+    OjAccount,
+    CfAllSubmission,
+    LuoguAllSubmission,
+)
 
 __all__ = [
     "MessageEventLog",
@@ -27,4 +35,10 @@ __all__ = [
     "GroupFile",
     "LikeRecord",
     "PluginConfig",
+    "DingCheckup",
+    "CfOfficialProblem",
+    "IcpcUser",
+    "OjAccount",
+    "CfAllSubmission",
+    "LuoguAllSubmission",
 ]
