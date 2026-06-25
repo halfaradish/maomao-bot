@@ -13,11 +13,8 @@ from nonebot.adapters.onebot.v11 import Bot
 
 from . import database
 from .config import Config
-from ...common.django_crud import async_get_many, init_django_if_needed
-
-init_django_if_needed()
-
-from botdb.models import QQMessageReceiptSummary, QQRobotMessage, beijing_now
+from ...common.crud import async_get_many, async_get_one, async_update_records
+from ...common.models.botdb_models import QQMessageReceiptSummary, QQRobotMessage
 
 plugin_config = Config.parse_obj(get_driver().config.dict())
 
@@ -81,7 +78,7 @@ class AckReminderScheduler:
         if not plugin_config.enabled:
             return
         try:
-            now = beijing_now()
+            now = datetime.now()
             
             # 查找需要提醒的消息
             # 条件：next_reminder_at <= now 且 未完成确认 且 未达到最大提醒次数
@@ -131,7 +128,6 @@ class AckReminderScheduler:
         if not plugin_config.enabled:
             return
         # 获取消息记录
-        from ...common.django_crud import async_get_one
         message = await async_get_one(QQRobotMessage, id=summary.message_id)
         if not message:
             logger.warning(f"未找到消息记录: message_id={summary.message_id}")
@@ -182,8 +178,8 @@ class AckReminderScheduler:
             
             # 保存提醒消息的msg_id到原始消息的metadata中，以便后续识别
             if reminder_msg_id_str:
-                from ...common.django_crud import async_get_one, async_update_records
-                current_metadata = message.metadata or {}
+                from ...common.crud import async_get_one, async_update_records
+                current_metadata = message.metadata_ or {}
                 reminder_msg_ids = current_metadata.get("reminder_msg_ids", [])
                 if not isinstance(reminder_msg_ids, list):
                     reminder_msg_ids = []
@@ -211,8 +207,6 @@ class AckReminderScheduler:
             next_reminder_at = now + timedelta(minutes=interval_minutes)
         
         # 更新数据库
-        from ...common.django_crud import async_update_records
-        
         await async_update_records(
             QQMessageReceiptSummary,
             {"message_id": summary.message_id},

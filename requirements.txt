@@ -16,10 +16,9 @@ nonebot-plugin-apscheduler
 nonebot-adapter-console
 nonebot-plugin-prometheus
 nonebot2[fastapi]
-Django==4.2.16
+sqlalchemy[asyncio]
+asyncmy
 tzdata
-mysqlclient
-pymysql==1.1.2
 torch
 transformers
 openai
@@ -27,7 +26,6 @@ langgraph
 langchain-core
 langchain-community
 tiktoken
-pymysql
 cryptography
 jinja2
 loguru

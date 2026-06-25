@@ -1,4 +1,4 @@
-from nonebot import Bot, logger, get_plugin_config, on_command
+from nonebot import Bot, get_bot, logger, get_plugin_config, on_command
 from nonebot.plugin import PluginMetadata
 from nonebot.adapters.onebot.v11 import GROUP, GroupMessageEvent, Message, MessageSegment
 from nonebot.adapters.onebot.v11.exception import ActionFailed
@@ -6,28 +6,15 @@ from nonebot_plugin_apscheduler import scheduler
 
 import re
 import asyncio
-import os
-import sys
 import json
 from functools import wraps
 from typing import Callable, List
-from django.db.models import F  # 确保导入 F
 
+from sqlalchemy import select, update as sa_update
+
+from ...common.database import async_session_factory
+from ...common.models.like_plugin_models import LikeRecord, PluginConfig
 from .config import Config
-
-# ==================== Django 环境初始化 ====================
-# 已根据你的路径修改
-DJANGO_PROJECT_PATH = "/app/src/django_project"
-sys.path.append(DJANGO_PROJECT_PATH)
-
-os.environ.setdefault("DJANGO_SETTINGS_MODULE", "django_project.settings")
-
-import django
-django.setup()
-
-# 导入模型
-from like_plugin.models import LikeRecord, PluginConfig
-# ==========================================================
 
 plugin_config = get_plugin_config(Config)
 
@@ -70,6 +57,31 @@ like_unfollow = on_command(
     block=plugin_config.block
 )
 
+async def _get_ban_groups() -> List:
+    """异步获取禁止点赞的群列表"""
+    async with async_session_factory() as session:
+        stmt = select(PluginConfig).where(PluginConfig.key == "ban_group_users")
+        result = await session.execute(stmt)
+        obj = result.scalars().first()
+        if obj:
+            return json.loads(obj.value)
+        return []
+
+
+async def _set_ban_groups(group_list: List):
+    """异步设置禁止点赞的群列表"""
+    async with async_session_factory() as session:
+        stmt = select(PluginConfig).where(PluginConfig.key == "ban_group_users")
+        result = await session.execute(stmt)
+        obj = result.scalars().first()
+        if obj:
+            obj.value = json.dumps(group_list)
+        else:
+            obj = PluginConfig(key="ban_group_users", value=json.dumps(group_list))
+            session.add(obj)
+        await session.commit()
+
+
 def perm_decorator(func: Callable) -> Callable:
     """
     权限装饰器，检查用户是否有权限
@@ -77,10 +89,10 @@ def perm_decorator(func: Callable) -> Callable:
     @wraps(func)
     async def wrapper(*args, **kwargs):
         logger.info("权限装饰器开始执行")
-        
+
         event = kwargs.get('event')
         bot = kwargs.get('bot')
-        
+
         if not event or not bot:
             for arg in args:
                 if isinstance(arg, GroupMessageEvent):
@@ -89,71 +101,99 @@ def perm_decorator(func: Callable) -> Callable:
                 elif isinstance(arg, Bot):
                     bot = arg
                     logger.debug("从args中找到Bot参数")
-        
+
         if not event or not bot:
             logger.warning("无法获取必要的event或bot参数")
             return await func(*args, **kwargs)
-        
+
         try:
             # 从数据库读取禁止列表
-            ban_group_users: List = PluginConfig.get_ban_groups()
+            ban_group_users: List = await _get_ban_groups()
             logger.info(f"群ID: {event.group_id}，禁止列表: {ban_group_users}")
-            
+
             if str(event.group_id) in ban_group_users:
                 logger.info(f"群 {event.group_id} 没有权限使用该功能")
-                # ✅ 修复：明确告知用户无权限
                 await bot.send(event, message="❌ 本群未开启点赞功能")
                 return
-            
+
             logger.info(f"群 {event.group_id} 有权限，继续执行原函数")
             return await func(*args, **kwargs)
         except Exception as e:
             logger.error(f"权限检查过程中发生错误: {e}", exc_info=True)
             return
-    
+
     return wrapper
 
-def follow_or_not(follow: bool, user_id: str, nickname: str, group_id: str = None) -> str:
-    """改变订阅赞的用户状态（Django版）"""
+async def follow_or_not(follow: bool, user_id: str, nickname: str, group_id: str = None) -> str:
+    """改变订阅赞的用户状态（SQLAlchemy 版）"""
     try:
-        defaults = {
-            "nickname": nickname,
-            "is_following": follow
-        }
-        # 如果提供了群号，更新群信息
-        if group_id:
-            defaults["group_number"] = str(group_id)
-            # 注意：这里无法直接获取群名，需要额外调用API，暂不设置
-        
-        obj, created = LikeRecord.objects.update_or_create(
-            user_id=user_id,
-            defaults=defaults
-        )
-        
-        if follow:
-            return "订阅成功" if created or not obj.is_following else "您已订阅，无需再次订阅"
-        else:
-            return "取消订阅成功" if not created else "您未在订阅名单中，取消订阅失败"
+        async with async_session_factory() as session:
+            stmt = select(LikeRecord).where(LikeRecord.user_id == user_id)
+            result = await session.execute(stmt)
+            obj = result.scalars().first()
+
+            defaults = {
+                "nickname": nickname,
+                "is_following": follow,
+            }
+            if group_id:
+                defaults["group_number"] = str(group_id)
+
+            if obj:
+                # 更新已有记录
+                for key, value in defaults.items():
+                    setattr(obj, key, value)
+                was_following = obj.is_following
+                await session.commit()
+                if follow:
+                    return "订阅成功" if not was_following else "您已订阅，无需再次订阅"
+                else:
+                    return "取消订阅成功" if was_following else "您未在订阅名单中，取消订阅失败"
+            else:
+                # 创建新记录
+                obj = LikeRecord(user_id=user_id, **defaults)
+                session.add(obj)
+                await session.commit()
+                if follow:
+                    return "订阅成功"
+                else:
+                    return "取消订阅成功"
     except Exception as e:
         logger.opt(exception=True).error(f"用户 {user_id}: {nickname} 订阅时发生错误: {e}")
         return f"订阅操作失败，请稍后再试"
 
-def count_liked_times(user_id, count: int, nickname, group_id: str = None):
+
+async def count_liked_times(user_id, count: int, nickname, group_id: str = None):
     """
-    点赞次数计数（Django版）
+    点赞次数计数（SQLAlchemy 版）
     """
-    defaults = {"nickname": nickname}
-    if group_id:
-        defaults["group_number"] = str(group_id)
-    
-    LikeRecord.objects.update_or_create(
-        user_id=user_id,
-        defaults=defaults
-    )
-    LikeRecord.objects.filter(user_id=user_id).update(
-        count=F('count') + count,
-        nickname=nickname
-    )
+    async with async_session_factory() as session:
+        # 确保用户记录存在
+        stmt = select(LikeRecord).where(LikeRecord.user_id == user_id)
+        result = await session.execute(stmt)
+        obj = result.scalars().first()
+        if obj:
+            obj.nickname = nickname
+            if group_id:
+                obj.group_number = str(group_id)
+        else:
+            obj = LikeRecord(user_id=user_id, nickname=nickname)
+            if group_id:
+                obj.group_number = str(group_id)
+            session.add(obj)
+        await session.flush()
+
+        # 原子递增 count
+        stmt = (
+            sa_update(LikeRecord)
+            .where(LikeRecord.user_id == user_id)
+            .values(
+                count=LikeRecord.count + count,
+                nickname=nickname,
+            )
+        )
+        await session.execute(stmt)
+        await session.commit()
 
 async def send_like(bot: Bot, user_id) -> tuple[int, any]:
     """
@@ -187,7 +227,7 @@ async def like_me_handle(bot: Bot, event: GroupMessageEvent):
         sender: Message = Message([MessageSegment.at(user_id=event.user_id)])
         count, err_msg = await send_like(bot=bot, user_id=user_id)
         if count > 0:
-            count_liked_times(user_id=user_id, count=count, nickname=nickname, group_id=str(group_id))
+            await count_liked_times(user_id=user_id, count=count, nickname=nickname, group_id=str(group_id))
             await like_me.finish("已经给 " + sender + f" 点赞 {count} 次\n点赞的送达可能会有延迟, 如果失败了可以添加好友再试")
         else:
             if err_msg and isinstance(err_msg, dict) and err_msg.get("message") is not None and err_msg.get("message") != "":
@@ -219,7 +259,7 @@ async def like_other_handle(bot: Bot, event: GroupMessageEvent):
 
         count, err_msg = await send_like(bot=bot, user_id=user_id)
         if count > 0:
-            count_liked_times(user_id=user_id, count=count, nickname=nickname, group_id=str(group_id))
+            await count_liked_times(user_id=user_id, count=count, nickname=nickname, group_id=str(group_id))
             await like_other.finish("成功帮" + sender + " 给 " + likeder + f" 点赞 {count} 次")
         else:
             if err_msg and isinstance(err_msg, dict) and err_msg.get("message") is not None and err_msg.get("message") != "":
@@ -254,7 +294,7 @@ async def _(bot: Bot, event: GroupMessageEvent):
         await like_follow.finish(f"❌ 订阅失败：你的群荣誉等级为 {user_group_level}，未达到要求的 {REQUIRED_LEVEL} 级。")
    
     msg = f"收到订阅请求！用户: {nickname}({user_id})\n"
-    msg += follow_or_not(follow=follow, user_id=str(user_id), nickname=nickname, group_id=str(group_id))
+    msg += await follow_or_not(follow=follow, user_id=str(user_id), nickname=nickname, group_id=str(group_id))
 
     logger.info(msg)
     await bot.send(event, message=msg)
@@ -269,7 +309,7 @@ async def _(bot: Bot, event: GroupMessageEvent):
 
     msg = f"收到订阅请求！用户: {nickname}({user_id})\n"
     try:
-        msg += follow_or_not(follow=follow, user_id=str(user_id), nickname=nickname, group_id=str(group_id))
+        msg += await follow_or_not(follow=follow, user_id=str(user_id), nickname=nickname, group_id=str(group_id))
         logger.info(msg)
         await bot.send(event, message=msg)
     except Exception as e:
@@ -287,18 +327,28 @@ async def _():
         logger.error("Bot 未连接，跳过定时点赞")
         return
     
-    subscribed_users = LikeRecord.objects.filter(is_following=True)
-    
+    async with async_session_factory() as session:
+        stmt = select(LikeRecord).where(LikeRecord.is_following == True)
+        result = await session.execute(stmt)
+        subscribed_users = list(result.scalars().all())
+
     for user in subscribed_users:
         try:
             count, err_msg = await send_like(bot=bot, user_id=user.user_id)
             if count > 0:
                 user_info = await bot.get_stranger_info(user_id=int(user.user_id))
                 nickname = user_info["nickname"]
-                LikeRecord.objects.filter(user_id=user.user_id).update(
-                    nickname=nickname,
-                    count=F('count') + count
-                )
+                async with async_session_factory() as session:
+                    stmt = (
+                        sa_update(LikeRecord)
+                        .where(LikeRecord.user_id == user.user_id)
+                        .values(
+                            nickname=nickname,
+                            count=LikeRecord.count + count,
+                        )
+                    )
+                    await session.execute(stmt)
+                    await session.commit()
             else:
                 logger.error(err_msg)
         except Exception as e:

@@ -4,22 +4,16 @@ import importlib
 from dataclasses import dataclass
 from typing import List, Optional
 
-from asgiref.sync import sync_to_async
-from django.db.models import Count
 from nonebot import get_driver, get_plugin_config, on_command
 from nonebot.adapters.onebot.v11 import Bot, Message, MessageEvent
 from nonebot.params import CommandArg
 from nonebot.plugin import PluginMetadata
 
-from ...common.django_crud import init_django_if_needed
+from sqlalchemy import func, select
+from sqlalchemy.orm import selectinload
 
-try:  # 优先使用正确的 app label，保证 Django 注册
-    botdb_models = importlib.import_module("botdb.models")
-except ModuleNotFoundError:  # 在静态检查或路径未注入时的回退（避免运行失败）
-    botdb_models = importlib.import_module("src.django_project.botdb.models")
-
-Group = botdb_models.Group
-GroupMember = botdb_models.GroupMember
+from ...common.database import async_session_factory
+from ...common.models.botdb_models import Group, GroupMember
 from .config import Config
 from src.common.model.model import PluginGroupEnum, PluginBadgeColor
 
@@ -38,8 +32,6 @@ __plugin_meta__ = PluginMetadata(
 
 config = get_plugin_config(Config)
 driver = get_driver()
-
-init_django_if_needed()
 
 
 class PermissionError(Exception):
@@ -72,74 +64,109 @@ async def _ensure_superuser(event: MessageEvent) -> None:
         raise PermissionError("您没有权限使用该命令")
 
 
-@sync_to_async
-def _list_all_groups():
-    groups = (
-        Group.objects.annotate(member_count=Count("members"))
-        .order_by("name")
-        .values("name", "display_name", "description", "member_count")
-    )
-    return list(groups)
+async def _list_all_groups():
+    async with async_session_factory() as session:
+        stmt = (
+            select(
+                Group.name,
+                Group.display_name,
+                Group.description,
+                func.count(GroupMember.id).label("member_count"),
+            )
+            .outerjoin(Group.members)
+            .group_by(Group.id)
+            .order_by(Group.name)
+        )
+        result = await session.execute(stmt)
+        rows = result.mappings().all()
+        return [
+            {
+                "name": row["name"],
+                "display_name": row["display_name"],
+                "description": row["description"],
+                "member_count": row["member_count"],
+            }
+            for row in rows
+        ]
 
 
-@sync_to_async
-def _create_group_record(name: str, display_name: str = "", description: str = ""):
-    if Group.objects.filter(name=name).exists():
-        return False
-    Group.objects.create(
-        name=name,
-        display_name=display_name or "",
-        description=description or "",
-    )
-    return True
+async def _create_group_record(name: str, display_name: str = "", description: str = ""):
+    async with async_session_factory() as session:
+        stmt = select(Group.id).where(Group.name == name).limit(1)
+        result = await session.execute(stmt)
+        if result.first() is not None:
+            return False
+        group = Group(name=name, display_name=display_name or "", description=description or "")
+        session.add(group)
+        await session.commit()
+        return True
 
 
-@sync_to_async
-def _get_group_detail(name: str):
-    group = Group.objects.filter(name=name).first()
-    if not group:
-        return None
-    members = list(
-        group.members.order_by("added_at").values("qq_id", "qq_nickname", "added_at")
-    )
-    return {
-        "group": group,
-        "members": members,
-    }
+async def _get_group_detail(name: str):
+    async with async_session_factory() as session:
+        stmt = select(Group).where(Group.name == name).options(selectinload(Group.members))
+        result = await session.execute(stmt)
+        group = result.scalars().first()
+        if not group:
+            return None
+        sorted_members = sorted(group.members, key=lambda m: m.added_at)
+        members = [
+            {"qq_id": m.qq_id, "qq_nickname": m.qq_nickname, "added_at": m.added_at}
+            for m in sorted_members
+        ]
+        return {"group": group, "members": members}
 
 
-@sync_to_async
-def _add_member(group_name: str, qq_id: int, nickname: str = ""):
-    group = Group.objects.filter(name=group_name).first()
-    if not group:
-        return False, "分组不存在"
-    member, created = GroupMember.objects.get_or_create(
-        group=group,
-        qq_id=qq_id,
-        defaults={"qq_nickname": nickname},
-    )
-    if created:
+async def _add_member(group_name: str, qq_id: int, nickname: str = ""):
+    async with async_session_factory() as session:
+        stmt = select(Group).where(Group.name == group_name).limit(1)
+        result = await session.execute(stmt)
+        group = result.scalars().first()
+        if not group:
+            return False, "分组不存在"
+
+        stmt = select(GroupMember).where(
+            GroupMember.group_name == group_name,
+            GroupMember.qq_id == qq_id,
+        ).limit(1)
+        result = await session.execute(stmt)
+        member = result.scalars().first()
+
+        if member:
+            if nickname and nickname != member.qq_nickname:
+                member.qq_nickname = nickname
+                await session.commit()
+                return True, "成员已存在，昵称已更新"
+            return False, "成员已在该分组中"
+
+        member = GroupMember(group_name=group_name, qq_id=qq_id, qq_nickname=nickname)
+        session.add(member)
+        await session.commit()
         return True, "成员已加入分组"
-    if nickname and nickname != member.qq_nickname:
-        member.qq_nickname = nickname
-        member.save(update_fields=["qq_nickname"])
-        return True, "成员已存在，昵称已更新"
-    return False, "成员已在该分组中"
 
 
-@sync_to_async
-def _delete_group(name: str) -> int:
-    deleted, _ = Group.objects.filter(name=name).delete()
-    return deleted
+async def _delete_group(name: str) -> int:
+    from sqlalchemy import delete as sa_delete
+    async with async_session_factory() as session:
+        stmt = sa_delete(Group).where(Group.name == name)
+        result = await session.execute(stmt)
+        await session.commit()
+        return result.rowcount
 
 
-@sync_to_async
-def _remove_member(qq_id: int, group_name: Optional[str] = None) -> int:
-    qs = GroupMember.objects.filter(qq_id=qq_id)
-    if group_name:
-        qs = qs.filter(group__name=group_name)
-    deleted, _ = qs.delete()
-    return deleted
+async def _remove_member(qq_id: int, group_name: Optional[str] = None) -> int:
+    from sqlalchemy import delete as sa_delete
+    async with async_session_factory() as session:
+        if group_name:
+            stmt = sa_delete(GroupMember).where(
+                GroupMember.qq_id == qq_id,
+                GroupMember.group_name == group_name,
+            )
+        else:
+            stmt = sa_delete(GroupMember).where(GroupMember.qq_id == qq_id)
+        result = await session.execute(stmt)
+        await session.commit()
+        return result.rowcount
 
 
 def _build_help_text() -> str:

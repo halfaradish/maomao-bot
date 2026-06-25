@@ -12,7 +12,6 @@ RUN sed -i 's/deb.debian.org/mirrors.aliyun.com/g' /etc/apt/sources.list.d/debia
     sed -i 's/security.debian.org/mirrors.aliyun.com/g' /etc/apt/sources.list.d/debian.sources && \
     apt-get update && apt-get install -y \
         pkg-config \
-        default-libmysqlclient-dev \
         build-essential \
         libpangocairo-1.0-0 \
         libcairo2-dev \
@@ -52,8 +51,6 @@ RUN python -m pip install -r requirements.txt -i https://pypi.tuna.tsinghua.edu.
 
 # 阶段 4: 代码层
 FROM deps AS final
-
-ENV DJANGO_SETTINGS_MODULE="django_project.settings"
 
 # 复制应用代码 (这一层会频繁变动)
 COPY . .
