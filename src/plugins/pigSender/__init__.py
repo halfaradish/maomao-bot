@@ -28,7 +28,7 @@ __plugin_meta__ = PluginMetadata(
 
 # --- 基础配置 ---
 BASE_URL = "https://pighub.top"
-ALL_IMAGES_API = f"{BASE_URL}/api/all-images"
+ALL_IMAGES_API = f"{BASE_URL}/api/images?sort=2"
 HEADERS = {
     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
     "Referer": f"{BASE_URL}/"
@@ -61,7 +61,7 @@ async def fetch_image_list() -> List[Dict[str, Any]]:
     async with _session.get(ALL_IMAGES_API, timeout=10) as resp:
         resp.raise_for_status()
         data = await resp.json()
-    return data.get("images", [])
+    return data.get("data", [])
 
 async def download_image_bytes(url: str) -> bytes:
     """下载图片二进制数据"""
@@ -86,7 +86,7 @@ async def send_pig_image(matcher, target: Dict[str, Any]):
         title = target.get("title", "没名字的猪猪")
         
         # 构造图片链接
-        raw_path = target.get("thumbnail") or f"/data/{target.get('filename')}"
+        raw_path = target.get("image_url") or f"/images/{target.get('filename')}"
         encoded_path = urllib.parse.quote(raw_path)
         img_url = f"{BASE_URL}{encoded_path}"
 

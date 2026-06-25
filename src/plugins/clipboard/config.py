@@ -9,7 +9,7 @@ class Config(BaseModel):
     clip_priority: int
 
     clip_post_url: str
-    clip_md_post_url: str = "http://8.163.30.212:1145/api/generate-markdown-image"
+    clip_md_post_url: str = "http://172.16.40.37:1145/api/generate-markdown-image"
 
     clip_post_timeout: float = 30.0
 
