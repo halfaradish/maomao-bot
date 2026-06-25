@@ -15,6 +15,7 @@ from sqlalchemy import select, update as sa_update
 from ...common.database import async_session_factory
 from ...common.models.like_plugin_models import LikeRecord, PluginConfig
 from .config import Config
+from src.common.model.model import PluginGroupEnum, PluginBadgeColor
 
 plugin_config = get_plugin_config(Config)
 

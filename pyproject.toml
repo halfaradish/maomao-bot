@@ -45,6 +45,7 @@ nonebot-adapter-console = "^0.9.0"
 nonebot-plugin-prometheus = "^0.4.1"
 nonebot2 = {extras = ["fastapi"], version = "^2.4.4"}
 pytz = "^2025.2"
+pymysql = "^1.1.1"
 sqlalchemy = {extras = ["asyncio"], version = "^2.0"}
 asyncmy = "^0.2.9"
 tzdata = "^2025.1"

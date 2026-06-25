@@ -352,3 +352,17 @@ class GroupFile(Base):
         Index("idx_file_hash", "file_hash"),
         Index("idx_group_downloaded", "group_id", "downloaded_at"),
     )
+
+
+# ============================================================
+# 12. GroupStatistic — 群统计信息
+# ============================================================
+class GroupStatistic(Base):
+    __tablename__ = "group_statistics"
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    group_id: Mapped[str] = mapped_column(String(20), unique=True, nullable=False)
+    group_name: Mapped[str] = mapped_column(String(100), nullable=False)
+    group_function: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.now)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.now, onupdate=datetime.now)
