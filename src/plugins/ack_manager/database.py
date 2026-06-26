@@ -3,34 +3,25 @@ Database helpers for ACK/ANN message tracking.
 """
 from __future__ import annotations
 
-import importlib
+from datetime import datetime
 from typing import Any, Dict, List, Optional, Tuple
 
-from asgiref.sync import sync_to_async
 from nonebot.log import logger
 
-from ...common.django_crud import (
+from ...common.crud import (
     async_create_record,
     async_delete_records,
     async_get_many,
     async_get_one,
     async_update_records,
-    init_django_if_needed,
 )
-
-init_django_if_needed()
-
-try:
-    botdb_models = importlib.import_module("botdb.models")
-except ModuleNotFoundError:
-    botdb_models = importlib.import_module("src.django_project.botdb.models")
-
-QQMessageReaction = botdb_models.QQMessageReaction
-QQMessageReceiptSummary = botdb_models.QQMessageReceiptSummary
-QQRobotMessage = botdb_models.QQRobotMessage
-beijing_now = botdb_models.beijing_now
-Group = botdb_models.Group
-GroupMember = botdb_models.GroupMember
+from ...common.models.botdb_models import (
+    Group,
+    GroupMember,
+    QQRobotMessage,
+    QQMessageReaction,
+    QQMessageReceiptSummary,
+)
 
 TrackedMessageIdentifier = Dict[str, Any]
 
@@ -89,9 +80,9 @@ async def create_ack_message_record(
     metadata: Optional[Dict[str, Any]] = None,
     sent_at=None,
 ) -> QQRobotMessage:
-    sent_at = sent_at or beijing_now()
+    sent_at = sent_at or datetime.now()
     attachment = attachment or {}
-    metadata = metadata or {}
+    user_metadata = metadata or {}
 
     message = await async_create_record(
         QQRobotMessage,
@@ -107,7 +98,7 @@ async def create_ack_message_record(
         target_members=target_members,
         sent_at=sent_at,
         remind_rule=remind_rule,
-        metadata=metadata,
+        metadata_=user_metadata,
     )
 
     member_uins = _extract_uin_set(target_members)
@@ -161,7 +152,7 @@ async def get_groups_with_members(
         filters={"group__name__in": list(group_map.keys())},
     )
     for member in members:
-        group_name = getattr(member, "group_id", None)
+        group_name = getattr(member, "group_name", None)
         if not group_name or group_name not in group_map:
             continue
         group_map[group_name]["members"].append(
@@ -213,7 +204,7 @@ async def _resolve_message(identifier: TrackedMessageIdentifier) -> Optional[QQR
             
             all_records = await async_get_many(QQRobotMessage, filters=search_filters)
             for record in all_records:
-                metadata = record.metadata or {}
+                metadata = record.metadata_ or {}
                 reminder_msg_ids = metadata.get("reminder_msg_ids", [])
                 if isinstance(reminder_msg_ids, list) and msg_id in reminder_msg_ids:
                     logger.info("通过提醒消息msg_id找到原始消息: reminder_msg_id=%s, original_msg_id=%s, record_id=%s", 
@@ -273,7 +264,7 @@ async def _recompute_summary(
     outstanding = sorted(list(target_uins - confirmed_subset))
 
     summary = await async_get_one(QQMessageReceiptSummary, message_id=message.id)
-    now = beijing_now()
+    now = datetime.now()
     expected_count = summary.expected_count if summary else len(target_uins)
     if not expected_count:
         expected_count = len(target_uins)

@@ -13,25 +13,25 @@ from ...common.utils import (
 config = get_plugin_config(Config)
 
 
-def _get_all_problem_id():
+async def _get_all_problem_id():
     """获取题库所有的题目id"""
     try:
         query = GetSQL.read_sql_file(config.GET_CF_OFFICIAL_PROBLEMS)
-        with get_icpc_db_connection() as db:
-            records = db.execute(query=query).fetchall()
+        async with get_icpc_db_connection() as db:
+            records = await db.execute(query=query)
             return records
     except Exception as e:
         logger.error(f"获取cf题库的题目id时出错：{e}")
         return []
 
 
-def _match_id_by_rating_tags(rating: int, tags: List[str]) -> List[Dict]:
+async def _match_id_by_rating_tags(rating: int, tags: List[str]) -> List[Dict]:
     """根据rating和tags获取题目id"""
     # 检查参数有效性
     if rating is None and not tags:
         return []  # 返回空列表而不是错误字符串
 
-    with get_icpc_db_connection() as db:
+    async with get_icpc_db_connection() as db:
         query = GetSQL.read_sql_file(config.GET_CF_OFFICIAL_PROBLEMS)
         params = []
 
@@ -46,7 +46,7 @@ def _match_id_by_rating_tags(rating: int, tags: List[str]) -> List[Dict]:
             params.extend(tag_patterns)
 
         try:
-            records = db.execute(query, params).fetchall()
+            records = await db.execute(query, params)
             return records
         except Exception as e:
             # 记录错误日志
@@ -54,12 +54,12 @@ def _match_id_by_rating_tags(rating: int, tags: List[str]) -> List[Dict]:
             return []  # 发生错误时返回空列表
 
 
-def get_one_problem_by_random():
+async def get_one_problem_by_random():
     """
     随机获取Codeforces题库中的url
     """
     # 获取题库中所有题目id
-    problems = _get_all_problem_id()
+    problems = await _get_all_problem_id()
     if not problems:
         return "无法从题库中找到题目"
     # 随机选取一个id
@@ -69,7 +69,7 @@ def get_one_problem_by_random():
     return problem_url
 
 
-def get_daily_problem():
+async def get_daily_problem():
     """
     获取每日题目 - 同一天内所有人返回同一题，且不重复
     """
@@ -100,7 +100,7 @@ def get_daily_problem():
         return problem_url
 
     # 获取所有题目
-    all_problems = _get_all_problem_id()
+    all_problems = await _get_all_problem_id()
     if not all_problems:
         return "无法从题库中找到题目"
 
@@ -129,11 +129,11 @@ def get_daily_problem():
     return problem_url
 
 
-def get_problem_id_by_rating_tags(rating: int, tags: List[str]):
+async def get_problem_id_by_rating_tags(rating: int, tags: List[str]):
     """
     根据rating和tags随机获取Codeforces题库中的一题url
     """
-    problems = _match_id_by_rating_tags(rating=rating, tags=tags)
+    problems = await _match_id_by_rating_tags(rating=rating, tags=tags)
     if not problems:
         return f"无法根据所给的rating和tags找到题目: {rating} {tags}"
     problem = random.choice(problems)

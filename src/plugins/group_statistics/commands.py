@@ -96,7 +96,7 @@ async def handle_group_statistics(event: GroupMessageEvent, args: Message = Comm
     # 处理子命令
     if len(parts) >= 1 and parts[0] == 'ls':
         # 查看群聊列表
-        groups = db_manager.list_groups()
+        groups = await db_manager.list_groups()
         message = format_group_list(groups)
         await group_statistics_cmd.finish(message)
     
@@ -116,11 +116,11 @@ async def handle_group_statistics(event: GroupMessageEvent, args: Message = Comm
         group_function = " ".join(parts[3:])
         
         # 执行添加操作
-        if db_manager.add_group(group_id, group_name, group_function):
+        if await db_manager.add_group(group_id, group_name, group_function):
             await group_statistics_cmd.finish(f"成功添加群聊信息\n群号: {group_id}\n群名: {group_name}\n群功能: {group_function}")
         else:
             # 检查是否是因为群号已存在
-            existing_group = db_manager.get_group_by_id(group_id)
+            existing_group = await db_manager.get_group_by_id(group_id)
             if existing_group:
                 await group_statistics_cmd.finish(f"群聊信息已存在，请使用update命令更新\n群号: {group_id}\n当前群名: {existing_group.get('group_name', '未知')}\n当前群功能: {existing_group.get('group_function', '未设置')}")
             else:
@@ -142,7 +142,7 @@ async def handle_group_statistics(event: GroupMessageEvent, args: Message = Comm
         group_function = " ".join(parts[3:])
         
         # 执行更新操作
-        if db_manager.update_group(group_id, group_name, group_function):
+        if await db_manager.update_group(group_id, group_name, group_function):
             await group_statistics_cmd.finish(f"成功更新群聊信息\n群号: {group_id}\n群名: {group_name}\n群功能: {group_function}")
         else:
             await group_statistics_cmd.finish(f"更新失败，未找到群号为 {group_id} 的群聊信息")
@@ -159,7 +159,7 @@ async def handle_group_statistics(event: GroupMessageEvent, args: Message = Comm
             await group_statistics_cmd.finish("群号格式错误，请输入纯数字")
         
         # 执行删除操作
-        if db_manager.remove_group(group_id):
+        if await db_manager.remove_group(group_id):
             await group_statistics_cmd.finish(f"成功删除群聊信息\n群号: {group_id}")
         else:
             await group_statistics_cmd.finish(f"删除失败，未找到群号为 {group_id} 的群聊信息")

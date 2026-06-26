@@ -29,20 +29,12 @@ driver = get_driver()
 @driver.on_startup
 async def startup():
     """插件启动时执行的初始化操作"""
-    logger.info("群统计插件正在启动...")
-    try:
-        # 确保数据库表存在
-        db_manager.ensure_table_exists()
-        logger.info("群统计插件初始化完成")
-    except Exception as e:
-        logger.error(f"群统计插件初始化失败: {e}")
+    logger.info("群统计插件初始化完成")
 
 
 @driver.on_shutdown
 async def shutdown():
     """插件关闭时执行的清理操作"""
-    logger.info("群统计插件正在关闭...")
-    
     logger.info("群统计插件已关闭")
 
 

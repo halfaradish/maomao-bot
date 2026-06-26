@@ -4,12 +4,8 @@ from typing import List, Dict
 import json
 from datetime import datetime
 import pytz
-from django.db import IntegrityError
-from django.utils import timezone
-from ...common.django_crud import async_create_record, async_get_many, init_django_if_needed
-
-init_django_if_needed()
-from  botdb.models import MessageEventLog
+from ...common.crud import async_create_record, async_get_many
+from ...common.models.botdb_models import MessageEventLog
 
 # 北京时区
 BEIJING_TZ = pytz.timezone("Asia/Shanghai")
@@ -23,7 +19,7 @@ def _convert_to_beijing_time(dt) -> datetime:
     """
     if dt is None:
         return None
-    if timezone.is_aware(dt):
+    if dt.tzinfo is not None and dt.tzinfo.utcoffset(dt) is not None:
         # 如果是 timezone-aware，转换为北京时间
         return dt.astimezone(BEIJING_TZ)
     else:
@@ -154,17 +150,12 @@ class MessageDAO:
     async def search_messages_by_keyword(keyword: str, limit: int = 50) -> List[Dict]:
         """根据关键词模糊搜索消息"""
         try:
-            from django.db.models import Q
-            from asgiref.sync import sync_to_async
-            
-            def _search_sync():
-                return list(
-                    MessageEventLog.objects.filter(
-                        Q(raw_message__icontains=keyword)
-                    ).order_by("-time")[:limit]
-                )
-            
-            rows = await sync_to_async(_search_sync)()
+            rows = await async_get_many(
+                MessageEventLog,
+                filters={"raw_message__icontains": keyword},
+                order_by=["-time"],
+                limit=limit,
+            )
             result = []
             for r in rows:
                 # 转换 created_at 和 updated_at 为北京时间

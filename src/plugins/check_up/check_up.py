@@ -146,7 +146,7 @@ async def check_up(bot: Bot, event: Union[GroupMessageEvent, PrivateMessageEvent
         #     range_val = int(range_str)  # 手动转为 int
         # endregion
 
-        result_msg = get_working_time(date=date_val, range=range_val)
+        result_msg = await get_working_time(date=date_val, range=range_val)
         await bot.send(event=event, message=result_msg)
     except Exception as e:
         logger.opt(exception=True).warning("[考勤]响应错误")
@@ -160,7 +160,7 @@ if plugin_config.check_up_enable:
         range_val: int = 1
 
         # 获取消息
-        msg = get_working_time(date=date_val, range=range_val)
+        msg = await get_working_time(date=date_val, range=range_val)
         group_ids = plugin_config.GROUP_IDS
 
         await send_msg_to_group(group_ids=group_ids, bot=bot, msg=msg)

@@ -181,22 +181,22 @@ async def context_erase_messages(bot: Bot, user_id: int, group_id: int, base_tim
         logger.info(f"开始上下文撤回: 用户{user_id}, 群组{group_id}, 时间范围{start_time}-{end_time}")
         
         # 从数据库查询该用户在指定时间范围内的所有消息
-        from django.db.models import Q
-        from asgiref.sync import sync_to_async
-        from botdb.models import MessageEventLog
-        
-        def _get_messages_sync():
-            return list(
-                MessageEventLog.objects.filter(
-                    Q(user_id=user_id) & 
-                    Q(group_id=group_id) & 
-                    Q(time__gte=start_time) & 
-                    Q(time__lte=end_time) &
-                    ~Q(message_id=base_message_id)  # 排除基准消息（已撤回）
-                ).order_by("time")
-            )
-        
-        messages = await sync_to_async(_get_messages_sync)()
+        from sqlalchemy import select, and_
+        from src.common.database import async_session_factory
+        from src.common.models.botdb_models import MessageEventLog
+
+        async with async_session_factory() as session:
+            stmt = select(MessageEventLog).where(
+                and_(
+                    MessageEventLog.user_id == user_id,
+                    MessageEventLog.group_id == group_id,
+                    MessageEventLog.time >= start_time,
+                    MessageEventLog.time <= end_time,
+                    MessageEventLog.message_id != base_message_id,
+                )
+            ).order_by(MessageEventLog.time)
+            result = await session.execute(stmt)
+            messages = list(result.scalars().all())
         
         # 调试日志：显示查询到的消息详情
         if messages:

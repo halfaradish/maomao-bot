@@ -24,13 +24,13 @@ class Submission(object):
     """
 
     @staticmethod
-    def _get_range_sub_records(start_time, end_time):
+    async def _get_range_sub_records(start_time, end_time):
         """获取范围内过题数据"""
-    
+
         try:
-            with get_icpc_db_connection() as db:
+            async with get_icpc_db_connection() as db:
                 query = utils.GetSQL.read_sql_file(config.GET_RANGE_SUB_RECORDS)
-                records = db.execute(query, (start_time, end_time, start_time, end_time)).fetchall()
+                records = await db.execute(query, (start_time, end_time, start_time, end_time))
                 return records
         except Exception as e:
             logger.error(f"查询过题记录时出错：{e}")
@@ -59,12 +59,12 @@ class Submission(object):
     #     ]
     # #     # --------------- 临时假数据 ---------------
     @classmethod
-    def get_records_msg(cls, upstream_days: int = 7):
+    async def get_records_msg(cls, upstream_days: int = 7):
         """获取cf过题消息"""
         end_time: datetime = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
         start_time: datetime = end_time - timedelta(days=upstream_days)
 
-        records = cls._get_range_sub_records(start_time=start_time, end_time=end_time)
+        records = await cls._get_range_sub_records(start_time=start_time, end_time=end_time)
         if not records:
             return f"从上一日开始上溯 {upstream_days} 天没有cf过题记录"
         
@@ -92,7 +92,7 @@ class Submission(object):
         start_time: datetime = end_time - timedelta(days=upstream_days)
 
         with timer("数据读取"):
-            data = cls._get_range_sub_records(start_time=start_time, end_time=end_time)
+            data = await cls._get_range_sub_records(start_time=start_time, end_time=end_time)
 
         if not data:
             return (False, f"前 {upstream_days} 日没有数据", None)
