@@ -5,20 +5,16 @@ Todo提醒插件数据库操作类
 from typing import Dict, List, Optional, Any, Tuple
 from datetime import datetime, timedelta
 from nonebot import logger
-from asgiref.sync import sync_to_async
-from django.utils import timezone
+from sqlalchemy import and_, delete as sa_delete, update as sa_update, select
 
-from ...common.django_crud import (
+from ...common.crud import (
     async_create_record,
     async_get_one,
     async_get_many,
     async_update_records,
-    init_django_if_needed,
 )
-
-# 确保 Django 环境初始化后再导入 ORM 模型
-init_django_if_needed()
-from botdb.models import TodoReminder, TodoReminderLog
+from ...common.database import async_session_factory
+from ...common.models.botdb_models import TodoReminder, TodoReminderLog
 
 
 class TodoDatabase:
@@ -35,8 +31,8 @@ class TodoDatabase:
         """
         if dt is None:
             return None
-        if timezone.is_aware(dt):
-            return timezone.make_naive(dt, timezone.get_current_timezone())
+        if dt.tzinfo is not None and dt.tzinfo.utcoffset(dt) is not None:
+            return dt.replace(tzinfo=None)
         return dt
     
     @staticmethod
@@ -138,35 +134,44 @@ class TodoDatabase:
     async def get_pending_reminders(self, limit: int = 100) -> List[Dict[str, Any]]:
         """获取待执行的提醒"""
         try:
-            def _get_pending_sync():
-                return list(
-                    TodoReminder.objects.filter(
-                        status='pending',
-                        remind_time__lte=datetime.now(),
-                    ).order_by('remind_time')[:limit]
-                )
-            rows = await sync_to_async(_get_pending_sync)()
+            rows = await async_get_many(
+                TodoReminder,
+                filters={"status": "pending", "remind_time__lte": datetime.now()},
+                order_by=["remind_time"],
+                limit=limit,
+            )
             return [self._to_dict(r) for r in rows]
         except Exception as e:
             logger.error(f"获取待执行提醒失败: {e}")
             return []
     
-    async def update_reminder_status(self, reminder_id: int, status: str, 
+    async def update_reminder_status(self, reminder_id: int, status: str,
                               error_message: str = None) -> bool:
         """更新提醒状态"""
         try:
-            updates: Dict[str, Any] = {'status': status}
             if status == 'completed':
-                updates['executed_at'] = datetime.now()
-                from django.db.models import F
-                
-                def _update_completed_sync():
-                    TodoReminder.objects.filter(id=reminder_id).update(**updates, execution_count=F('execution_count') + 1)
+                # 原子递增 execution_count
+                async with async_session_factory() as session:
+                    stmt = (
+                        sa_update(TodoReminder)
+                        .where(TodoReminder.id == reminder_id)
+                        .values(
+                            status=status,
+                            executed_at=datetime.now(),
+                            execution_count=TodoReminder.execution_count + 1,
+                        )
+                    )
+                    await session.execute(stmt)
                     if error_message:
-                        TodoReminder.objects.filter(id=reminder_id).update(error_message=error_message)
-                
-                await sync_to_async(_update_completed_sync)()
+                        stmt2 = (
+                            sa_update(TodoReminder)
+                            .where(TodoReminder.id == reminder_id)
+                            .values(error_message=error_message)
+                        )
+                        await session.execute(stmt2)
+                    await session.commit()
                 return True
+            updates: Dict[str, Any] = {'status': status}
             if status == 'failed' and error_message:
                 updates['error_message'] = error_message
             affected = await async_update_records(TodoReminder, {'id': reminder_id}, updates)
@@ -178,44 +183,48 @@ class TodoDatabase:
     async def delete_reminder(self, reminder_id: int, user_id: int) -> bool:
         """删除提醒（个人）"""
         try:
-            def _delete_sync():
-                deleted, _ = TodoReminder.objects.filter(id=reminder_id, user_id=user_id).delete()
-                return deleted
-            
-            deleted = await sync_to_async(_delete_sync)()
-            return deleted > 0
+            async with async_session_factory() as session:
+                stmt = sa_delete(TodoReminder).where(
+                    TodoReminder.id == reminder_id,
+                    TodoReminder.user_id == user_id,
+                )
+                result = await session.execute(stmt)
+                await session.commit()
+                return result.rowcount > 0
         except Exception as e:
             logger.error(f"删除提醒失败: {e}")
             return False
-    
+
     async def delete_group_shared_reminder(self, reminder_id: int, group_id: int) -> bool:
         """删除群组共享提醒（群内任何用户都可以删除）"""
         try:
-            def _delete_sync():
-                deleted, _ = TodoReminder.objects.filter(id=reminder_id, group_id=group_id).delete()
-                return deleted
-            
-            deleted = await sync_to_async(_delete_sync)()
-            return deleted > 0
+            async with async_session_factory() as session:
+                stmt = sa_delete(TodoReminder).where(
+                    TodoReminder.id == reminder_id,
+                    TodoReminder.group_id == group_id,
+                )
+                result = await session.execute(stmt)
+                await session.commit()
+                return result.rowcount > 0
         except Exception as e:
             logger.error(f"删除群组共享提醒失败: {e}")
             return False
-    
-    
+
+
     async def cleanup_old_reminders(self, days: int = 30) -> int:
         """清理旧的已完成提醒"""
         try:
             cutoff_date = datetime.now() - timedelta(days=days)
-            from django.db.models import Q
-            
-            def _cleanup_sync():
-                deleted, _ = TodoReminder.objects.filter(
-                    Q(status__in=['completed', 'cancelled']) & Q(executed_at__lt=cutoff_date)
-                ).delete()
-                return deleted
-            
-            deleted = await sync_to_async(_cleanup_sync)()
-            return deleted
+            async with async_session_factory() as session:
+                stmt = sa_delete(TodoReminder).where(
+                    and_(
+                        TodoReminder.status.in_(['completed', 'cancelled']),
+                        TodoReminder.executed_at < cutoff_date,
+                    )
+                )
+                result = await session.execute(stmt)
+                await session.commit()
+                return result.rowcount
         except Exception as e:
             logger.error(f"清理旧提醒失败: {e}")
             return 0
@@ -247,47 +256,25 @@ class TodoDatabase:
         """获取需要发送提前提醒的提醒列表"""
         try:
             current_time = self._ensure_naive_local(current_time)
-            def _to_dict_inline(r: TodoReminder) -> Dict[str, Any]:
-                """内联的 _to_dict 方法"""
-                return {
-                    "id": r.id,
-                    "group_id": r.group_id,
-                    "user_id": r.user_id,
-                    "target_user_id": r.target_user_id,
-                    "content": r.content,
-                    "remind_time": r.remind_time,
-                    "remind_type": r.remind_type,
-                    "status": r.status,
-                    "created_by": r.created_by,
-                    "last_modified_by": r.last_modified_by,
-                    "advance_remind_minutes": r.advance_remind_minutes,
-                    "advance_reminded": r.advance_reminded,
-                    "execution_count": r.execution_count,
-                    "executed_at": r.executed_at,
-                    "error_message": r.error_message,
-                    "created_at": r.created_at,
-                    "updated_at": r.updated_at,
-                }
-            
-            def _get_advance_sync():
-                reminders = list(
-                    TodoReminder.objects.filter(
-                        status='pending',
-                        advance_remind_minutes__gt=0,
-                        advance_reminded=False,
-                        remind_time__gt=current_time
-                    )
-                )
-                result: List[Dict[str, Any]] = []
-                for r in reminders:
-                    advance_minutes = r.advance_remind_minutes or 0
-                    remind_time = r.remind_time
-                    advance_time = remind_time - timedelta(minutes=advance_minutes)
-                    if advance_time <= current_time:
-                        result.append(_to_dict_inline(r))
-                return result
-            
-            return await sync_to_async(_get_advance_sync)()
+            # 先从数据库获取待筛选的候选提醒
+            rows = await async_get_many(
+                TodoReminder,
+                filters={
+                    "status": "pending",
+                    "advance_remind_minutes__gt": 0,
+                    "advance_reminded": False,
+                    "remind_time__gt": current_time,
+                },
+            )
+            # 在 Python 侧做进一步的时间计算筛选
+            result: List[Dict[str, Any]] = []
+            for r in rows:
+                advance_minutes = r.advance_remind_minutes or 0
+                remind_time = r.remind_time
+                advance_time = remind_time - timedelta(minutes=advance_minutes)
+                if advance_time <= current_time:
+                    result.append(self._to_dict(r))
+            return result
         except Exception as e:
             logger.error(f"获取提前提醒列表失败: {e}")
             return []

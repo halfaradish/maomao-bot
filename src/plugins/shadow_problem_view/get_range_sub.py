@@ -16,10 +16,10 @@ class DailySubCondition:
     """
 
     @classmethod
-    def get_daily_sub_records(cls,
+    async def get_daily_sub_records(cls,
                               start_datetime: datetime,
                               end_datetime: datetime):
-        """获取“每日”过题记录"""
+        """获取"每日"过题记录"""
 
         # 读取SQL语句
         query = utils.GetSQL.read_sql_file(config.GET_DAILY_SUB_RECORDS)
@@ -35,9 +35,9 @@ class DailySubCondition:
 
         try:
             # 连接数据库
-            with get_icpc_db_connection() as db:
+            async with get_icpc_db_connection() as db:
                 # 查询数据
-                records = db.execute(query, (time_ranges * 2)).fetchall()
+                records = await db.execute(query, (time_ranges * 2))
                 return records
         except Exception as e:
             logger.error(f"查询数据库时出错：{e}")

@@ -47,7 +47,7 @@ class CommandHandler:
     @staticmethod
     async def handle_daily(bot: Bot, event: MessageEvent):
         """处理每日一题命令"""
-        await bot.send(event=event, message=get_daily_problem())
+        await bot.send(event=event, message=await get_daily_problem())
 
     @staticmethod
     async def handle_problem(bot: Bot, event: MessageEvent, params: list[str]):
@@ -78,7 +78,7 @@ class CommandHandler:
             tags_quick_map = data.get("quick_map", {})
             tags = [tags_quick_map.get(tag, tag) for tag in tags]
 
-        await bot.send(event=event, message=get_problem_id_by_rating_tags(rating, tags))
+        await bot.send(event=event, message=await get_problem_id_by_rating_tags(rating, tags))
 
     @staticmethod
     def handle_map_tags(data: dict) -> str:

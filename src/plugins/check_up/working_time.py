@@ -13,12 +13,12 @@ day_end_hours = CheckUpDay.DAY_END
 
 config = get_plugin_config(Config)
 
-def _get_range_records(range_start, range_end):
+async def _get_range_records(range_start, range_end):
     """获取某个范围内的打卡记录"""
     try:
         query = utils.GetSQL.read_sql_file(config.GET_DING_RANGE_CHECKUP)
-        with get_icpc_db_connection() as db:
-            records = db.execute(query, (range_start, range_end)).fetchall()
+        async with get_icpc_db_connection() as db:
+            records = await db.execute(query, (range_start, range_end))
             return records
     except Exception as e:
         logger.error(f"读取考勤记录时失败：{e}")
@@ -115,7 +115,7 @@ def _format_duration(hours):
         remaining_hours = hours % 24
         return f"{days} d {remaining_hours:.1f} h"
 
-def get_working_time(date=datetime.datetime.now().replace(hour=0, minute=0, second=0, microsecond=0), range=1):
+async def get_working_time(date=datetime.datetime.now().replace(hour=0, minute=0, second=0, microsecond=0), range=1):
     """
     获取考勤时间
     date: datetime对象
@@ -126,7 +126,7 @@ def get_working_time(date=datetime.datetime.now().replace(hour=0, minute=0, seco
     range_end = date + timedelta(hours=24) + timedelta(hours=day_end_hours)
 
     # 获取对应范围的数据
-    records = _get_range_records(range_start, range_end)
+    records = await _get_range_records(range_start, range_end)
     if not records:
         return f"从 {date.date()} 日上溯 {range} 天内没有数据"
     # 根据数据计算结果

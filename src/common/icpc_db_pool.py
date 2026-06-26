@@ -1,94 +1,113 @@
+"""
+Async ICPC DB session provider（SQLAlchemy 2.0 实现）
+
+替代旧的 mysql-connector-python 同步连接池。
+通过与 get_icpc_db_connection() 兼容的接口提供异步数据库访问，
+并自动将原 MySQL 风格的 %s 占位符转换为 SQLAlchemy text() 所需的 :N 风格。
+"""
+import re
+from collections.abc import AsyncGenerator
+from contextlib import asynccontextmanager
+from typing import Any
+
 from nonebot import logger
-from mysql.connector import Error, pooling
-from typing import Optional
+from sqlalchemy import text
+from sqlalchemy.ext.asyncio import AsyncSession
 
-from ..config import IcpcDBConfig
+from src.common.icpc_database import icpc_async_session_factory
 
-_pool_config = {
-    "pool_name": "gxuicpc_pool",
-    "pool_size": IcpcDBConfig.ICPC_DB_POOL_SIZE,
-    "pool_reset_session": True,
-    "host": IcpcDBConfig.ICPC_DB_HOST,
-    "user": IcpcDBConfig.ICPC_DB_USER,
-    "password": IcpcDBConfig.ICPC_DB_PASSWORD,
-    "database": IcpcDBConfig.ICPC_DB_NAME,
-    "port": IcpcDBConfig.ICPC_DB_PORT,
-}
 
-_db_pool: Optional[pooling.MySQLConnectionPool] = None
+class IcpcSession:
+    """异步 ICPC 数据库会话包装器
 
-def _init_db_pool() -> pooling.MySQLConnectionPool:
-    """初始化连接池（内部函数）"""
-    try:
-        pool = pooling.MySQLConnectionPool(**_pool_config)
-        logger.info("数据库连接池 gxuicpc_pool 初始化成功")
-        return pool
-    except Error as e:
-        # 提供清晰的错误信息，而不是让 bot 崩溃
-        logger.error(f"【致命错误】数据库连接池 gxuicpc_pool 初始化失败！请检查配置和网络")
-        logger.error(f"配置信息: host={_pool_config['host']}, port={_pool_config['port']}, user={_pool_config['user']}, database={_pool_config['database']}")
-        logger.exception(e)  # 打印完整堆栈
-        raise RuntimeError(f"数据库连接池初始化失败: {e}") from e
+    提供与旧 MySQLConnection 兼容的接口：
+    - execute(query, params) → list[dict]（替代 fetchall()）
+    - execute_many(query, params_list) → None
 
-def get_db_pool() -> pooling.MySQLConnectionPool:
-    """懒加载获取连接池（线程安全可通过外部保证）"""
-    global _db_pool
-    if _db_pool is None:
-        _db_pool = _init_db_pool()
-    return _db_pool
+    自动将 %s 占位符转换为 SQLAlchemy 兼容的 :N 数字占位符。
+    """
 
-class MySQLConnection:
-    
-    def __init__(self, connection):
-        self.connection = connection
-        self.cursor = None
+    def __init__(self, session: AsyncSession) -> None:
+        self._session = session
 
-    def __enter__(self):
-        self.cursor = self.connection.cursor(dictionary=True)
-        return self
+    @staticmethod
+    def _adapt_sql(sql: str) -> str:
+        """将 MySQL 风格的 %s 占位符转换为 SQLAlchemy :N 数字占位符。
 
-    def __exit__(self, exc_type, exc_val, exc_tb):
-        if self.cursor:
-            self.cursor.close()
-        if self.connection:
-            try:
-                if exc_type:
-                    self.connection.rollback()
-                else:
-                    self.connection.commit()
-            finally:
-                self.connection.close()
+        使用带计数器的替换函数确保顺序递增：
+        %s, %s, %s → :1, :2, :3
+        """
+        counter = [0]
 
-    def execute(self, query, params=None):
+        def _replacer(_match: re.Match[str]) -> str:
+            counter[0] += 1
+            return f":{counter[0]}"
+
+        return re.sub(r"%s", _replacer, sql)
+
+    async def execute(self, query: str, params: Any = None) -> list[dict]:
+        """执行 SQL 查询并返回字典列表（与旧 fetchall() 行为一致）。
+
+        参数：
+            query: SQL 查询字符串，可包含 %s 占位符
+            params: 参数列表/元组（可选）
+
+        返回：
+            list[dict] — 行字典列表
+        """
         if params is None:
-            params = ()
-        self.cursor.execute(query, params)
-        return self.cursor
-    
-    def execute_many(self, query, params_list):
-        self.cursor.executemany(query, params_list)
-        return self.cursor
-    
-def get_icpc_db_connection():
-    """
-    获取数据库连接
-    增加错误处理，在连接池耗尽时提供更友好的错误信息
-    """
-    try:
-        pool = get_db_pool()
-        conn = pool.get_connection()
-        return MySQLConnection(conn)
-    except Error as e:
-        error_msg = str(e).lower()
-        if "pool exhausted" in error_msg or "connection not available" in error_msg:
-            logger.error(f"数据库连接池耗尽！请检查：1.连接是否正确关闭 2.是否忘记使用 with 语句 3.考虑增加 pool_size")
-            logger.error(f"当前配置 pool_size={_pool_config['pool_size']}")
-        raise  # 重新抛出原始异常，让业务层决定如何处理
+            params = []
+        if isinstance(params, tuple):
+            params = list(params)
+        if not isinstance(params, list):
+            params = [params]
 
-def close_db_pool():
-    """关闭连接池（用于优雅退出）"""
-    global _db_pool
-    if _db_pool:
-        _db_pool.closeall()
-        _db_pool = None
-        logger.info("数据库连接池 diting_bot_pool 已关闭")
+        adapted_sql = self._adapt_sql(query)
+
+        # 构建参数字典：{:1 → params[0], :2 → params[1], ...}
+        param_dict: dict[str, Any] = {}
+        for i, val in enumerate(params, 1):
+            param_dict[str(i)] = val
+
+        try:
+            result = await self._session.execute(text(adapted_sql), param_dict)
+            rows = result.mappings().all()
+            return [dict(row) for row in rows]
+        except Exception:
+            logger.error(f"ICPC DB 查询失败：{query[:200]}...")
+            raise
+
+    async def execute_many(self, query: str, params_list: list[list]) -> None:
+        """执行批量操作（多条 INSERT/UPDATE）。
+
+        参数：
+            query: SQL 查询字符串，可包含 %s 占位符
+            params_list: 参数行列表
+        """
+        adapted_sql = self._adapt_sql(query)
+        for params in params_list:
+            param_dict: dict[str, Any] = {}
+            for i, val in enumerate(params, 1):
+                param_dict[str(i)] = val
+            await self._session.execute(text(adapted_sql), param_dict)
+        await self._session.commit()
+
+
+@asynccontextmanager
+async def get_icpc_db_connection() -> AsyncGenerator[IcpcSession, None]:
+    """获取 ICPC 数据库异步会话上下文管理器。
+
+    用法:
+        async with get_icpc_db_connection() as db:
+            rows = await db.execute(\"SELECT * FROM user WHERE id = %s\", [42])
+    """
+    async with icpc_async_session_factory() as session:
+        yield IcpcSession(session)
+
+
+async def close_icpc_engine() -> None:
+    """释放 ICPC 引擎（用于优雅关闭）。"""
+    from src.common.icpc_database import icpc_engine
+
+    await icpc_engine.dispose()
+    logger.info("ICPC 数据库引擎已释放。")
