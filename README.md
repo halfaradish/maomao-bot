@@ -1,4 +1,4 @@
-=# DiTing-NoneBot
+# DiTing-NoneBot
 
 **谛听bot**基于 **NoneBot** + **NapCat**开发，目前功能大多为定制功能。
 
@@ -8,7 +8,7 @@
 
 1. 把`data`目录和`.env`文件复制到项目根目录
 
-2. 根据docker-compose.yml或docker-compose.dev.yml,按需求修改端口（注意：Windows系统docker可能无法连接外部）
+2. 根据`docker-compose.yml`按需求修改端口（注意：Windows系统docker可能无法连接外部）
 
 3. 启动Docker Compose：
    
@@ -20,42 +20,28 @@
    - 打开Docker Desktop，启动服务
    - 在IDE的"服务"面板查看Docker连接情况，成功后运行相应的docker-compose文件中的服务，自动安装镜像和容器内依赖
    
-   **方式三：通过命令行启动（传统方式）**
-   - **生产环境**：
-     - 确保Docker Desktop已启动（Windows系统下Docker命令需要Docker Desktop运行）
-     - 打开命令提示符（CMD）或PowerShell，导航到项目根目录
-     - 运行以下命令启动服务：
-       ```bash
-       docker compose up -d
-       ```
-       （参数`-d`表示在后台运行服务）
-     - 查看服务状态：
-       ```bash
-       docker compose ps
-       ```
-     - 查看服务日志（可选）：
-       ```bash
-       docker compose logs -f
-       ```
-       （参数`-f`表示实时跟踪日志输出）
-   
-   **开发环境**：
+   **方式三：通过命令行启动**
    - 确保Docker Desktop已启动（Windows系统下Docker命令需要Docker Desktop运行）
-   - 打开命令提示符（CMD）或PowerShell，导航到项目根目录
+   - 编辑 `.env` 文件，设置 `ENVIRONMENT=prod`（生产环境）或 `ENVIRONMENT=dev`（开发环境）
    - 运行以下命令启动服务：
      ```bash
-     docker compose -f docker-compose.dev.yml up -d
+     docker compose up -d
      ```
      （参数`-d`表示在后台运行服务）
    - 查看服务状态：
      ```bash
-     docker compose -f docker-compose.dev.yml ps
+     docker compose ps
      ```
    - 查看服务日志（可选）：
      ```bash
-     docker compose -f docker-compose.dev.yml logs -f
+     docker compose logs -f
      ```
      （参数`-f`表示实时跟踪日志输出）
+
+   也可以通过脚本启动（自动读取 `.env` 中的 `ENVIRONMENT`）：
+     ```bash
+     ./scripts/docker-manager.sh start
+     ```
 
 4. 进入Napcat Webui进行配置：http://localhost:6099，开发时，可将ws心跳和重连频率调高
 
@@ -68,14 +54,18 @@
 
 #### 快速开始
 ```bash
-# 进入项目根目录
-cd ~/path/to/DiTing-NoneBot
+# CLI 命令模式（推荐）
+./scripts/docker-manager.sh start    # 启动
+./scripts/docker-manager.sh stop     # 停止
+./scripts/docker-manager.sh restart  # 重启
+./scripts/docker-manager.sh status   # 查看状态
+./scripts/docker-manager.sh logs     # 查看日志
+./scripts/docker-manager.sh build    # 构建镜像
+./scripts/docker-manager.sh shell    # 进入容器
+./scripts/docker-manager.sh clean    # 清理资源
 
-# 运行管理脚本（生产环境）
+# 或交互菜单模式
 ./scripts/docker-manager.sh
-
-# 运行管理脚本（开发环境）
-./scripts/docker-manager.sh dev
 ```
 
 #### 脚本功能
@@ -83,33 +73,33 @@ cd ~/path/to/DiTing-NoneBot
 - **构建镜像**：重新构建Docker镜像
 - **启动容器**：启动Docker容器服务
 - **停止容器**：停止并清理Docker容器
-- **查看状态**：显示容器运行状态
+- **重启容器**：停止后重新启动
+- **查看状态**：显示容器运行状态和镜像列表
 - **查看日志**：支持查看历史日志和实时跟踪日志
 - **进入容器**：进入运行中的容器内部进行调试
 - **清理环境**：清理未使用的Docker资源
-- **切换环境**：在开发环境和生产环境之间切换
 - **帮助信息**：显示详细的使用说明
 
 #### 使用示例
 ```bash
-# 启动生产环境
-./scripts/docker-manager.sh
-# 选择选项2启动容器
+# 启动（.env 中 ENVIRONMENT=prod 为生产环境）
+./scripts/docker-manager.sh start
 
-# 启动开发环境
-./scripts/docker-manager.sh dev
-# 选择选项2启动容器
+# 启动（.env 中 ENVIRONMENT=dev 为开发环境）
+./scripts/docker-manager.sh start
 
 # 查看实时日志
+./scripts/docker-manager.sh logs
+
+# 进入交互菜单
 ./scripts/docker-manager.sh
-# 选择选项5，然后选择2实时跟踪日志
 ```
 
 #### 注意事项
 - 脚本需要在项目根目录下运行
 - 确保已安装Docker和Docker Compose
 - Windows系统需要先启动Docker Desktop
-- 脚本会自动检测并切换到正确的环境配置
+- **切换环境**：编辑 `.env` 文件，修改 `ENVIRONMENT=prod` 或 `ENVIRONMENT=dev`，然后重启容器
 
 ### 提示
 
