@@ -1,8 +1,9 @@
 services:
   diting-nonebot:
+    image: diting-nonebot${SUFFIX:-}:latest
     networks:
-      - ditingbot
-    container_name: diting-nonebot
+      - ditingbot${SUFFIX:-}
+    container_name: diting-nonebot${SUFFIX:-}
     depends_on:
     #   - mysql
       - diting-redis
@@ -10,46 +11,47 @@ services:
     env_file:
       - .env
     ports:
-      - "6090:6090"
+      - "${BOT_HOST_PORT:-6090}:6090"
     volumes:
       - "./logs:/app/logs"
       - "./data:/app/data"
     environment:
-      - TZ=Asia/Shanghai  # 统一时区
+      - TZ=Asia/Shanghai
     extra_hosts:
-      - "host.docker.internal:host-gateway"  # 允许容器通过此主机名访问宿主机服务
+      - "host.docker.internal:host-gateway"
 
   diting-redis:
     networks:
-      - ditingbot
-    container_name: diting-redis
+      - ditingbot${SUFFIX:-}
+    container_name: diting-redis${SUFFIX:-}
     image: library/redis:latest
-    command: redis-server --requirepass 12345678 #Redis 密码
+    command: redis-server --requirepass 12345678
     ports:
-      - "6379:6379"
+      - "${REDIS_HOST_PORT:-6379}:6379"
     environment:
-      - TZ=Asia/Shanghai  # 统一时区
+      - TZ=Asia/Shanghai
 
   # mysql:
   #   networks:
-  #     - ditingbot
+  #     - ditingbot${SUFFIX:-}
+  #   container_name: mysql${SUFFIX:-}
   #   image: library/mysql:8.0.32
   #   environment:
   #     - MYSQL_ROOT_PASSWORD=123456
   #   ports:
-  #     - "3306:3306"
+  #     - "${MYSQL_HOST_PORT:-3306}:3306"
 
   # napcat:
   #   networks:
-  #     - ditingbot
+  #     - ditingbot${SUFFIX:-}
   #   image: mlikiowa/napcat-docker:latest
-  #   container_name: napcat
+  #   container_name: napcat${SUFFIX:-}
   #   restart: always
   #   mac_address: 00:e0:70:9a:5d:2b
   #   privileged: true
   #   ports:
-  #     - "6099:6099"
-  #     - "30000:3000" #接口测试端口穿透设置
+  #     - "${NAPCAT_HOST_PORT:-6099}:6099"
+  #     - "${NAPCAT_WEBUI_PORT:-3000}:3000"
   #   environment:
   #     - TZ=Asia/Shanghai
   #     - NAPCAT_UID=0
@@ -57,8 +59,10 @@ services:
   #   volumes:
   #     - /app/.config/QQ:/app/.config/QQ
   #     - /app/napcat/config:/app/napcat/config
-  #     - /app/napcat/config:/app/napcat/logs
+  #     - /app/napcat/logs:/app/napcat/logs
 
 networks:
   ditingbot:
+    driver: bridge
+  ditingbot-dev:
     driver: bridge
