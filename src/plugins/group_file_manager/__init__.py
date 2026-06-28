@@ -442,6 +442,7 @@ async def process_historical_file(bot, group_id, file_info, session) -> bool:
 
     except Exception as e:
         logger.error(f"[错误] 处理历史文件失败: {e}")
+        await session.rollback()
 
     return False
 
