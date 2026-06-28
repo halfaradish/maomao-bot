@@ -335,7 +335,7 @@ class GroupFile(Base):
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
     group_id: Mapped[int] = mapped_column(
-        BigInteger, ForeignKey("monitored_groups.id", ondelete="CASCADE")
+        BigInteger, ForeignKey("monitored_groups.group_id", ondelete="CASCADE")
     )
     file_id: Mapped[str] = mapped_column(String(100))
     file_name: Mapped[str] = mapped_column(String(255))
@@ -343,6 +343,7 @@ class GroupFile(Base):
     file_path: Mapped[str] = mapped_column(String(500))
     file_hash: Mapped[str] = mapped_column(String(32), index=True)
     uploader_id: Mapped[int] = mapped_column(BigInteger, default=0)
+    upload_time: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     downloaded_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.now)
 
     group: Mapped["MonitoredGroup"] = relationship("MonitoredGroup", back_populates="files")
