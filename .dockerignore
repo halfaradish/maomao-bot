@@ -10,4 +10,7 @@ tmp/
 .venv/
 
 # 排除配置文件（保留!指定的例外）
-!prod.env
+# !.env*
+
+scripts/
+data/
