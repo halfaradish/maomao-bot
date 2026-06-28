@@ -335,7 +335,7 @@ class GroupFile(Base):
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
     group_id: Mapped[int] = mapped_column(
-        BigInteger, ForeignKey("monitored_groups.id", ondelete="CASCADE")
+        BigInteger, ForeignKey("monitored_groups.group_id", ondelete="CASCADE")
     )
     file_id: Mapped[str] = mapped_column(String(100))
     file_name: Mapped[str] = mapped_column(String(255))

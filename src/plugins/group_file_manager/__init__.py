@@ -284,6 +284,17 @@ async def download_and_save(bot: Bot, event, file_info, session):
             logger.error(f"[错误] 无法获取文件URL: {file_info.name}")
             return
 
+        # 预查重：检查 file_id + group_id 是否已下载过（避免重复下载浪费带宽）
+        result = await session.execute(
+            select(GroupFile).where(
+                GroupFile.group_id == event.group_id,
+                GroupFile.file_id == file_info.id
+            ).limit(1)
+        )
+        if result.scalars().first():
+            logger.info(f"[预查重] 文件已存在: {file_info.name}")
+            return
+
         # 生成安全文件名
         safe_name = "".join(c for c in file_info.name if c.isalnum() or c in "._-" )
         file_path = DATA_DIR / f"{event.group_id}_{file_info.id}_{safe_name}"
