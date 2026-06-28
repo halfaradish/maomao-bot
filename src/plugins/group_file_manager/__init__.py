@@ -24,7 +24,7 @@ if not GROUP_FILE_MANAGER_ENABLED:
 
 # 导入数据库模型
 from sqlalchemy import select, text
-from ...common.database import async_session_factory
+from ...common.database import async_session_factory, engine as _db_engine
 from ...common.models.botdb_models import MonitoredGroup, GroupFile
 from src.common.model.model import PluginGroupEnum, PluginBadgeColor
 
@@ -474,7 +474,8 @@ async def _do_migrate_fk(conn, constraint_name: str) -> None:
         f"ALTER TABLE group_files ADD CONSTRAINT `{constraint_name}` "
         f"FOREIGN KEY (`group_id`) REFERENCES `monitored_groups` (`group_id`) ON DELETE CASCADE"
     ))
-    await conn.commit()
+    # DDL 在 MySQL 中自动提交，无需 conn.commit()
+    # 且 async engine.connect() 的 connection 不支持 commit()
 
     # 验证迁移结果
     result = await conn.execute(text(
@@ -496,26 +497,21 @@ async def _do_migrate_fk(conn, constraint_name: str) -> None:
         print(msg)
 
 
-async def _ensure_fk_migration(session=None) -> None:
+async def _ensure_fk_migration() -> None:
     """自动检测并修复 group_files 表的外键约束。
 
     模型已改为 ForeignKey("monitored_groups.group_id")，但 MySQL 表结构可能
     仍指向 monitored_groups.id。此函数在插件启动时自动完成迁移，幂等安全。
 
-    先用 INFORMATION_SCHEMA 查询；若未查到（权限/大小写问题），
-    再用 SHOW CREATE TABLE 正则兜底。迁移后再次查询验证结果。
+    直接用 engine.connect() 获取裸连接（不走 session），避免 SQLAlchemy async
+    的 greenlet 嵌套冲突（MissingGreenlet）。
     """
     msg = "[FK迁移] 开始检查 group_files 表的外键约束..."
     logger.info(msg)
     print(msg)  # print 兜底，确保 Docker logs 可见
 
-    if session is None:
-        async with async_session_factory() as _session:
-            return await _ensure_fk_migration(_session)
-
     try:
-        engine = session.get_bind()
-        async with engine.connect() as conn:
+        async with _db_engine.connect() as conn:
             # 方法1：INFORMATION_SCHEMA 结构化查询
             result = await conn.execute(text(
                 "SELECT CONSTRAINT_NAME, COLUMN_NAME, REFERENCED_COLUMN_NAME "
@@ -625,6 +621,9 @@ async def init_monitored_groups(bot: Bot):
                 logger.info(f"[初始化] 更新群信息: {group_name}({group_id})")
 
         await session.commit()
+
+        # 确保 FK 约束正确（加固：即便 @driver.on_startup 未触发，这里也会兜底修复）
+        await _ensure_fk_migration()
 
         # 自动爬取历史文件（启动时执行一次）
         logger.info("[初始化] 开始自动爬取历史文件...")
