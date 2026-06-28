@@ -75,7 +75,7 @@ async def handle_today_files(bot: Bot, event: GroupMessageEvent):
 
         for idx, file in enumerate(new_files[:30], 1):  # 最多显示30个
             upload_time = file.downloaded_at.strftime("%Y-%m-%d %H:%M") if file.downloaded_at else "未知"
-            uploader = file.uploader_name or str(file.uploader_id) or "未知"
+            uploader = str(file.uploader_id) or "未知"
 
             msg_lines.append(f"{idx}. {file.file_name}")
             msg_lines.append(f"   群号: {file.group_id} | 上传者: {uploader}")

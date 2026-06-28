@@ -343,6 +343,7 @@ class GroupFile(Base):
     file_path: Mapped[str] = mapped_column(String(500))
     file_hash: Mapped[str] = mapped_column(String(32), index=True)
     uploader_id: Mapped[int] = mapped_column(BigInteger, default=0)
+    upload_time: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     downloaded_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.now)
 
     group: Mapped["MonitoredGroup"] = relationship("MonitoredGroup", back_populates="files")
