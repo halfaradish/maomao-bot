@@ -23,7 +23,7 @@ if not GROUP_FILE_MANAGER_ENABLED:
 # ========== 开关代码结束 ==========
 
 # 导入数据库模型
-from sqlalchemy import select
+from sqlalchemy import select, text
 from ...common.database import async_session_factory
 from ...common.models.botdb_models import MonitoredGroup, GroupFile
 from src.common.model.model import PluginGroupEnum, PluginBadgeColor
@@ -47,6 +47,15 @@ DATA_DIR.mkdir(parents=True, exist_ok=True)
 scheduler = require("nonebot_plugin_apscheduler").scheduler if require("nonebot_plugin_apscheduler") else None
 
 # ========== 指令部分 ==========
+
+# 指令：手动触发 FK 迁移（调试/修复用）
+fix_fk = on_command("修复FK", aliases={"修复外键", "fixfk"}, priority=1, block=True)
+
+@fix_fk.handle()
+async def handle_fix_fk():
+    """手动触发 FK 迁移（调试用）"""
+    await _ensure_fk_migration()
+    await fix_fk.finish("FK 迁移检查已完成，请查看日志")
 
 # 指令：查看今日新文件（优化格式）
 today_files = on_command("今日文件", aliases={"今天文件", "新文件"}, priority=10)
@@ -450,6 +459,134 @@ async def process_historical_file(bot, group_id, file_info, session) -> bool:
 # ========== 初始化 ==========
 
 driver = get_driver()
+
+
+async def _do_migrate_fk(conn, constraint_name: str) -> None:
+    """执行 FK 迁移并验证结果。"""
+    msg = f"[FK迁移] 开始迁移 FK `{constraint_name}`..."
+    logger.warning(msg)
+    print(msg)
+
+    await conn.execute(text(
+        f"ALTER TABLE group_files DROP FOREIGN KEY `{constraint_name}`"
+    ))
+    await conn.execute(text(
+        f"ALTER TABLE group_files ADD CONSTRAINT `{constraint_name}` "
+        f"FOREIGN KEY (`group_id`) REFERENCES `monitored_groups` (`group_id`) ON DELETE CASCADE"
+    ))
+    await conn.commit()
+
+    # 验证迁移结果
+    result = await conn.execute(text(
+        "SELECT REFERENCED_COLUMN_NAME "
+        "FROM INFORMATION_SCHEMA.KEY_COLUMN_USAGE "
+        "WHERE TABLE_SCHEMA = DATABASE() "
+        "  AND TABLE_NAME = 'group_files' "
+        "  AND CONSTRAINT_NAME = :name"
+    ), {"name": constraint_name})
+    verify = result.fetchone()
+    if verify and verify[0] == "group_id":
+        msg = f"[FK迁移] 成功！FK `{constraint_name}` 已迁移到 monitored_groups.group_id"
+        logger.info(msg)
+        print(msg)
+    else:
+        actual = verify[0] if verify else "未知"
+        msg = f"[FK迁移] 警告：迁移后验证失败，当前引用列: {actual}"
+        logger.error(msg)
+        print(msg)
+
+
+async def _ensure_fk_migration(session=None) -> None:
+    """自动检测并修复 group_files 表的外键约束。
+
+    模型已改为 ForeignKey("monitored_groups.group_id")，但 MySQL 表结构可能
+    仍指向 monitored_groups.id。此函数在插件启动时自动完成迁移，幂等安全。
+
+    先用 INFORMATION_SCHEMA 查询；若未查到（权限/大小写问题），
+    再用 SHOW CREATE TABLE 正则兜底。迁移后再次查询验证结果。
+    """
+    msg = "[FK迁移] 开始检查 group_files 表的外键约束..."
+    logger.info(msg)
+    print(msg)  # print 兜底，确保 Docker logs 可见
+
+    if session is None:
+        async with async_session_factory() as _session:
+            return await _ensure_fk_migration(_session)
+
+    try:
+        engine = session.get_bind()
+        async with engine.connect() as conn:
+            # 方法1：INFORMATION_SCHEMA 结构化查询
+            result = await conn.execute(text(
+                "SELECT CONSTRAINT_NAME, COLUMN_NAME, REFERENCED_COLUMN_NAME "
+                "FROM INFORMATION_SCHEMA.KEY_COLUMN_USAGE "
+                "WHERE TABLE_SCHEMA = DATABASE() "
+                "  AND TABLE_NAME = 'group_files' "
+                "  AND REFERENCED_TABLE_NAME = 'monitored_groups' "
+                "  AND REFERENCED_COLUMN_NAME IS NOT NULL"
+            ))
+            row = result.fetchone()
+
+            if row is None:
+                msg = "[FK迁移] INFO_SCHEMA 未查到 FK，用 SHOW CREATE TABLE 复查..."
+                logger.warning(msg)
+                print(msg)
+                # 方法2：SHOW CREATE TABLE 正则兜底
+                import re
+                result2 = await conn.execute(text("SHOW CREATE TABLE group_files"))
+                create_row = result2.fetchone()
+                if create_row:
+                    ddl = create_row[1]
+                    if "REFERENCES `monitored_groups` (`id`)" in ddl:
+                        m = re.search(
+                            r"CONSTRAINT `(\w+)` FOREIGN KEY.*"
+                            r"REFERENCES `monitored_groups` \(`id`\)",
+                            ddl
+                        )
+                        if m:
+                            constraint_name = m.group(1)
+                            logger.warning(
+                                f"[FK迁移] SHOW CREATE TABLE 发现 FK `{constraint_name}` 指向 id"
+                            )
+                            await _do_migrate_fk(conn, constraint_name)
+                            return
+                    elif "REFERENCES `monitored_groups` (`group_id`)" in ddl:
+                        logger.info("[FK迁移] SHOW CREATE TABLE 确认 FK 已指向 group_id，无需迁移")
+                        return
+                msg = "[FK迁移] 两种方法均未发现需修复的 FK，跳过"
+                logger.info(msg)
+                print(msg)
+                return
+
+            constraint_name = row[0]
+            referenced_column = row[2]
+
+            if referenced_column == "group_id":
+                msg = f"[FK迁移] FK `{constraint_name}` 已指向 monitored_groups.group_id，无需迁移"
+                logger.info(msg)
+                print(msg)
+                return
+
+            logger.warning(
+                f"[FK迁移] 检测到 FK `{constraint_name}` 指向 monitored_groups.{referenced_column}，"
+                f"开始自动迁移到 monitored_groups.group_id..."
+            )
+            await _do_migrate_fk(conn, constraint_name)
+    except Exception as e:
+        msg = f"[FK迁移] 异常: {type(e).__name__}: {e}"
+        logger.error(msg)
+        print(msg)
+
+
+# ========== 插件启动时自动修复 FK（独立于 bot 连接） ==========
+
+@driver.on_startup
+async def _startup_fk_migration():
+    """启动时最早执行：自动修复 group_files 表外键约束（不依赖 bot 连接）"""
+    await _ensure_fk_migration()
+
+
+# ========== bot 连接初始化 ==========
 
 @driver.on_bot_connect
 async def init_monitored_groups(bot: Bot):
