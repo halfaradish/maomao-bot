@@ -1,5 +1,6 @@
 from dataclasses import dataclass
 from enum import Enum
+from typing import Optional
 
 class PluginGroupEnum(Enum):
     BASE = "基础命令"
@@ -27,3 +28,5 @@ class PluginUsageInfo:
     module_name: str
     # 颜色点
     badge_color: str | None = None
+    #插件id
+    id: Optional[int] = None

@@ -4,6 +4,7 @@ from nonebot.exception import FinishedException
 from nonebot.matcher import Matcher
 from nonebot.adapters.onebot.v11 import  MessageSegment, MessageEvent
 from pathlib import Path
+from typing import Optional
 
 from .config import Config
 from .get_plugin_usage import get_help_usage, get_plugin_detail
@@ -15,7 +16,7 @@ config = get_plugin_config(Config)
 __plugin_meta__ = PluginMetadata(
     name="帮助菜单",
     description="生成插件帮助菜单",
-    usage="/help 查看已加载插件列表\n/help -n 插件名 查看插件详情",
+    usage="/help 查看已加载插件列表\n/help -n 插件名 查看插件详情\n/help -id 插件ID 查看插件详情",
     config=Config,
     supported_adapters={"~onebot.v11"},
     extra={
@@ -41,17 +42,33 @@ async def _(event: MessageEvent):
             assign_name = args[idx + 1]
             break
 
+    assign_id = None
+    for idx, arg in enumerate(args):
+        if arg in ['-id']:
+            assign_id = args[idx + 1]
+            break
+
     if assign_name:
         await generate_detail(help_cmd, assign_name)
+    elif assign_id:
+        try:
+            await generate_detail(help_cmd, plugin_id=int(assign_id))
+        except ValueError:
+            await help_cmd.finish(f"无效的插件ID: {assign_id}")
     else:
         await generate_all_plugins(help_cmd)
 
-async def generate_detail(matcher: type[Matcher], plugin_name: str):
-    plugin_data = get_plugin_detail(plugin_name)
+async def generate_detail(matcher: type[Matcher], plugin_name: Optional[str] = None, plugin_id: Optional[int] = None):
+    if plugin_name:
+        plugin_data = get_plugin_detail(plugin_name=plugin_name)
+    elif plugin_id:
+        plugin_data = get_plugin_detail(plugin_id=plugin_id)
     if not plugin_data:
-        await matcher.finish(f"未找到插件: {plugin_name}")
+        identifier = plugin_name if plugin_name else f"ID:{plugin_id}"
+        await matcher.finish(f"未找到插件: {identifier}")
 
-    logger.info(f"正在生成插件详情: {plugin_name}")
+    identifier = plugin_name if plugin_name else f"ID:{plugin_id}"
+    logger.info(f"正在生成插件详情: {identifier}")
 
     try:
         img = await get_detail_img(plugin_data)
