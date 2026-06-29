@@ -20,6 +20,11 @@ builtin_plugins = ["echo"]
 [tool.nonebot.config]
 delay_enabled = true
 
+[[tool.poetry.source]]
+name = "pytorch-cpu"
+url = "https://download.pytorch.org/whl/cpu"
+priority = "explicit"
+
 [tool.poetry]
 name = "diting-nonebot"
 version = "0.1.0"

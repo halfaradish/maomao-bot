@@ -15,6 +15,7 @@ services:
     volumes:
       - "./logs:/app/logs"
       - "./data:/app/data"
+      - "./src/plugins/auto_manage_group/sell_ad_group_model:/app/src/plugins/auto_manage_group/sell_ad_group_model"
     environment:
       - TZ=Asia/Shanghai
     extra_hosts:
