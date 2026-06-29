@@ -5,11 +5,12 @@ SQLAlchemy 声明式模型 — botdb 应用
 索引和约束完全保持一致。
 """
 import uuid
-from datetime import datetime
+from datetime import date, datetime
 
 from sqlalchemy import (
     BigInteger,
     Boolean,
+    Date,
     DateTime,
     ForeignKey,
     Index,
@@ -365,5 +366,20 @@ class GroupStatistic(Base):
     group_id: Mapped[str] = mapped_column(String(20), unique=True, nullable=False)
     group_name: Mapped[str] = mapped_column(String(100), nullable=False)
     group_function: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.now)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.now, onupdate=datetime.now)
+
+
+# ============================================================
+# 13. CustomHoliday — 自定义节假日
+# ============================================================
+class CustomHoliday(Base):
+    __tablename__ = "custom_holiday"
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    date: Mapped[date] = mapped_column(Date, nullable=False, unique=True)
+    name: Mapped[str] = mapped_column(String(64), nullable=False)
+    is_off_day: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    is_enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.now)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.now, onupdate=datetime.now)
