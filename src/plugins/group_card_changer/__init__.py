@@ -3,6 +3,7 @@ from nonebot.permission import SUPERUSER
 from nonebot.plugin import PluginMetadata
 from nonebot.adapters.onebot.v11 import MessageEvent
 from nonebot.internal.adapter import Bot
+from nonebot.exception import FinishedException
 from datetime import date
 import asyncio
 
@@ -143,7 +144,7 @@ holiday_reload_cmd = on_command(
 @holiday_reload_cmd.handle()
 async def _holiday_reload(bot: Bot, event: MessageEvent):
     """强制从 API 和数据库重新加载节假日数据，并立即更新群名片。"""
-    
+
     if 'reload' not in event.raw_message:
         return
 
@@ -155,6 +156,8 @@ async def _holiday_reload(bot: Bot, event: MessageEvent):
         await holiday_reload_cmd.finish(
             f"节假日数据已刷新，共加载 {len(holidays_info)} 条节假日，群名片已更新。"
         )
+    except FinishedException:
+        pass
     except Exception as e:
         logger.error(f"重新加载节假日数据失败: {e}")
         await holiday_reload_cmd.finish(f"重新加载失败: {e}")
