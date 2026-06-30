@@ -12,6 +12,7 @@ from nonebot import get_driver, get_plugin_config, on_command
 from nonebot.adapters.onebot.v11 import Bot, Message, MessageEvent, GroupMessageEvent
 from nonebot.params import CommandArg
 from nonebot.plugin import PluginMetadata
+from nonebot.exception import FinishedException
 
 from sqlalchemy import select, delete as sa_delete
 from sqlalchemy.orm import selectinload
@@ -285,8 +286,7 @@ async def handle_permission_command(
     elif subcmd in ("help", "帮助", "-h", "--help"):
         await perm_cmd.finish(_build_help_text())
 
-    else:
-        await perm_cmd.finish(f"未知子命令: {subcmd}，输入 perm help 查看帮助")
+
 
 
 # ============================================================
@@ -312,6 +312,8 @@ async def _blacklist_add(event: MessageEvent, tokens: List[ArgToken], _scope: st
             await session.commit()
         _invalidate_related_cache(user_id=qq)
         await perm_cmd.finish(f"已将 QQ {qq} 加入黑名单" + (f"（原因: {reason}）" if reason else ""))
+    except FinishedException:
+        pass
     except Exception as e:
         await perm_cmd.finish(f"操作失败: {e}")
 
@@ -378,6 +380,8 @@ async def _whitelist_add(event: MessageEvent, tokens: List[ArgToken], scope: str
         else:
             _invalidate_related_cache(group_id=qq)
         await perm_cmd.finish(f"已将 {id_label} {qq} 加入白名单" + (f"（原因: {reason}）" if reason else ""))
+    except FinishedException:
+        pass
     except Exception as e:
         await perm_cmd.finish(f"操作失败: {e}")
 
@@ -450,6 +454,8 @@ async def _perm_group_create(event: MessageEvent, tokens: List[ArgToken]):
             await session.commit()
         _invalidate_related_cache()
         await perm_cmd.finish(f"权限组 {name} 创建成功")
+    except FinishedException:
+        pass
     except Exception as e:
         await perm_cmd.finish(f"操作失败: {e}")
 
@@ -719,6 +725,8 @@ async def _binding_add(event: MessageEvent, tokens: List[ArgToken]):
             await session.commit()
         _invalidate_related_cache(group_id=qq)
         await perm_cmd.finish(f"群 {qq} 已绑定权限组 {pg_name}")
+    except FinishedException:
+        pass
     except Exception as e:
         await perm_cmd.finish(f"操作失败: {e}")
 
