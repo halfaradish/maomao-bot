@@ -45,7 +45,6 @@ COPY requirements.txt .
 
 # 安装 Python 依赖 + Playwright (这是最耗时的步骤，要保护好缓存)
 RUN python -m pip install -r requirements.txt -i https://pypi.tuna.tsinghua.edu.cn/simple && \
-    python -m pip install nb-cli -i https://pypi.tuna.tsinghua.edu.cn/simple && \
     python -m playwright install chromium --with-deps && \
     rm -rf /root/.cache/pip /tmp/*
 
@@ -62,4 +61,4 @@ RUN g++ -fPIC -shared \
     $(pkg-config --cflags --libs cairo pango pangocairo jsoncpp) \
     -O3
 
-CMD ["nb", "run"]
+CMD ["python", "bot.py"]

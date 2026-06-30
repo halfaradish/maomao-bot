@@ -4,6 +4,8 @@ SQLAlchemy 异步引擎与会话工厂 — ICPC 数据库
 为 ICPC（竞赛）数据库提供独立的 SQLAlchemy 2.0 async 引擎和会话工厂，
 与 Bot DB（database.py）完全分离。配置沿用 ICPC_DB_* 环境变量。
 """
+from urllib.parse import quote
+
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
 from sqlalchemy.orm import DeclarativeBase
 
@@ -18,7 +20,7 @@ class IcpcBase(DeclarativeBase):
 def _build_icpc_async_db_url() -> str:
     """从环境变量构建 mysql+asyncmy 连接 URL"""
     return (
-        f"mysql+asyncmy://{IcpcDBConfig.ICPC_DB_USER}:{IcpcDBConfig.ICPC_DB_PASSWORD}"
+        f"mysql+asyncmy://{quote(IcpcDBConfig.ICPC_DB_USER)}:{quote(IcpcDBConfig.ICPC_DB_PASSWORD)}"
         f"@{IcpcDBConfig.ICPC_DB_HOST}:{IcpcDBConfig.ICPC_DB_PORT}"
         f"/{IcpcDBConfig.ICPC_DB_NAME}?charset=utf8mb4"
     )
