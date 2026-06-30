@@ -97,3 +97,14 @@ class SiqiAuthConfig:
     TIMEOUT: int = int(os.getenv('SIQI_AUTH_TIMEOUT') or 2)
     _enabled_env = os.getenv('SIQI_AUTH_ENABLED')
     ENABLED: bool = False if _enabled_env in ("False", "false", "0") else (True if _enabled_env else True)
+
+class LogConfig:
+    """文件日志记录配置（用于 logger.add()）"""
+    LOG_FILE_PATH: str = os.getenv('LOG_FILE_PATH') or "logs/nonebot.log"
+    LOG_FILE_ROTATION: str = os.getenv('LOG_FILE_ROTATION') or "00:00"
+    LOG_FILE_RETENTION: str = os.getenv('LOG_FILE_RETENTION') or "7 days"
+    LOG_FILE_LEVEL: str = os.getenv('LOG_FILE_LEVEL') or "DEBUG"
+    LOG_FILE_ENCODING: str = os.getenv('LOG_FILE_ENCODING') or "utf-8"
+    _enqueue_env = os.getenv('LOG_FILE_ENQUEUE')
+    LOG_FILE_ENQUEUE: bool = False if _enqueue_env in ("False", "false", "0") else (True if _enqueue_env else True)
+    LOG_FILE_COMPRESSION: str = os.getenv('LOG_FILE_COMPRESSION') or "zip"

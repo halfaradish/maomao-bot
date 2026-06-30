@@ -8,6 +8,7 @@ from .local_config import (
     DiTingData,
     RedisConfig,
     DiTingBotDBConfig,
+    LogConfig,
     NoneBotToken,
     SiqiAuthConfig
 )
@@ -27,6 +28,7 @@ __all__ = [
     'DiTingData',
     'RedisConfig',
     'DiTingBotDBConfig',
+    'LogConfig',
     'NoneBotToken',
     'SiqiAuthConfig',
     'build_response',
