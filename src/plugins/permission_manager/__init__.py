@@ -29,9 +29,11 @@ from src.common.permission.models import (
     GroupPermBinding,
 )
 from src.common.permission.cache import perm_cache
+from src.common.permission import check_permission
 from src.common.permission.supervisor import is_superuser
 from src.common.model.model import PluginGroupEnum, PluginBadgeColor
 from .config import Config
+from . import permissions  # noqa: F401
 
 __plugin_meta__ = PluginMetadata(
     name="权限管理",
@@ -111,9 +113,11 @@ def _try_parse_qq(token: ArgToken) -> Optional[int]:
     return None
 
 
-def _ensure_superuser(event: MessageEvent) -> bool:
-    """检查是否为超级管理员，不是则返回 False"""
-    return is_superuser(event.user_id)
+async def _ensure_superuser(event: MessageEvent) -> bool:
+    """检查是否有权限管理权限系统"""
+    if is_superuser(event.user_id):
+        return True
+    return await check_permission(event, "permission_manager:manage")
 
 
 def _invalidate_related_cache(user_id: Optional[int] = None, group_id: Optional[int] = None):
@@ -179,9 +183,9 @@ async def handle_permission_command(
     event: MessageEvent,
     args: Message = CommandArg(),
 ):
-    # 全部操作仅超级管理员可执行
-    if not _ensure_superuser(event):
-        await perm_cmd.finish("你没有权限管理权限系统（仅超级管理员可操作）")
+    # 需要超级管理员或 permission_manager:manage 权限
+    if not await _ensure_superuser(event):
+        await perm_cmd.finish("你没有权限管理权限系统（仅超级管理员或拥有「权限管理」权限的用户可执行）")
 
     tokens = _tokenize_arguments(args)
     if not tokens:
