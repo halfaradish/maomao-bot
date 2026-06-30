@@ -1,6 +1,9 @@
-from nonebot import logger, get_plugin_config, get_bot, require, get_driver
+from nonebot import logger, get_plugin_config, get_bot, require, get_driver, on_command
+from nonebot.permission import SUPERUSER
 from nonebot.plugin import PluginMetadata
+from nonebot.adapters.onebot.v11 import MessageEvent
 from nonebot.internal.adapter import Bot
+from nonebot.exception import FinishedException
 from datetime import date
 import asyncio
 
@@ -15,7 +18,9 @@ from nonebot_plugin_apscheduler import scheduler
 __plugin_meta__ = PluginMetadata(
     name="群昵称自动更新",
     description="根据节假日信息自动更新机器人在群聊中的昵称，项目启动时执行一次，之后每天0点自动更新",
-    usage="1. 在配置文件中设置 bot_name 和 nickname_changer_schedule_enable\n2. 在 nickname_changer.json 中配置 group_whitelist\n3. 启动项目后，机器人会自动更新群昵称",
+    usage="1. 在配置文件中设置 bot_name 和 nickname_changer_schedule_enable\n"
+    "2. 使用 /holiday reload（仅超级用户）强制刷新节假日数据\n"
+    "3. 启动项目后，机器人会自动更新群昵称",
     supported_adapters={"~onebot.v11"},
     config=Config,
     extra={
@@ -123,3 +128,36 @@ if config.nickname_changer_schedule_enable:
     logger.info("群聊名称改动功能已启动")
 else:
     logger.info("群聊名称改动功能未启动")
+
+
+# ============================================================
+# /holiday reload — 强制重新加载节假日数据（仅超级用户）
+# ============================================================
+holiday_reload_cmd = on_command(
+    "holiday",
+    permission=SUPERUSER,
+    priority=10,
+    block=True,
+)
+
+
+@holiday_reload_cmd.handle()
+async def _holiday_reload(bot: Bot, event: MessageEvent):
+    """强制从 API 和数据库重新加载节假日数据，并立即更新群名片。"""
+
+    if 'reload' not in event.raw_message:
+        return
+
+    await holiday_reload_cmd.send("正在重新加载节假日数据...")
+
+    try:
+        holidays_info = await get_holidays(force_reload=True)
+        await change_bot_nickname()
+        await holiday_reload_cmd.finish(
+            f"节假日数据已刷新，共加载 {len(holidays_info)} 条节假日，群名片已更新。"
+        )
+    except FinishedException:
+        pass
+    except Exception as e:
+        logger.error(f"重新加载节假日数据失败: {e}")
+        await holiday_reload_cmd.finish(f"重新加载失败: {e}")

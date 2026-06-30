@@ -107,6 +107,16 @@
             color: #2d3436;
             font-weight: 500;
         }
+            .app-id-badge {
+                font-size: 11px;
+                color: #868e96;
+                background-color: #dee2e6;
+                border-radius: 8px;
+                padding: 1px 7px;
+                font-weight: 600;
+                margin-right: 6px;
+                flex-shrink: 0;
+            }
             .status-dot {
                 position: absolute;
                 top: 8px;
@@ -152,7 +162,8 @@
                 <div class="app-grid">
                     {% for plugin in group_plugins %}
                     <div class="app-card">
-                        <div style="flex: 1;">
+                        <div style="flex: 1; display: flex; align-items: center;">
+                            <span class="app-id-badge">{{ plugin.id }}</span>
                             <div class="app-name">{{ plugin.name }}</div>
                         </div>
                         {% if plugin.badge_color is not none and plugin.badge_color != "none" %}

@@ -35,7 +35,11 @@ def _load_help_usage():
             )
             temp_usages.append(pg_info)
 
-            help_usages = sorted(temp_usages, key=lambda x: (x.group or "", x.name))
+        help_usages = sorted(temp_usages, key=lambda x: (x.group or "", x.name))
+
+        if help_usages is not None:
+            for idx, help_usage in enumerate(help_usages):
+                help_usage.id = idx + 1
 
     except Exception as e:
         logger.info(e)
@@ -47,8 +51,8 @@ def get_help_usage() -> List[PluginUsageInfo] | None:
     
     return help_usages
 
-def get_plugin_detail(plugin_name: Optional[str]) -> Optional[PluginUsageInfo]:
-    if not plugin_name:
+def get_plugin_detail(plugin_name: Optional[str] = None, plugin_id: Optional[int] = None) -> Optional[PluginUsageInfo]:
+    if not plugin_name and not plugin_id:
         return None
         
     # 确保数据已加载
@@ -56,9 +60,14 @@ def get_plugin_detail(plugin_name: Optional[str]) -> Optional[PluginUsageInfo]:
     
     if not all_usages:
         return None
-    
-    for plugin_info in all_usages:
-        if plugin_info.name == plugin_name:
-            return plugin_info
+
+    if plugin_name:
+        for plugin_info in all_usages:
+            if plugin_info.name == plugin_name:
+                return plugin_info
+    elif plugin_id:
+        for plugin_info in all_usages:
+            if plugin_info.id == plugin_id:
+                return plugin_info
             
     return None
