@@ -24,16 +24,18 @@ from nonebot.log import default_format, logger
 import src.config  # noqa: E402, F401
 
 # ── 配置文件日志 ────────────────────────────────────────────
-# 从 src/plugins/ensure/__init__.py 迁移至此
+# 环境变量在 import src.config 时已通过 load_dotenv 加载
+from src.config import LogConfig
+
 logger.add(
-    "logs/nonebot.log",
-    rotation="00:00",
-    retention="7 days",
-    level="DEBUG",
-    encoding="utf-8",
+    LogConfig.LOG_FILE_PATH,
+    rotation=LogConfig.LOG_FILE_ROTATION,
+    retention=LogConfig.LOG_FILE_RETENTION,
+    level=LogConfig.LOG_FILE_LEVEL,
+    encoding=LogConfig.LOG_FILE_ENCODING,
     format=default_format,
-    enqueue=True,
-    compression="zip",
+    enqueue=LogConfig.LOG_FILE_ENQUEUE,
+    compression=LogConfig.LOG_FILE_COMPRESSION,
 )
 
 # ── 初始化 NoneBot ──────────────────────────────────────────
