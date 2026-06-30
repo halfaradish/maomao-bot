@@ -39,29 +39,29 @@ __plugin_meta__ = PluginMetadata(
     name="权限管理",
     description="权限系统的 QQ 聊天管理面板，支持黑/白名单、权限组、群绑定等全部管理操作",
     usage=(
-        "权限 黑名单 添加 <QQ号> [原因]\n"
-        "权限 黑名单 移除 <QQ号>\n"
-        "权限 黑名单 列表\n"
-        "权限 白名单 用户 添加 <QQ号> [原因]\n"
-        "权限 白名单 用户 移除 <QQ号>\n"
-        "权限 白名单 用户 列表\n"
-        "权限 白名单 群 添加 <群号> [原因]\n"
-        "权限 白名单 群 移除 <群号>\n"
-        "权限 白名单 群 列表\n"
-        "权限 权限组 创建 <名称> [展示名] [描述]\n"
-        "权限 权限组 删除 <名称>\n"
-        "权限 权限组 列表\n"
-        "权限 权限组 详情 <名称>\n"
-        "权限 权限组 添加成员 <名称> <QQ> [QQ...]\n"
-        "权限 权限组 移除成员 <名称> <QQ>\n"
-        "权限 权限组 添加权限 <名称> <perm_key> [perm_key...]\n"
-        "权限 权限组 移除权限 <名称> <perm_key>\n"
-        "权限 权限组 批量加群 <名称> <群号>\n"
-        "权限 绑定 群 <群号> <权限组名>\n"
-        "权限 绑定 解除 <群号>\n"
-        "权限 绑定 列表 [群号]\n"
-        "权限 注册点 列表 [插件名]\n"
-        "权限 查看 <QQ号>"
+        "perm 黑名单/blacklist 添加/add <QQ号> [原因]\n"
+        "perm 黑名单/blacklist 移除/remove <QQ号>\n"
+        "perm 黑名单/blacklist 列表/list\n"
+        "perm 白名单/whitelist 用户/user 添加/add <QQ号> [原因]\n"
+        "perm 白名单/whitelist 用户/user 移除/remove <QQ号>\n"
+        "perm 白名单/whitelist 用户/user 列表/list\n"
+        "perm 白名单/whitelist 群/group 添加/add <群号> [原因]\n"
+        "perm 白名单/whitelist 群/group 移除/remove <群号>\n"
+        "perm 白名单/whitelist 群/group 列表/list\n"
+        "perm 权限组/group 创建/create <名称> [展示名] [描述]\n"
+        "perm 权限组/group 删除/delete <名称>\n"
+        "perm 权限组/group 列表/list\n"
+        "perm 权限组/group 详情/info <名称>\n"
+        "perm 权限组/group 添加成员/addmember <名称> <QQ> [QQ...]\n"
+        "perm 权限组/group 移除成员/removemember <名称> <QQ>\n"
+        "perm 权限组/group 添加权限/addperm <名称> <perm_key> [perm_key...]\n"
+        "perm 权限组/group 移除权限/removeperm <名称> <perm_key>\n"
+        "perm 权限组/group 批量加群/batchaddgroup <名称> <群号>\n"
+        "perm 绑定/bind 群/group <群号> <权限组名>\n"
+        "perm 绑定/bind 解除/unbind <群号>\n"
+        "perm 绑定/bind 列表/list [群号]\n"
+        "perm 注册点/points 列表/list [插件名]\n"
+        "perm 查看/view <QQ号>"
     ),
     config=Config,
     supported_adapters={"~onebot.v11"},
@@ -133,35 +133,35 @@ def _invalidate_related_cache(user_id: Optional[int] = None, group_id: Optional[
 
 def _build_help_text() -> str:
     return (
-        "权限 命令可用操作：\n"
-        "━━━ 黑名单 ━━━\n"
-        "权限 黑名单 添加 <QQ号> [原因]\n"
-        "权限 黑名单 移除 <QQ号>\n"
-        "权限 黑名单 列表\n"
-        "━━━ 白名单 ━━━\n"
-        "权限 白名单 用户 添加 <QQ号> [原因]\n"
-        "权限 白名单 用户 移除 <QQ号>\n"
-        "权限 白名单 用户 列表\n"
-        "权限 白名单 群 添加 <群号> [原因]\n"
-        "权限 白名单 群 移除 <群号>\n"
-        "权限 白名单 群 列表\n"
-        "━━━ 权限组 ━━━\n"
-        "权限 权限组 创建 <名称> [展示名] [描述]\n"
-        "权限 权限组 删除 <名称>\n"
-        "权限 权限组 列表\n"
-        "权限 权限组 详情 <名称>\n"
-        "权限 权限组 添加成员 <名称> <QQ> [QQ...]\n"
-        "权限 权限组 移除成员 <名称> <QQ>\n"
-        "权限 权限组 添加权限 <名称> <perm_key> [perm_key...]\n"
-        "权限 权限组 移除权限 <名称> <perm_key>\n"
-        "权限 权限组 批量加群 <名称> <群号>\n"
-        "━━━ 群绑定 ━━━\n"
-        "权限 绑定 群 <群号> <权限组名>\n"
-        "权限 绑定 解除 <群号>\n"
-        "权限 绑定 列表 [群号]\n"
+        "perm 命令可用操作（也支持中文）:\n"
+        "━━━ 黑名单/blacklist ━━━\n"
+        "perm 黑名单 添加/add <QQ号> [原因]\n"
+        "perm 黑名单 移除/remove <QQ号>\n"
+        "perm 黑名单 列表/list\n"
+        "━━━ 白名单/whitelist ━━━\n"
+        "perm 白名单 用户/user 添加/add <QQ号> [原因]\n"
+        "perm 白名单 用户/user 移除/remove <QQ号>\n"
+        "perm 白名单 用户/user 列表/list\n"
+        "perm 白名单 群/group 添加/add <群号> [原因]\n"
+        "perm 白名单 群/group 移除/remove <群号>\n"
+        "perm 白名单 群/group 列表/list\n"
+        "━━━ 权限组/group ━━━\n"
+        "perm 权限组 创建/create <名称> [展示名] [描述]\n"
+        "perm 权限组 删除/delete <名称>\n"
+        "perm 权限组 列表/list\n"
+        "perm 权限组 详情/info <名称>\n"
+        "perm 权限组 添加成员/addmember <名称> <QQ> [QQ...]\n"
+        "perm 权限组 移除成员/removemember <名称> <QQ>\n"
+        "perm 权限组 添加权限/addperm <名称> <perm_key> [perm_key...]\n"
+        "perm 权限组 移除权限/removeperm <名称> <perm_key>\n"
+        "perm 权限组 批量加群/batchaddgroup <名称> <群号>\n"
+        "━━━ 群绑定/bind ━━━\n"
+        "perm 绑定 群/group <群号> <权限组名>\n"
+        "perm 绑定 解除/unbind <群号>\n"
+        "perm 绑定 列表/list [群号]\n"
         "━━━ 其他 ━━━\n"
-        "权限 注册点 列表 [插件名]\n"
-        "权限 查看 <QQ号>"
+        "perm 注册点/points 列表/list [插件名]\n"
+        "perm 查看/view <QQ号>"
     )
 
 
@@ -194,87 +194,91 @@ async def handle_permission_command(
     subcmd = tokens[0].value
     rest = tokens[1:]
 
-    # ---- 黑名单 ----
-    if subcmd == "黑名单":
+    # ---- 黑名单 / blacklist ----
+    if subcmd in ("黑名单", "blacklist", "bl"):
         if not rest:
-            await perm_cmd.finish("用法: 权限 黑名单 添加/移除/列表")
+            await perm_cmd.finish("用法: perm 黑名单/blacklist 添加/add 移除/remove 列表/list")
         op = rest[0].value
-        if op == "添加":
+        if op in ("添加", "add"):
             await _blacklist_add(event, rest[1:], "user")
-        elif op == "移除":
+        elif op in ("移除", "remove", "rm"):
             await _blacklist_remove(event, rest[1:], "user")
-        elif op == "列表":
+        elif op in ("列表", "list", "ls"):
             await _blacklist_list(event, "user")
         else:
-            await perm_cmd.finish(f"未知操作: {op}，可用: 添加/移除/列表")
+            await perm_cmd.finish(f"未知操作: {op}，可用: 添加/add 移除/remove 列表/list")
 
-    # ---- 白名单 ----
-    elif subcmd == "白名单":
+    # ---- 白名单 / whitelist ----
+    elif subcmd in ("白名单", "whitelist", "wl"):
         if not rest:
-            await perm_cmd.finish("用法: 权限 白名单 用户/群 添加/移除/列表")
-        scope = rest[0].value  # "用户" or "群"
-        if scope not in ("用户", "群"):
-            await perm_cmd.finish("请指定范围: 用户 或 群")
+            await perm_cmd.finish("用法: perm 白名单/whitelist 用户/user 群/group 添加/add 移除/remove 列表/list")
+        scope = rest[0].value
+        if scope in ("用户", "user"):
+            scope = "用户"
+        elif scope in ("群", "group"):
+            scope = "群"
+        else:
+            await perm_cmd.finish("请指定范围: 用户/user 或 群/group")
         if len(rest) < 2:
-            await perm_cmd.finish(f"用法: 权限 白名单 {scope} 添加/移除/列表")
+            await perm_cmd.finish(f"用法: perm 白名单/whitelist {scope} 添加/add 移除/remove 列表/list")
         op = rest[1].value
-        if op == "添加":
+        if op in ("添加", "add"):
             await _whitelist_add(event, rest[2:], scope)
-        elif op == "移除":
+        elif op in ("移除", "remove", "rm"):
             await _whitelist_remove(event, rest[2:], scope)
-        elif op == "列表":
+        elif op in ("列表", "list", "ls"):
             await _whitelist_list(event, scope)
         else:
-            await perm_cmd.finish(f"未知操作: {op}，可用: 添加/移除/列表")
+            await perm_cmd.finish(f"未知操作: {op}，可用: 添加/add 移除/remove 列表/list")
 
-    # ---- 权限组 ----
-    elif subcmd == "权限组":
+    # ---- 权限组 / group ----
+    elif subcmd in ("权限组", "group", "pg"):
         if not rest:
-            await perm_cmd.finish("用法: 权限 权限组 创建/删除/列表/详情/添加成员/移除成员/添加权限/移除权限/批量加群")
+            await perm_cmd.finish("用法: perm 权限组/group 创建/create 删除/delete 列表/list 详情/info 添加成员/addmember 移除成员/removemember 添加权限/addperm 移除权限/removeperm 批量加群/batchaddgroup")
         op = rest[0].value
-        if op == "创建":
+        if op in ("创建", "create"):
             await _perm_group_create(event, rest[1:])
-        elif op == "删除":
+        elif op in ("删除", "delete", "del"):
             await _perm_group_delete(event, rest[1:])
-        elif op == "列表":
+        elif op in ("列表", "list", "ls"):
             await _perm_group_list(event)
-        elif op == "详情":
+        elif op in ("详情", "info", "detail"):
             await _perm_group_detail(event, rest[1:])
-        elif op == "添加成员":
+        elif op in ("添加成员", "addmember"):
             await _perm_group_add_member(event, rest[1:])
-        elif op == "移除成员":
+        elif op in ("移除成员", "removemember", "rmmember"):
             await _perm_group_remove_member(event, rest[1:])
-        elif op == "添加权限":
+        elif op in ("添加权限", "addperm"):
             await _perm_group_add_perm(event, rest[1:])
-        elif op == "移除权限":
+        elif op in ("移除权限", "removeperm", "rmperm"):
             await _perm_group_remove_perm(event, rest[1:])
-        elif op == "批量加群":
+        elif op in ("批量加群", "batchaddgroup"):
             await _perm_group_batch_add_group(event, rest[1:])
         else:
-            await perm_cmd.finish("未知操作，可用: 创建/删除/列表/详情/添加成员/移除成员/添加权限/移除权限/批量加群")
+            await perm_cmd.finish("未知操作，可用: 创建/create 删除/delete 列表/list 详情/info 添加成员/addmember 移除成员/removemember 添加权限/addperm 移除权限/removeperm 批量加群/batchaddgroup")
 
-    # ---- 绑定 ----
-    elif subcmd == "绑定":
+    # ---- 绑定 / bind ----
+    elif subcmd in ("绑定", "bind"):
         if not rest:
-            await perm_cmd.finish("用法: 权限 绑定 群/解除/列表")
+            await perm_cmd.finish("用法: perm 绑定/bind 群/group 解除/unbind 列表/list")
         op = rest[0].value
-        if op == "群":
+        if op in ("群", "group"):
             await _binding_add(event, rest[1:])
-        elif op == "解除":
+        elif op in ("解除", "unbind", "remove"):
             await _binding_remove(event, rest[1:])
-        elif op == "列表":
+        elif op in ("列表", "list", "ls"):
             await _binding_list(event, rest[1:])
         else:
-            await perm_cmd.finish("未知操作，可用: 群/解除/列表")
+            await perm_cmd.finish("未知操作，可用: 群/group 解除/unbind 列表/list")
 
-    # ---- 注册点 ----
-    elif subcmd == "注册点":
-        if not rest or rest[0].value != "列表":
-            await perm_cmd.finish("用法: 权限 注册点 列表 [插件名]")
+    # ---- 注册点 / points ----
+    elif subcmd in ("注册点", "points", "permpoint"):
+        if not rest or rest[0].value not in ("列表", "list", "ls"):
+            await perm_cmd.finish("用法: perm 注册点/points 列表/list [插件名]")
         await _list_permission_points(event, rest[1:])
 
-    # ---- 查看 ----
-    elif subcmd == "查看":
+    # ---- 查看 / view ----
+    elif subcmd in ("查看", "view", "check"):
         await _view_user_permissions(event, rest)
 
     # ---- help ----
@@ -282,7 +286,7 @@ async def handle_permission_command(
         await perm_cmd.finish(_build_help_text())
 
     else:
-        await perm_cmd.finish(f"未知子命令: {subcmd}，输入 权限 help 查看帮助")
+        await perm_cmd.finish(f"未知子命令: {subcmd}，输入 perm help 查看帮助")
 
 
 # ============================================================
@@ -553,9 +557,9 @@ async def _perm_group_add_member(event: MessageEvent, tokens: List[ArgToken]):
     _invalidate_related_cache()
     lines = [f"权限组 {group_name} 添加成员结果："]
     if added:
-        lines.append(f"✅ 已添加: {', '.join(added)}")
+        lines.append(f"√ 已添加: {', '.join(added)}")
     if skipped:
-        lines.append(f"⚠️ 已在组中: {', '.join(skipped)}")
+        lines.append(f"⚠ 已在组中: {', '.join(skipped)}")
     if not added and not skipped:
         lines.append("未找到有效的 QQ 号")
     await perm_cmd.finish("\n".join(lines))
@@ -626,9 +630,9 @@ async def _perm_group_add_perm(event: MessageEvent, tokens: List[ArgToken]):
     _invalidate_related_cache()
     lines = [f"权限组 {group_name} 添加权限结果："]
     if added:
-        lines.append(f"✅ 已添加: {', '.join(added)}")
+        lines.append(f"√ 已添加: {', '.join(added)}")
     if skipped:
-        lines.append(f"⚠️ 已有: {', '.join(skipped)}")
+        lines.append(f"⚠ 已有: {', '.join(skipped)}")
     await perm_cmd.finish("\n".join(lines))
 
 
@@ -829,7 +833,7 @@ async def _view_user_permissions(event: MessageEvent, tokens: List[ArgToken]):
 
     # 超级管理员
     if is_superuser(qq):
-        lines.append("  ⭐ 超级管理员（不受任何限制）")
+        lines.append("  ✩ 超级管理员（不受任何限制）")
         await perm_cmd.finish("\n".join(lines))
 
     async with async_session_factory() as session:
@@ -838,7 +842,7 @@ async def _view_user_permissions(event: MessageEvent, tokens: List[ArgToken]):
             select(UserBlacklist).where(UserBlacklist.user_id == qq).limit(1)
         )).scalars().first()
         if bl:
-            lines.append(f"  🚫 黑名单中" + (f"（原因: {bl.reason}）" if bl.reason else ""))
+            lines.append(f"  ⛒ 黑名单中" + (f"（原因: {bl.reason}）" if bl.reason else ""))
             await perm_cmd.finish("\n".join(lines))
 
         # 白名单
@@ -846,7 +850,7 @@ async def _view_user_permissions(event: MessageEvent, tokens: List[ArgToken]):
             select(UserWhitelist).where(UserWhitelist.user_id == qq).limit(1)
         )).scalars().first()
         if wl:
-            lines.append("  ✅ 用户白名单（完全放行）")
+            lines.append("  √ 用户白名单（完全放行）")
 
         # 权限组
         pg_result = await session.execute(
@@ -866,6 +870,6 @@ async def _view_user_permissions(event: MessageEvent, tokens: List[ArgToken]):
                 perm_keys = [row[0] for row in perms_result.all()]
                 lines.append(f"    - {pg.name}: {', '.join(perm_keys) if perm_keys else '（无权限点）'}")
         else:
-            lines.append("  ⚠️ 无任何权限（默认拒绝）")
+            lines.append("  ⚠ 无任何权限（默认拒绝）")
 
     await perm_cmd.finish("\n".join(lines))

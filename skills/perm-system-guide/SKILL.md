@@ -114,8 +114,8 @@ from . import permissions  # noqa: F401 — 触发权限点注册
 启动后在 QQ 中向机器人发送：
 
 ```
-权限 注册点 列表
-权限 注册点 列表 group_ban    # 按插件名筛选
+perm 注册点/points 列表/list
+perm 注册点/points 列表/list group_ban    # 按插件名筛选
 ```
 
 ---
@@ -268,14 +268,16 @@ async def handler(event, matcher, args: str = CommandArg()):
 
 `permission_manager` 插件通过 QQ 聊天提供管理界面，可执行权限由 `permission_manager:manage` 权限点控制——**超级管理员**默认拥有，也可通过权限组授予其他用户。
 
-主命令：`权限`（别名 `perm`）
+主命令：`权限`（别名 `perm`），帮助面板展示为 `perm`
+
+所有子命令和操作均支持中英文别名，以下用 `A/B` 表示**两者均可**。
 
 ### 5.1 黑名单
 
 ```
-权限 黑名单 添加 <QQ号> [原因]
-权限 黑名单 移除 <QQ号>
-权限 黑名单 列表
+perm 黑名单/blacklist 添加/add <QQ号> [原因]
+perm 黑名单/blacklist 移除/remove <QQ号>
+perm 黑名单/blacklist 列表/list
 ```
 
 被加入黑名单的用户**所有权限均被拒绝**，且会跳过白名单检查（黑名单优先级高于白名单）。
@@ -285,17 +287,17 @@ async def handler(event, matcher, args: str = CommandArg()):
 用户白名单：
 
 ```
-权限 白名单 用户 添加 <QQ号> [原因]
-权限 白名单 用户 移除 <QQ号>
-权限 白名单 用户 列表
+perm 白名单/whitelist 用户/user 添加/add <QQ号> [原因]
+perm 白名单/whitelist 用户/user 移除/remove <QQ号>
+perm 白名单/whitelist 用户/user 列表/list
 ```
 
 群白名单：
 
 ```
-权限 白名单 群 添加 <群号> [原因]
-权限 白名单 群 移除 <群号>
-权限 白名单 群 列表
+perm 白名单/whitelist 群/group 添加/add <群号> [原因]
+perm 白名单/whitelist 群/group 移除/remove <群号>
+perm 白名单/whitelist 群/group 列表/list
 ```
 
 白名单用户/群**完全放行所有权限**，不再检查权限组和 perm_key。
@@ -303,15 +305,15 @@ async def handler(event, matcher, args: str = CommandArg()):
 ### 5.3 权限组
 
 ```
-权限 权限组 创建 <名称> [展示名] [描述]
-权限 权限组 删除 <名称>
-权限 权限组 列表
-权限 权限组 详情 <名称>
-权限 权限组 添加成员 <名称> <QQ> [QQ...]
-权限 权限组 移除成员 <名称> <QQ>
-权限 权限组 添加权限 <名称> <perm_key> [perm_key...]
-权限 权限组 移除权限 <名称> <perm_key>
-权限 权限组 批量加群 <名称> <群号>
+perm 权限组/group 创建/create <名称> [展示名] [描述]
+perm 权限组/group 删除/delete <名称>
+perm 权限组/group 列表/list
+perm 权限组/group 详情/info <名称>
+perm 权限组/group 添加成员/addmember <名称> <QQ> [QQ...]
+perm 权限组/group 移除成员/removemember <名称> <QQ>
+perm 权限组/group 添加权限/addperm <名称> <perm_key> [perm_key...]
+perm 权限组/group 移除权限/removeperm <名称> <perm_key>
+perm 权限组/group 批量加群/batchaddgroup <名称> <群号>
 ```
 
 其中 `批量加群` 是快捷提示，实际将群内所有成员赋予权限组的功能需要通过下面 `绑定` 实现。
@@ -319,9 +321,9 @@ async def handler(event, matcher, args: str = CommandArg()):
 ### 5.4 群绑定
 
 ```
-权限 绑定 群 <群号> <权限组名>
-权限 绑定 解除 <群号>
-权限 绑定 列表 [群号]
+perm 绑定/bind 群/group <群号> <权限组名>
+perm 绑定/bind 解除/unbind <群号>
+perm 绑定/bind 列表/list [群号]
 ```
 
 群绑定是将一个 QQ 群**整体**与一个权限组关联。绑定后该群的**所有成员**都自动享有该权限组定义的全部权限（无需逐个添加成员）。底层在 checker 的步骤 6 中通过 `GroupPermBinding` 表查询实现。
@@ -329,7 +331,7 @@ async def handler(event, matcher, args: str = CommandArg()):
 ### 5.5 注册点列表
 
 ```
-权限 注册点 列表 [插件名]
+perm 注册点/points 列表/list [插件名]
 ```
 
 显示所有已注册的权限点（按插件分组）。可以按插件名筛选。
@@ -337,7 +339,7 @@ async def handler(event, matcher, args: str = CommandArg()):
 ### 5.6 查看用户状态
 
 ```
-权限 查看 <QQ号>
+perm 查看/view <QQ号>
 ```
 
 一站式查看指定用户的权限状态：是否超级管理员、是否在黑名单/白名单、所属权限组及每个组拥有的权限点。
@@ -612,8 +614,8 @@ perm_cache.clear_pattern("perm:123:")   # 失效该用户的缓存
 
 | 方式 | 范围 | 命令 |
 |------|------|------|
-| 添加成员 | 单个用户 | `权限 权限组 添加成员 <名称> <QQ>` |
-| 群绑定 | 群内**所有人** | `权限 绑定 群 <群号> <权限组名>` |
+| 添加成员 | 单个用户 | `perm 权限组/group 添加成员/addmember <名称> <QQ>` |
+| 群绑定 | 群内**所有人** | `perm 绑定/bind 群/group <群号> <权限组名>` |
 
 两种方式在 checker 中是**不同步骤**：添加成员在步骤 5（`PermissionGroupMember`），群绑在步骤 6（`GroupPermBinding`）。两者是 OR 关系，满足其一即放行。
 
@@ -624,12 +626,12 @@ perm_cache.clear_pattern("perm:123:")   # 失效该用户的缓存
 2. **有对应的 perm_key**（通过 `添加权限` 赋予）
 
 ```bash
-# QQ 管理命令操作步骤
-权限 权限组 创建 admin
-权限 权限组 添加权限 admin report:view report:export
-权限 权限组 添加成员 admin 123456
+# QQ 管理命令操作步骤（中英文均可）
+perm 权限组/group 创建/create admin
+perm 权限组/group 添加权限/addperm admin report:view report:export
+perm 权限组/group 添加成员/addmember admin 123456
 # 或者
-权限 绑定 群 789012 admin
+perm 绑定/bind 群/group 789012 admin
 ```
 
 ---
@@ -686,10 +688,10 @@ from . import permissions  # noqa: F401
 ### 管理命令速记
 
 ```
-权限 黑名单 → 添加/移除/列表
-权限 白名单 → 用户/群 → 添加/移除/列表
-权限 权限组 → 创建/删除/列表/详情/添加成员/移除成员/添加权限/移除权限/批量加群
-权限 绑定 → 群/解除/列表
-权限 注册点 → 列表
-权限 查看
+perm 黑名单/blacklist → 添加/add 移除/remove 列表/list
+perm 白名单/whitelist → 用户/user 群/group → 添加/add 移除/remove 列表/list
+perm 权限组/group → 创建/create 删除/delete 列表/list 详情/info 添加成员/addmember 移除成员/removemember 添加权限/addperm 移除权限/removeperm 批量加群/batchaddgroup
+perm 绑定/bind → 群/group 解除/unbind 列表/list
+perm 注册点/points → 列表/list
+perm 查看/view
 ```
