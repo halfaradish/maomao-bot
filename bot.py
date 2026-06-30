@@ -14,6 +14,7 @@ DiTing-NoneBot 启动入口。
 """
 
 from nonebot import get_driver, init, load_builtin_plugin, load_from_toml, run
+from nonebot.log import default_format, logger
 
 # ── 加载 .env 文件 ──────────────────────────────────────────
 # src.config.__init__ 导入 local_config 模块，触发以下副作用：
@@ -21,6 +22,19 @@ from nonebot import get_driver, init, load_builtin_plugin, load_from_toml, run
 #   load_dotenv(f".env.{ENV}")    → 加载环境特定配置
 # 这必须在 nonebot.init() 之前完成
 import src.config  # noqa: E402, F401
+
+# ── 配置文件日志 ────────────────────────────────────────────
+# 从 src/plugins/ensure/__init__.py 迁移至此
+logger.add(
+    "logs/nonebot.log",
+    rotation="00:00",
+    retention="7 days",
+    level="DEBUG",
+    encoding="utf-8",
+    format=default_format,
+    enqueue=True,
+    compression="zip",
+)
 
 # ── 初始化 NoneBot ──────────────────────────────────────────
 # 从 os.environ 读取 DRIVER、HOST、PORT、SUPERUSERS、COMMAND_START 等
