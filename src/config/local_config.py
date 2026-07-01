@@ -108,3 +108,7 @@ class LogConfig:
     _enqueue_env = os.getenv('LOG_FILE_ENQUEUE')
     LOG_FILE_ENQUEUE: bool = False if _enqueue_env in ("False", "false", "0") else (True if _enqueue_env else True)
     LOG_FILE_COMPRESSION: str = os.getenv('LOG_FILE_COMPRESSION') or "zip"
+
+class WebUIConfig:
+    """Web管理面板JWT配置"""
+    WEBUI_JWT_SECRET: str = os.getenv('WEBUI_JWT_SECRET') or ''

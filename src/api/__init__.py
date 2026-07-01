@@ -10,9 +10,11 @@ from fastapi import (
 )
 from ..config.response import success
 from .bot import router as bot_router
+from .auth import router as auth_router
 
 api_router = APIRouter()
 api_router.include_router(bot_router, tags=["bot信息"])
+api_router.include_router(auth_router, prefix="/v1/auth")
 
 app: FastAPI = get_app()
 app.include_router(api_router, prefix="/api")

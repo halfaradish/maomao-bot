@@ -5,6 +5,7 @@
 
 命令格式: 权限 <子命令> [参数...]
 """
+import secrets
 from dataclasses import dataclass
 from typing import List, Optional
 
@@ -132,6 +133,35 @@ def _invalidate_related_cache(user_id: Optional[int] = None, group_id: Optional[
         perm_cache.clear_all()
 
 
+async def _handle_login(bot: Bot, event: MessageEvent):
+    """处理 `权限 登录` 子命令：生成Web面板临时密码"""
+    if not await _ensure_superuser(event):
+        await perm_cmd.finish("你没有权限执行此操作")
+
+    temp_pwd = f"{secrets.randbelow(900000) + 100000}"
+    qq_number = str(event.user_id)
+    perm_cache.set(f"webui:temp_pwd:{qq_number}", temp_pwd, ttl=300)
+
+    msg = (
+        f"【Web管理面板登录验证码】\n"
+        f"验证码: {temp_pwd}\n"
+        f"该验证码5分钟内有效，请勿泄露给他人。\n"
+        f"请前往管理面板使用此验证码登录。"
+    )
+
+    if isinstance(event, GroupMessageEvent):
+        try:
+            await bot.send_private_msg(user_id=event.user_id, message=msg)
+            await perm_cmd.finish("✅ 登录验证码已私聊发送，请查收。", at_sender=True)
+        except Exception:
+            await perm_cmd.finish(
+                "❌ 无法发送私聊消息，请先添加机器人为好友或私聊使用此命令。",
+                at_sender=True,
+            )
+    else:
+        await perm_cmd.finish(msg)
+
+
 def _build_help_text() -> str:
     return (
         "perm 命令可用操作（也支持中文）:\n"
@@ -162,7 +192,8 @@ def _build_help_text() -> str:
         "perm 绑定 列表/list [群号]\n"
         "━━━ 其他 ━━━\n"
         "perm 注册点/points 列表/list [插件名]\n"
-        "perm 查看/view <QQ号>"
+        "perm 查看/view <QQ号>\n"
+        "perm 登录/login - 获取Web管理面板登录验证码"
     )
 
 
@@ -281,6 +312,10 @@ async def handle_permission_command(
     # ---- 查看 / view ----
     elif subcmd in ("查看", "view", "check"):
         await _view_user_permissions(event, rest)
+
+    # ---- 登录 / login ----
+    elif subcmd in ("登录", "login", "signin"):
+        await _handle_login(bot, event)
 
     # ---- help ----
     elif subcmd in ("help", "帮助", "-h", "--help"):
