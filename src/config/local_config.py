@@ -112,3 +112,4 @@ class LogConfig:
 class WebUIConfig:
     """Web管理面板JWT配置"""
     WEBUI_JWT_SECRET: str = os.getenv('WEBUI_JWT_SECRET') or ''
+    WEBUI_DEV_PASSWORD: str = os.getenv('WEBUI_DEV_PASSWORD') or ''

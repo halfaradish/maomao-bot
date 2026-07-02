@@ -16,6 +16,9 @@
         </button>
       </form>
       <p class="login-hint">在 QQ 中发送「权限 登录」获取临时密码</p>
+      <p v-if="isLocalhost" class="login-hint dev-hint">
+        💡 本地开发提示：可在 .env.local 中设置 WEBUI_DEV_PASSWORD 后使用固定密码登录
+      </p>
     </article>
   </div>
 </template>
@@ -34,6 +37,7 @@ const { showToast } = useToast()
 const qq = ref('')
 const pwd = ref('')
 const busy = ref(false)
+const isLocalhost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'
 
 async function doLogin() {
   if (!qq.value || !pwd.value) return

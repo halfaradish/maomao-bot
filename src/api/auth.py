@@ -13,6 +13,7 @@ from src.common.jwt_utils import (
     blacklist_token,
     get_token_expiry,
 )
+from src.config.local_config import WebUIConfig
 from src.config.response import success, error
 from src.api.deps import verify_token, TokenPayload
 
@@ -100,7 +101,22 @@ async def login(
     # 2. Validate temp password
     cache_key = f"webui:temp_pwd:{body.qq_number}"
     expected = perm_cache.get(cache_key)
-    if expected is None or body.temp_password != expected:
+
+    is_dev_login = False
+    if expected is None and WebUIConfig.WEBUI_DEV_PASSWORD:
+        # Dev bypass: accept dev password for superusers only.
+        # Hard gate: NEVER allow dev bypass in production.
+        from src.config.local_config import environment
+        if environment != 'prod':
+            from nonebot import get_driver
+            superusers = {str(uid) for uid in get_driver().config.superusers}
+            if (
+                body.qq_number in superusers
+                and body.temp_password == WebUIConfig.WEBUI_DEV_PASSWORD
+            ):
+                is_dev_login = True
+
+    if not is_dev_login and (expected is None or body.temp_password != expected):
         _record_failed_attempt(body.qq_number)
         response.status_code = status.HTTP_401_UNAUTHORIZED
         return error(
@@ -109,8 +125,9 @@ async def login(
             request=request,
         )
 
-    # 3. One-time use: delete immediately
-    perm_cache.delete(cache_key)
+    # 3. One-time use: delete immediately (skip for dev login — it's reusable)
+    if not is_dev_login:
+        perm_cache.delete(cache_key)
     _clear_brute_force(body.qq_number)
 
     # 4. Issue JWT
