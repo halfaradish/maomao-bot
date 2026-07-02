@@ -9,7 +9,7 @@ import secrets
 from dataclasses import dataclass
 from typing import List, Optional
 
-from nonebot import get_driver, get_plugin_config, on_command
+from nonebot import get_driver, get_plugin_config, on_command, logger
 from nonebot.adapters.onebot.v11 import Bot, Message, MessageEvent, GroupMessageEvent
 from nonebot.params import CommandArg
 from nonebot.plugin import PluginMetadata
@@ -125,37 +125,44 @@ async def _ensure_superuser(event: MessageEvent) -> bool:
 def _invalidate_related_cache(user_id: Optional[int] = None, group_id: Optional[int] = None):
     """失效相关缓存"""
     if user_id is not None:
+        logger.debug(f"失效用户缓存: user_id={user_id}")
         perm_cache.clear_pattern(f"perm:{user_id}:")
     if group_id is not None:
+        logger.debug(f"失效群缓存: group_id={group_id}")
         perm_cache.clear_pattern(f"perm::{group_id}:")
     # 全局失效兜底（权限组变更影响范围不可精确预测）
     if user_id is None and group_id is None:
+        logger.debug("全局失效所有权限缓存")
         perm_cache.clear_all()
 
 
 async def _handle_login(bot: Bot, event: MessageEvent):
     """处理 `权限 登录` 子命令：生成Web面板临时密码"""
     if not await _ensure_superuser(event):
+        logger.warning(f"用户 {event.user_id} 尝试获取登录验证码但权限不足")
         await perm_cmd.finish("你没有权限执行此操作")
 
     temp_pwd = f"{secrets.randbelow(900000) + 100000}"
     qq_number = str(event.user_id)
+    logger.info(f"用户 {event.user_id} 已生成Web管理面板登录验证码（5分钟内有效）")
     perm_cache.set(f"webui:temp_pwd:{qq_number}", temp_pwd, ttl=300)
 
     msg = (
         f"【Web管理面板登录验证码】\n"
         f"验证码: {temp_pwd}\n"
-        f"该验证码5分钟内有效，请勿泄露给他人。\n"
+        f"该验证码5分钟内有效\n"
         f"请前往管理面板使用此验证码登录。"
     )
 
     if isinstance(event, GroupMessageEvent):
         try:
-            await bot.send_private_msg(user_id=event.user_id, message=msg)
-            await perm_cmd.finish("✅ 登录验证码已私聊发送，请查收。", at_sender=True)
+            await perm_cmd.finish(message=msg, at_sender=True)
+        except FinishedException:
+            pass
         except Exception:
+
             await perm_cmd.finish(
-                "❌ 无法发送私聊消息，请先添加机器人为好友或私聊使用此命令。",
+                "无法发送验证码消息",
                 at_sender=True,
             )
     else:
@@ -217,8 +224,10 @@ async def handle_permission_command(
 ):
     # 需要超级管理员或 permission_manager:manage 权限
     if not await _ensure_superuser(event):
+        logger.warning(f"用户 {event.user_id} 尝试执行权限管理命令但权限不足")
         await perm_cmd.finish("你没有权限管理权限系统（仅超级管理员或拥有「权限管理」权限的用户可执行）")
 
+    logger.info(f"用户 {event.user_id} 执行权限管理命令: {args.extract_plain_text().strip()}")
     tokens = _tokenize_arguments(args)
     if not tokens:
         await perm_cmd.finish(_build_help_text())
@@ -346,10 +355,12 @@ async def _blacklist_add(event: MessageEvent, tokens: List[ArgToken], _scope: st
             session.add(UserBlacklist(user_id=qq, reason=reason, created_by=event.user_id))
             await session.commit()
         _invalidate_related_cache(user_id=qq)
+        logger.info(f"用户 {event.user_id} 将 QQ {qq} 加入黑名单（原因: {reason or '未填写'}）")
         await perm_cmd.finish(f"已将 QQ {qq} 加入黑名单" + (f"（原因: {reason}）" if reason else ""))
     except FinishedException:
         pass
     except Exception as e:
+        logger.error(f"黑名单添加失败: {e}", exc_info=True)
         await perm_cmd.finish(f"操作失败: {e}")
 
 
@@ -365,8 +376,10 @@ async def _blacklist_remove(event: MessageEvent, tokens: List[ArgToken], _scope:
         )
         await session.commit()
         if result.rowcount == 0:
+            logger.warning(f"用户 {event.user_id} 尝试移除黑名单 QQ {qq}，但该用户不在黑名单中")
             await perm_cmd.finish(f"QQ {qq} 不在黑名单中")
     _invalidate_related_cache(user_id=qq)
+    logger.info(f"用户 {event.user_id} 已将 QQ {qq} 从黑名单移除")
     await perm_cmd.finish(f"已将 QQ {qq} 从黑名单移除")
 
 
@@ -414,10 +427,12 @@ async def _whitelist_add(event: MessageEvent, tokens: List[ArgToken], scope: str
             _invalidate_related_cache(user_id=qq)
         else:
             _invalidate_related_cache(group_id=qq)
+        logger.info(f"用户 {event.user_id} 将 {id_label} {qq} 加入{scope}白名单（原因: {reason or '未填写'}）")
         await perm_cmd.finish(f"已将 {id_label} {qq} 加入白名单" + (f"（原因: {reason}）" if reason else ""))
     except FinishedException:
         pass
     except Exception as e:
+        logger.error(f"白名单添加失败: {e}", exc_info=True)
         await perm_cmd.finish(f"操作失败: {e}")
 
 
@@ -436,11 +451,13 @@ async def _whitelist_remove(event: MessageEvent, tokens: List[ArgToken], scope: 
         )
         await session.commit()
         if result.rowcount == 0:
+            logger.warning(f"用户 {event.user_id} 尝试移除{scope}白名单 {id_label} {qq}，但不在白名单中")
             await perm_cmd.finish(f"{id_label} {qq} 不在白名单中")
     if scope == "用户":
         _invalidate_related_cache(user_id=qq)
     else:
         _invalidate_related_cache(group_id=qq)
+    logger.info(f"用户 {event.user_id} 已将 {id_label} {qq} 从{scope}白名单移除")
     await perm_cmd.finish(f"已将 {id_label} {qq} 从白名单移除")
 
 
@@ -488,10 +505,12 @@ async def _perm_group_create(event: MessageEvent, tokens: List[ArgToken]):
             ))
             await session.commit()
         _invalidate_related_cache()
+        logger.info(f"用户 {event.user_id} 创建权限组 {name}")
         await perm_cmd.finish(f"权限组 {name} 创建成功")
     except FinishedException:
         pass
     except Exception as e:
+        logger.error(f"权限组创建失败: {e}", exc_info=True)
         await perm_cmd.finish(f"操作失败: {e}")
 
 
@@ -505,8 +524,10 @@ async def _perm_group_delete(event: MessageEvent, tokens: List[ArgToken]):
         )
         await session.commit()
         if result.rowcount == 0:
+            logger.warning(f"用户 {event.user_id} 尝试删除权限组 {name}，但该权限组不存在")
             await perm_cmd.finish(f"权限组 {name} 不存在")
     _invalidate_related_cache()
+    logger.info(f"用户 {event.user_id} 已删除权限组 {name}")
     await perm_cmd.finish(f"权限组 {name} 已删除")
 
 
@@ -596,6 +617,7 @@ async def _perm_group_add_member(event: MessageEvent, tokens: List[ArgToken]):
             await session.commit()
 
     _invalidate_related_cache()
+    logger.info(f"用户 {event.user_id} 向权限组 {group_name} 添加成员: {', '.join(added) if added else '无'}" + (f"，跳过（已在组内）: {', '.join(skipped)}" if skipped else ""))
     lines = [f"权限组 {group_name} 添加成员结果："]
     if added:
         lines.append(f"√ 已添加: {', '.join(added)}")
@@ -631,9 +653,11 @@ async def _perm_group_remove_member(event: MessageEvent, tokens: List[ArgToken])
         )
         await session.commit()
         if result.rowcount == 0:
+            logger.warning(f"用户 {event.user_id} 尝试从权限组 {group_name} 移除 QQ {qq}，但该用户不在组内")
             await perm_cmd.finish(f"QQ {qq} 不在权限组 {group_name} 中")
 
     _invalidate_related_cache(user_id=qq)
+    logger.info(f"用户 {event.user_id} 已将 QQ {qq} 从权限组 {group_name} 移除")
     await perm_cmd.finish(f"已将 QQ {qq} 从权限组 {group_name} 移除")
 
 
@@ -669,6 +693,7 @@ async def _perm_group_add_perm(event: MessageEvent, tokens: List[ArgToken]):
             await session.commit()
 
     _invalidate_related_cache()
+    logger.info(f"用户 {event.user_id} 为权限组 {group_name} 添加权限点: {', '.join(added) if added else '无'}" + (f"，跳过（已有）: {', '.join(skipped)}" if skipped else ""))
     lines = [f"权限组 {group_name} 添加权限结果："]
     if added:
         lines.append(f"√ 已添加: {', '.join(added)}")
@@ -700,9 +725,11 @@ async def _perm_group_remove_perm(event: MessageEvent, tokens: List[ArgToken]):
         )
         await session.commit()
         if result.rowcount == 0:
+            logger.warning(f"用户 {event.user_id} 尝试从权限组 {group_name} 移除权限点 {perm_key}，但该权限点不在组内")
             await perm_cmd.finish(f"权限点 {perm_key} 不在权限组 {group_name} 中")
 
     _invalidate_related_cache()
+    logger.info(f"用户 {event.user_id} 已将权限点 {perm_key} 从权限组 {group_name} 移除")
     await perm_cmd.finish(f"已将权限点 {perm_key} 从权限组 {group_name} 移除")
 
 
@@ -759,10 +786,12 @@ async def _binding_add(event: MessageEvent, tokens: List[ArgToken]):
             session.add(GroupPermBinding(qq_group_id=qq, permission_group_id=pg_id))
             await session.commit()
         _invalidate_related_cache(group_id=qq)
+        logger.info(f"用户 {event.user_id} 将群 {qq} 绑定到权限组 {pg_name}")
         await perm_cmd.finish(f"群 {qq} 已绑定权限组 {pg_name}")
     except FinishedException:
         pass
     except Exception as e:
+        logger.error(f"群绑定失败: {e}", exc_info=True)
         await perm_cmd.finish(f"操作失败: {e}")
 
 
@@ -779,8 +808,10 @@ async def _binding_remove(event: MessageEvent, tokens: List[ArgToken]):
         )
         await session.commit()
         if result.rowcount == 0:
+            logger.warning(f"用户 {event.user_id} 尝试解除群 {qq} 的绑定，但该群没有绑定记录")
             await perm_cmd.finish(f"群 {qq} 没有绑定任何权限组")
     _invalidate_related_cache(group_id=qq)
+    logger.info(f"用户 {event.user_id} 已解除群 {qq} 的 {result.rowcount} 条权限组绑定")
     await perm_cmd.finish(f"已解除群 {qq} 的所有权限组绑定（共 {result.rowcount} 条）")
 
 
