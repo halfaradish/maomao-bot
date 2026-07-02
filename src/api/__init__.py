@@ -22,7 +22,7 @@ from .permissions import router as perm_router
 # SPA static files — exception handler approach (compatible with WebSocket)
 # ---------------------------------------------------------------------------
 
-_WEBUI_DIR = Path(__file__).resolve().parent.parent / "webui"
+_WEBUI_DIR = Path(__file__).resolve().parent.parent.parent / "webui"
 _WEBUI_INDEX = _WEBUI_DIR / "index.html"
 
 
