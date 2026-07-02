@@ -197,6 +197,7 @@ body {
   flex: 1;
   min-width: 0;
   padding: 1.5rem;
+  position: relative;
 }
 
 /* ===================================================
@@ -657,6 +658,13 @@ table code {
 .fade-page-enter-from,
 .fade-page-leave-to {
   opacity: 0;
+}
+
+.fade-page-leave-active {
+  position: absolute;
+  width: 100%;
+  left: 0;
+  top: 0;
 }
 
 /* ===================================================

@@ -29,7 +29,7 @@
 
     <main class="app-main">
       <router-view v-slot="{ Component, route }">
-        <transition name="fade-page" mode="out-in">
+        <transition name="fade-page">
           <component :is="Component" :key="route.path" />
         </transition>
       </router-view>
