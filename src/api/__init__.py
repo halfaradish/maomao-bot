@@ -8,6 +8,7 @@ from fastapi import (
     FastAPI,
     Request
 )
+from fastapi.staticfiles import StaticFiles
 from ..config.response import success
 from .bot import router as bot_router
 from .auth import router as auth_router
@@ -20,6 +21,9 @@ api_router.include_router(perm_router)
 
 app: FastAPI = get_app()
 app.include_router(api_router, prefix="/api")
+
+# Serve SPA — must come after all include_router calls so /api/... routes match first.
+app.mount("/", StaticFiles(directory="webui", html=True), name="webui")
 
 @app.get('/hello')
 async def hello(request: Request):
