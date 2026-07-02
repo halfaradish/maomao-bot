@@ -1,20 +1,21 @@
 <template>
   <div class="breadcrumb">
-    <router-link to="/groups">权限组列表</router-link>
-    / <span>{{ group?.name }}</span>
+    <CaretLeft :size="14" /><router-link to="/groups">权限组列表</router-link>
+    <span style="color:var(--pico-muted-color)">/</span>
+    <span>{{ group?.name }}</span>
   </div>
 
   <div v-if="group" class="status-card">
-    <h3>{{ group.display_name || group.name }}</h3>
+    <h3 style="display:flex;align-items:center;gap:0.5rem"><ShieldCheck :size="20" />{{ group.display_name || group.name }}</h3>
     <p v-if="group.name"><code>{{ group.name }}</code></p>
-    <p v-if="group.description">{{ group.description }}</p>
+    <p v-if="group.description" style="color:var(--pico-muted-color)">{{ group.description }}</p>
   </div>
 
   <!-- Members -->
-  <h4 class="section-title">成员</h4>
+  <h4 class="section-title"><UsersThree :size="16" />成员</h4>
   <div class="inline-form">
     <input v-model="newMemberIds" placeholder="QQ号（多个用逗号分隔）" />
-    <button :disabled="addingMember" @click="addMembers">添加</button>
+    <button :disabled="addingMember" @click="addMembers"><Plus :size="16" />添加</button>
   </div>
   <div class="table-wrap">
     <table v-if="members.length">
@@ -30,7 +31,7 @@
           <td>{{ m.user_id }}</td>
           <td>{{ fmt(m.created_at) }}</td>
           <td>
-            <button class="secondary" @click="removeMember(m.user_id)">移除</button>
+            <button class="secondary" @click="removeMember(m.user_id)"><X :size="14" />移除</button>
           </td>
         </tr>
       </tbody>
@@ -39,10 +40,10 @@
   <div v-if="!members.length" class="empty-state">暂无成员</div>
 
   <!-- Perms -->
-  <h4 class="section-title">权限点</h4>
+  <h4 class="section-title"><Lock :size="16" />权限点</h4>
   <div class="inline-form">
     <input v-model="newPermKeys" placeholder="权限标识（多个用逗号分隔）" />
-    <button :disabled="addingPerm" @click="addPerms">添加</button>
+    <button :disabled="addingPerm" @click="addPerms"><Plus :size="16" />添加</button>
   </div>
   <div class="table-wrap">
     <table v-if="perms.length">
@@ -58,7 +59,7 @@
           <td><code>{{ p.perm_key }}</code></td>
           <td>{{ fmt(p.created_at) }}</td>
           <td>
-            <button class="secondary" @click="removePerm(p.perm_key)">移除</button>
+            <button class="secondary" @click="removePerm(p.perm_key)"><X :size="14" />移除</button>
           </td>
         </tr>
       </tbody>
@@ -73,6 +74,7 @@ import { useRoute } from 'vue-router'
 import { apiGet, apiPost, apiDelete } from '../api/client'
 import { useConfirm } from '../composables/useConfirm'
 import { useToast } from '../composables/useToast'
+import { PhShieldCheck as ShieldCheck, PhCaretLeft as CaretLeft, PhUsersThree as UsersThree, PhLock as Lock, PhPlus as Plus, PhX as X } from "@phosphor-icons/vue"
 
 function fmt(ts) {
   if (!ts) return '—'

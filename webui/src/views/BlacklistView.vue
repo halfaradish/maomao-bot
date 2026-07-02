@@ -1,11 +1,11 @@
 <template>
   <div>
-    <h3 class="page-title">黑名单</h3>
+    <h3 class="page-title"><Prohibit :size="22" />黑名单</h3>
 
     <!-- Tab bar -->
     <div class="tab-bar">
-      <button :class="{ active: activeTab === 'users' }" @click="switchTab('users')">用户黑名单</button>
-      <button :class="{ active: activeTab === 'groups' }" @click="switchTab('groups')">群黑名单</button>
+      <button :class="{ active: activeTab === 'users' }" @click="switchTab('users')"><User :size="16" />用户黑名单</button>
+      <button :class="{ active: activeTab === 'groups' }" @click="switchTab('groups')"><UsersThree :size="16" />群黑名单</button>
     </div>
 
     <!-- Add form -->
@@ -22,7 +22,7 @@
         placeholder="拉黑原因（可选）"
         style="min-width: 200px"
       >
-      <button @click="doAdd" :aria-busy="adding">添加</button>
+      <button @click="doAdd" :aria-busy="adding"><Plus :size="16" />添加</button>
     </div>
 
     <!-- Table -->
@@ -46,7 +46,7 @@
             <td>{{ item.created_by || '—' }}</td>
             <td>{{ fmt(item.created_at) }}</td>
             <td>
-              <button class="secondary" @click="doDelete(item)">移除</button>
+              <button class="secondary" @click="doDelete(item)"><Check :size="14" />移除</button>
             </td>
           </tr>
         </tbody>
@@ -64,6 +64,7 @@ import { apiGet, apiPost, apiDelete } from '../api/client'
 import { useConfirm } from '../composables/useConfirm'
 import { useToast } from '../composables/useToast'
 import Pagination from '../components/Pagination.vue'
+import { PhProhibit as Prohibit, PhUser as User, PhUsersThree as UsersThree, PhPlus as Plus, PhCheck as Check } from "@phosphor-icons/vue"
 
 const { showConfirm } = useConfirm()
 const { showToast } = useToast()

@@ -1,5 +1,5 @@
 <template>
-  <h3 class="page-title">群绑定</h3>
+  <h3 class="page-title"><Link :size="22" />群绑定</h3>
 
   <div class="inline-form">
     <input v-model="form.qq_group_id" type="number" placeholder="QQ群号" />
@@ -9,7 +9,7 @@
         {{ g.display_name || g.name }}
       </option>
     </select>
-    <button :disabled="creating" @click="doCreate">绑定</button>
+    <button :disabled="creating" @click="doCreate"><LinkBreak :size="16" />绑定</button>
   </div>
 
   <div class="table-wrap">
@@ -30,7 +30,7 @@
           <td>{{ groupName(b.permission_group_id) }}</td>
           <td>{{ fmt(b.created_at) }}</td>
           <td>
-            <button class="secondary" @click="doDelete(b.id)">解除</button>
+            <button class="secondary" @click="doDelete(b.id)"><LinkBreak :size="14" />解除</button>
           </td>
         </tr>
       </tbody>
@@ -48,6 +48,7 @@ import { apiGet, apiPost, apiDelete } from '../api/client'
 import { useConfirm } from '../composables/useConfirm'
 import { useToast } from '../composables/useToast'
 import Pagination from '../components/Pagination.vue'
+import { PhLink as Link, PhLinkBreak as LinkBreak } from "@phosphor-icons/vue"
 
 const PAGE_SIZE = 10
 

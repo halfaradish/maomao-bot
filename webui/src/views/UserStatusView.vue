@@ -1,6 +1,6 @@
 <template>
   <div class="page-container">
-    <h3 class="page-title">用户权限状态</h3>
+    <h3 class="page-title"><MagnifyingGlass :size="22" />用户权限状态</h3>
 
     <form @submit.prevent="doQuery" class="inline-form">
       <input
@@ -11,23 +11,23 @@
         autofocus
         style="min-width:200px"
       />
-      <button type="submit" :aria-busy="loading">查询</button>
+      <button type="submit" :aria-busy="loading"><MagnifyingGlass :size="16" />查询</button>
     </form>
 
     <div v-if="status" class="status-results">
       <!-- 基本信息 -->
-      <h4 class="section-title">基本信息</h4>
+      <h4 class="section-title"><UserCircle :size="16" />基本信息</h4>
       <article>
         <p><strong>用户 ID：</strong>{{ status.user_id }}</p>
         <p>
           <strong>超级管理员：</strong>
-          <span v-if="status.is_superuser" class="tag-yes">是</span>
-          <span v-else class="tag-no">否</span>
+          <span v-if="status.is_superuser" class="tag-yes"><Check :size="12" />是</span>
+          <span v-else class="tag-no"><X :size="12" />否</span>
         </p>
       </article>
 
       <!-- 黑名单状态 -->
-      <h4 class="section-title">黑名单状态</h4>
+      <h4 class="section-title"><Prohibit :size="16" />黑名单状态</h4>
       <article v-if="status.blacklisted" style="border-color: var(--pico-danger-border)">
         <p><strong>原因：</strong>{{ status.blacklisted.reason }}</p>
         <p><strong>拉黑者：</strong>{{ status.blacklisted.created_by }}</p>
@@ -38,7 +38,7 @@
       </article>
 
       <!-- 白名单状态 -->
-      <h4 class="section-title">白名单状态</h4>
+      <h4 class="section-title"><CheckCircle :size="16" />白名单状态</h4>
       <article v-if="status.whitelisted" style="border-color: #238636">
         <p><strong>原因：</strong>{{ status.whitelisted.reason }}</p>
         <p><strong>加白者：</strong>{{ status.whitelisted.created_by }}</p>
@@ -49,7 +49,7 @@
       </article>
 
       <!-- 所属权限组 -->
-      <h4 class="section-title">所属权限组 ({{ status.permission_groups.length }})</h4>
+      <h4 class="section-title"><ShieldCheck :size="16" />所属权限组 ({{ status.permission_groups.length }})</h4>
       <template v-if="status.permission_groups.length">
         <article v-for="g in status.permission_groups" :key="g.id">
           <h5>{{ g.display_name || g.name }}</h5>
@@ -69,6 +69,7 @@ import { ref } from 'vue'
 import { apiGet } from '../api/client'
 import { useToast } from '../composables/useToast'
 import Pagination from '../components/Pagination.vue'
+import { PhMagnifyingGlass as MagnifyingGlass, PhUserCircle as UserCircle, PhCheck as Check, PhX as X, PhProhibit as Prohibit, PhCheckCircle as CheckCircle, PhShieldCheck as ShieldCheck } from "@phosphor-icons/vue"
 
 const { showToast } = useToast()
 const PAGE_SIZE = 10
@@ -96,9 +97,3 @@ async function doQuery() {
   }
 }
 </script>
-
-<style scoped>
-.page-container {
-  padding: 0;
-}
-</style>

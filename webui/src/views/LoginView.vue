@@ -1,7 +1,7 @@
 <template>
   <div class="login-box">
     <article>
-      <header><strong>权限管理登录</strong></header>
+      <header><SignIn :size="20" />权限管理登录</header>
       <form @submit.prevent="doLogin">
         <label for="qq">
           QQ号
@@ -11,9 +11,11 @@
           临时密码
           <input id="pwd" v-model="pwd" type="password" placeholder="6 位临时密码" maxlength="6" required />
         </label>
-        <button :aria-busy="busy" type="submit">登录</button>
+        <button :aria-busy="busy" type="submit">
+          <SignIn :size="16" weight="bold" />登录
+        </button>
       </form>
-      <p class="login-hint">在 QQ 中发送 权限 登录 获取临时密码</p>
+      <p class="login-hint">在 QQ 中发送「权限 登录」获取临时密码</p>
     </article>
   </div>
 </template>
@@ -23,6 +25,7 @@ import { ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { useAuth } from '../composables/useAuth'
 import { useToast } from '../composables/useToast'
+import { PhSignIn as SignIn } from "@phosphor-icons/vue"
 
 const router = useRouter()
 const { login } = useAuth()

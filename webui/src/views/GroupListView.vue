@@ -1,16 +1,17 @@
 <template>
-  <h3 class="page-title">权限组</h3>
+  <h3 class="page-title"><ShieldCheck :size="22" />权限组</h3>
 
   <button class="secondary" @click="showCreate = !showCreate">
-    {{ showCreate ? '取消' : '创建权限组' }}
+    <template v-if="showCreate"><X :size="16" />取消</template>
+    <template v-else><Plus :size="16" />创建权限组</template>
   </button>
 
   <div v-if="showCreate" class="inline-form">
     <input v-model="form.name" placeholder="名称（英文标识）" />
     <input v-model="form.display_name" placeholder="显示名" />
     <input v-model="form.description" placeholder="描述" />
-    <button :disabled="creating" @click="doCreate">提交</button>
-    <button class="secondary" @click="resetForm">取消</button>
+    <button :disabled="creating" @click="doCreate"><Check :size="16" />提交</button>
+    <button class="secondary" @click="resetForm"><X :size="16" />取消</button>
   </div>
 
   <div class="table-wrap">
@@ -32,9 +33,9 @@
           <td>{{ g.display_name || '—' }}</td>
           <td>{{ g.description || '—' }}</td>
           <td>{{ fmt(g.created_at) }}</td>
-          <td>
-            <router-link :to="`/groups/${g.id}`">详情</router-link>
-            <button class="secondary" style="margin-left:0.5rem" @click="doDelete(g.id, g.name)">删除</button>
+            <td>
+            <router-link :to="`/groups/${g.id}`"><CaretRight :size="14" />详情</router-link>
+            <button class="secondary" style="margin-left:0.5rem" @click="doDelete(g.id, g.name)"><Trash :size="14" />删除</button>
           </td>
         </tr>
       </tbody>
@@ -52,6 +53,7 @@ import { apiGet, apiPost, apiDelete } from '../api/client'
 import { useConfirm } from '../composables/useConfirm'
 import { useToast } from '../composables/useToast'
 import Pagination from '../components/Pagination.vue'
+import { PhShieldCheck as ShieldCheck, PhPlus as Plus, PhX as X, PhCheck as Check, PhCaretRight as CaretRight, PhTrash as Trash } from "@phosphor-icons/vue"
 
 const PAGE_SIZE = 10
 

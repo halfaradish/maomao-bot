@@ -1,6 +1,6 @@
 <template>
   <div class="page-container">
-    <h3 class="page-title">权限点</h3>
+    <h3 class="page-title"><Key :size="22" />权限点</h3>
 
     <div class="inline-form">
       <select v-model="pluginFilter" @change="load(1)">
@@ -47,6 +47,7 @@ import { ref, onMounted } from 'vue'
 import { apiGet } from '../api/client'
 import { useToast } from '../composables/useToast'
 import Pagination from '../components/Pagination.vue'
+import { PhKey as Key } from "@phosphor-icons/vue"
 
 const { showToast } = useToast()
 const PAGE_SIZE = 10
@@ -86,9 +87,3 @@ onMounted(() => {
   load()
 })
 </script>
-
-<style scoped>
-.page-container {
-  padding: 0;
-}
-</style>

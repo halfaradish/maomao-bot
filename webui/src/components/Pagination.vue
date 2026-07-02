@@ -1,7 +1,7 @@
 <template>
   <div class="pagination" v-if="total > pageSize">
     <button class="secondary" :disabled="!hasPrev" @click="$emit('update:page', page - 1)">
-      上一页
+      <CaretLeft :size="14" />上一页
     </button>
     <template v-for="p in pageNumbers" :key="p">
       <button v-if="p === '...'" class="secondary" disabled>...</button>
@@ -14,14 +14,15 @@
       </button>
     </template>
     <button class="secondary" :disabled="!hasNext" @click="$emit('update:page', page + 1)">
-      下一页
+      下一页<CaretRight :size="14" />
     </button>
-    <span class="page-info">共 {{ total }} 条，第 {{ page }}/{{ totalPages }} 页</span>
+    <span class="page-info"><ListDashes :size="14" />共 {{ total }} 条，第 {{ page }}/{{ totalPages }} 页</span>
   </div>
 </template>
 
 <script setup>
 import { computed } from 'vue'
+import { PhCaretLeft as CaretLeft, PhCaretRight as CaretRight, PhListDashes as ListDashes } from "@phosphor-icons/vue"
 
 const props = defineProps({
   page: { type: Number, required: true },
