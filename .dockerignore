@@ -21,3 +21,15 @@ tmp/
 
 scripts/
 data/
+
+# webui source (only needed at build time in Docker)
+webui/src/
+webui/package.json
+webui/package-lock.json
+webui/vite.config.js
+
+# webui build artifacts (let Docker produce fresh)
+webui/dist/
+
+# vite dev cache
+webui/.vite/
