@@ -72,7 +72,7 @@ async function load(pageNum) {
 
 async function loadPlugins() {
   try {
-    const res = await apiGet('/permissions/points?page=1&size=200')
+    const res = await apiGet('/permissions/points?page=1&size=100')
     const list = res.data.items || []
     const names = [...new Set(list.map(item => item.plugin_name))]
     pluginOptions.value = names.sort()

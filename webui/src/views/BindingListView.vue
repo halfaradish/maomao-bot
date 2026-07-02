@@ -90,7 +90,7 @@ async function load() {
 
 async function loadGroups() {
   try {
-    const res = await apiGet('/permissions/groups?page=1&size=200')
+    const res = await apiGet('/permissions/groups?page=1&size=100')
     const items = res.data.items || []
     groupOptions.value = items
     const map = {}
