@@ -23,11 +23,11 @@ from .permissions import router as perm_router
 # ---------------------------------------------------------------------------
 
 _WEBUI_DIR = Path(__file__).resolve().parent.parent.parent / "webui"
-_WEBUI_INDEX = _WEBUI_DIR / "index.html"
+_WEBUI_INDEX = _WEBUI_DIR / "dist" / "index.html"
 
 
 async def _spa_404_handler(request: Request, exc: StarletteHTTPException):
-    """Serve SPA index.html for 404s on non-API GET paths.
+    """Serve SPA static files and index.html for 404s on non-API GET paths.
 
     Uses Starlette's exception handler instead of app.mount("/", StaticFiles)
     because ``mount`` catches *all* traffic (including NoneBot's WebSocket
@@ -39,6 +39,17 @@ async def _spa_404_handler(request: Request, exc: StarletteHTTPException):
         and not request.url.path.startswith("/api/")
         and _WEBUI_INDEX.exists()
     ):
+        # Try serving a static file from the dist directory first
+        static_path = (_WEBUI_DIR / "dist" / request.url.path.lstrip("/")).resolve()
+        try:
+            static_path.relative_to((_WEBUI_DIR / "dist").resolve())
+        except ValueError:
+            pass  # Path traversal attempt — fall through to SPA index
+        else:
+            if static_path.exists() and static_path.is_file():
+                return FileResponse(str(static_path))
+
+        # Fallback: serve index.html for client-side routing
         return FileResponse(str(_WEBUI_INDEX), media_type="text/html")
     return JSONResponse(
         status_code=exc.status_code,
