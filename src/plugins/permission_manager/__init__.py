@@ -14,6 +14,7 @@ from nonebot.adapters.onebot.v11 import Bot, Message, MessageEvent, GroupMessage
 from nonebot.params import CommandArg
 from nonebot.plugin import PluginMetadata
 from nonebot.exception import FinishedException
+from nonebot.typing import T_State
 
 from sqlalchemy import select, delete as sa_delete
 from sqlalchemy.orm import selectinload
@@ -136,8 +137,8 @@ def _invalidate_related_cache(user_id: Optional[int] = None, group_id: Optional[
         perm_cache.clear_all()
 
 
-async def _handle_login(bot: Bot, event: MessageEvent):
-    """处理 `权限 登录` 子命令：生成Web面板临时密码"""
+async def _handle_login(bot: Bot, event: MessageEvent, state: T_State):
+    """处理 `权限 登录` 子命令：生成Web面板临时密码，进入二次确认"""
     if not await _ensure_superuser(event):
         logger.warning(f"用户 {event.user_id} 尝试获取登录验证码但权限不足")
         await perm_cmd.finish("你没有权限执行此操作")
@@ -146,27 +147,8 @@ async def _handle_login(bot: Bot, event: MessageEvent):
     qq_number = str(event.user_id)
     logger.info(f"用户 {event.user_id} 已生成Web管理面板登录验证码（5分钟内有效）")
     perm_cache.set(f"webui:temp_pwd:{qq_number}", temp_pwd, ttl=300)
-
-    msg = (
-        f"【Web管理面板登录验证码】\n"
-        f"验证码: {temp_pwd}\n"
-        f"该验证码5分钟内有效\n"
-        f"请前往管理面板使用此验证码登录。"
-    )
-
-    if isinstance(event, GroupMessageEvent):
-        try:
-            await perm_cmd.finish(message=msg, at_sender=True)
-        except FinishedException:
-            pass
-        except Exception:
-
-            await perm_cmd.finish(
-                "无法发送验证码消息",
-                at_sender=True,
-            )
-    else:
-        await perm_cmd.finish(msg)
+    state["login_ready"] = True
+    # 不调用 finish() / pause() — 让 got() handler 接管后续二次确认流程
 
 
 def _build_help_text() -> str:
@@ -221,6 +203,7 @@ async def handle_permission_command(
     bot: Bot,
     event: MessageEvent,
     args: Message = CommandArg(),
+    state: T_State = T_State(),
 ):
     # 需要超级管理员或 permission_manager:manage 权限
     if not await _ensure_superuser(event):
@@ -324,11 +307,43 @@ async def handle_permission_command(
 
     # ---- 登录 / login ----
     elif subcmd in ("登录", "login", "signin"):
-        await _handle_login(bot, event)
+        await _handle_login(bot, event, state)
 
     # ---- help ----
     elif subcmd in ("help", "帮助", "-h", "--help"):
         await perm_cmd.finish(_build_help_text())
+
+@perm_cmd.got("login_confirm", prompt="是否通过私聊发送验证码？(是/否)")
+async def handle_login_confirm(bot: Bot, event: MessageEvent, state: T_State):
+    """处理登录二次确认：是 → 私聊发送，否 → 当前会话发送"""
+    if not state.get("login_ready"):
+        await perm_cmd.finish()  # 非登录流程，静默结束
+
+    resp = state["login_confirm"].extract_plain_text().strip()
+    temp_pwd = perm_cache.get(f"webui:temp_pwd:{event.user_id}")
+    if not temp_pwd:
+        await perm_cmd.finish("验证码已过期，请重新执行「权限 登录」")
+
+    msg = (
+        f"【Web管理面板登录验证码】\n"
+        f"验证码: {temp_pwd}\n"
+        f"该验证码5分钟内有效\n"
+        f"请前往管理面板使用此验证码登录。"
+    )
+
+    if resp in ("是", "y", "yes", "Y", "Yes", "YES", "1"):
+        try:
+            await bot.send_private_msg(user_id=event.user_id, message=msg)
+            await perm_cmd.finish("验证码已通过私聊发送，请注意查收")
+        except FinishedException:
+            pass
+        except Exception:
+            await perm_cmd.finish("私聊发送失败，请检查是否已添加好友", at_sender=True)
+    else:
+        if isinstance(event, GroupMessageEvent):
+            await perm_cmd.finish(msg, at_sender=True)
+        else:
+            await perm_cmd.finish(msg)
 
 
 
