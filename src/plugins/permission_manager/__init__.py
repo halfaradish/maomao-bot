@@ -76,6 +76,8 @@ __plugin_meta__ = PluginMetadata(
 config = get_plugin_config(Config)
 driver = get_driver()
 
+_login_pending: set[int] = set()
+
 
 # ============================================================
 # 工具函数
@@ -147,26 +149,9 @@ async def _handle_login(bot: Bot, event: MessageEvent):
     logger.info(f"用户 {event.user_id} 已生成Web管理面板登录验证码（5分钟内有效）")
     perm_cache.set(f"webui:temp_pwd:{qq_number}", temp_pwd, ttl=300)
 
-    msg = (
-        f"【Web管理面板登录验证码】\n"
-        f"验证码: {temp_pwd}\n"
-        f"该验证码5分钟内有效\n"
-        f"请前往管理面板使用此验证码登录。"
-    )
-
-    if isinstance(event, GroupMessageEvent):
-        try:
-            await perm_cmd.finish(message=msg, at_sender=True)
-        except FinishedException:
-            pass
-        except Exception:
-
-            await perm_cmd.finish(
-                "无法发送验证码消息",
-                at_sender=True,
-            )
-    else:
-        await perm_cmd.finish(msg)
+    _login_pending.add(event.user_id)
+    await perm_cmd.send("是否通过私聊发送验证码？(是y/否)")
+    await perm_cmd.pause()
 
 
 def _build_help_text() -> str:
@@ -226,6 +211,33 @@ async def handle_permission_command(
     if not await _ensure_superuser(event):
         logger.warning(f"用户 {event.user_id} 尝试执行权限管理命令但权限不足")
         await perm_cmd.finish("你没有权限管理权限系统（仅超级管理员或拥有「权限管理」权限的用户可执行）")
+
+    # 处理登录二次确认回复
+    if event.user_id in _login_pending:
+        _login_pending.discard(event.user_id)
+        resp = args.extract_plain_text().strip()
+        temp_pwd = perm_cache.get(f"webui:temp_pwd:{event.user_id}")
+        if not temp_pwd:
+            await perm_cmd.finish("验证码已过期，请重新执行「权限 登录」")
+        msg = (
+            f"【Web管理面板登录验证码】\n"
+            f"验证码: {temp_pwd}\n"
+            f"该验证码5分钟内有效\n"
+            f"请前往管理面板使用此验证码登录。"
+        )
+        if resp in ("是", "y", "yes", "Y", "Yes", "YES", "1"):
+            try:
+                await bot.send_private_msg(user_id=event.user_id, message=msg)
+                await perm_cmd.finish("验证码已通过私聊发送，请注意查收")
+            except FinishedException:
+                pass
+            except Exception:
+                await perm_cmd.finish("私聊发送失败，请检查是否已添加好友", at_sender=True)
+        else:
+            if isinstance(event, GroupMessageEvent):
+                await perm_cmd.finish(msg, at_sender=True)
+            else:
+                await perm_cmd.finish(msg)
 
     logger.info(f"用户 {event.user_id} 执行权限管理命令: {args.extract_plain_text().strip()}")
     tokens = _tokenize_arguments(args)
