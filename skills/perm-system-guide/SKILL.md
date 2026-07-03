@@ -2,16 +2,17 @@
 name: perm-system-guide
 description: >
   DiTing-NoneBot 权限系统集成与运维指南。
-  当需要在插件中接入权限校验、注册新的权限点、通过管理面板配置黑白名单或权限组、
+  当需要在插件中接入权限校验、注册新的权限点、通过管理面板（QQ命令或WebUI）配置黑白名单或权限组、
   排查权限拒绝问题、或理解 8 步优先级校验流程时使用。
   触发词：permission、权限、perm_key、check_permission、permission_checker、
   register_perm_point、PermissionChecker、perm_cache、TTLCache、
-  白名单、黑名单、权限组、权限系统、permission_manager。
+  白名单、黑名单、权限组、权限系统、permission_manager、
+  WebUI、web管理面板、管理面板、SPA、Vue、npm run build、前端构建。
 ---
 
 # DiTing 权限系统使用指南
 
-> 完整的权限校验系统，提供 8 级优先级流程、三种接入方式、QQ 聊天管理面板。
+> 完整的权限校验系统，提供 8 级优先级流程、三种接入方式、QQ 聊天管理面板 + WebUI 管理面板。
 > 基于 NoneBot Plugin + OneBot v11，单进程内存缓存。
 
 ## 架构概览
@@ -39,11 +40,17 @@ src/common/permission/
   ├─ models.py            ← 9 个 SQLAlchemy 模型（8 张表）
   └─ auto_register.py     ← 启动钩子：建表 + 同步权限点到数据库
        │
-       ▼
-src/plugins/permission_manager/  ← QQ 聊天管理面板
-  ├─ __init__.py           ← 命令路由 + 所有管理操作实现
-  ├─ permissions.py        ← 注册 permission_manager:manage 权限点
-  └─ config.py             ← 配置：命令名、优先级、是否拦截
+       ├──────────────────────────────────────────┐
+       ▼                                          ▼
+src/plugins/permission_manager/          src/api/
+  QQ 聊天管理面板                           REST API (WebUI 后端)
+  └─ 权限/perm 命令                         ├─ auth.py       认证 (JWT)
+                                             └─ permissions.py  CRUD (30+端点)
+                                                  │
+                                                  ▼
+                                            webui/
+                                              Vue 3 + Vite SPA
+                                              └─ 9 个管理视图
 ```
 
 | 组件 | 说明 |
@@ -264,7 +271,21 @@ async def handler(event, matcher, args: str = CommandArg()):
 
 ---
 
-## 5. 管理面板命令
+## 5. 管理面板
+
+权限系统提供**两种**管理界面：QQ 聊天命令（传统方式）和 WebUI 管理面板（浏览器方式）。两者操作同一套数据库，功能等价。
+
+### 5.0 两种管理界面
+
+| 特性 | QQ 聊天命令 | WebUI 管理面板 |
+|------|-----------|---------------|
+| 访问方式 | QQ 群聊发送命令 | 浏览器访问 `http://<host>:6090/` |
+| 认证 | QQ 号 + 群内发言 | JWT（通过 QQ 获取临时密码登录） |
+| 操作方式 | 文本命令 + 参数 | 图形表单 + 表格 + 分页 |
+| 适合场景 | 快速操作、移动端 | 批量管理、数据浏览 |
+| 文档 | 本节（5.1-5.8） | 参见 **[perm-webui-guide](../perm-webui-guide/SKILL.md)** |
+
+### 5.A QQ 聊天管理命令
 
 `permission_manager` 插件通过 QQ 聊天提供管理界面，可执行权限由 `permission_manager:manage` 权限点控制——**超级管理员**默认拥有，也可通过权限组授予其他用户。
 
@@ -363,6 +384,24 @@ perm 查看/view <QQ号>
 | 群绑定变更 | `clear_pattern("perm::{group_id}:")` | 失效该群的所有缓存 |
 
 缓存键格式为 `perm:{user_id}:{group_id}:{perm_key}`。`clear_pattern` 做的是子字符串匹配（不是前缀匹配），所以 `perm:{user_id}:` 和 `perm::{group_id}:` 实际都通过包含匹配命中。
+
+### 5.B WebUI 管理面板
+
+WebUI 提供基于浏览器的图形化管理界面，包含 9 个管理视图，覆盖所有 QQ 命令的功能：
+
+| 视图 | 路由 | 功能 |
+|------|------|------|
+| 仪表盘 | `/` | 6 张功能导航卡片 |
+| 权限组 | `/groups` | 权限组 CRUD + 成员/权限点管理 |
+| 群绑定 | `/bindings` | 群-权限组绑定管理 |
+| 黑名单 | `/blacklist` | 用户/群黑名单（双标签页） |
+| 白名单 | `/whitelist` | 用户/群白名单（双标签页） |
+| 权限点 | `/points` | 已注册权限点列表（只读） |
+| 用户状态 | `/user-status` | 聚合查看用户完整权限状态 |
+
+技术栈：Vue 3 + Vite + Pico.css，通过 JWT 认证调用 `/api/v1/permissions/` 下的 REST API。
+
+开发工作流和详细文档 → 参见 **[perm-webui-guide](../perm-webui-guide/SKILL.md)**。
 
 ---
 
@@ -651,7 +690,7 @@ perm 绑定/bind 群/group 789012 admin
 | 位置 | `src/common/permission/` | `src/common/siqi_auth_client.py` |
 | 存储 | Bot DB（8 张表） | 外部 HTTP 服务 |
 | 模型 | 黑白名单 + 权限组 + 群绑定 | 外部 API 检查 |
-| 管理 | QQ 聊天管理面板 | 外部平台 |
+| 管理 | QQ 聊天 + WebUI 管理面板 | 外部平台 |
 | 消息 | URL 白名单（如 `ban_whitelist.json`）| 各插件独立 JSON 文件 |
 
 迁移时一个命令不能同时接入两套权限系统——选择一套即可。
@@ -695,3 +734,7 @@ perm 绑定/bind → 群/group 解除/unbind 列表/list
 perm 注册点/points → 列表/list
 perm 查看/view
 ```
+
+### WebUI 管理面板
+
+> 浏览器图形化管理界面（9 个视图、JWT 认证、REST API）→ 参见 **[perm-webui-guide](../perm-webui-guide/SKILL.md)**

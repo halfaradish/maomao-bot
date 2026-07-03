@@ -1,3 +1,11 @@
+# 阶段 0: 前端构建层
+FROM node:20-alpine AS webui-builder
+WORKDIR /webui
+COPY webui/package.json webui/package-lock.json ./
+RUN npm ci
+COPY webui/ ./
+RUN npm run build
+
 # 阶段 1: 基础系统层
 FROM python:3.10-slim AS base
 EXPOSE 6090 6379
@@ -60,5 +68,8 @@ RUN g++ -fPIC -shared \
     -o src/plugins/sub_records/table_gen.so \
     $(pkg-config --cflags --libs cairo pango pangocairo jsoncpp) \
     -O3
+
+# 从构建阶段复制前端产物
+COPY --from=webui-builder /webui/dist ./webui/dist
 
 CMD ["python", "bot.py"]

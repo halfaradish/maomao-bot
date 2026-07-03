@@ -10,7 +10,8 @@ from .local_config import (
     DiTingBotDBConfig,
     LogConfig,
     NoneBotToken,
-    SiqiAuthConfig
+    SiqiAuthConfig,
+    WebUIConfig
 )
 from .response import (
     build_response,
@@ -31,6 +32,7 @@ __all__ = [
     'LogConfig',
     'NoneBotToken',
     'SiqiAuthConfig',
+    'WebUIConfig',
     'build_response',
     'success',
     'error'
