@@ -42,9 +42,10 @@
   <!-- Perms -->
   <h4 class="section-title"><Lock :size="16" />权限点</h4>
   <div class="inline-form">
-    <input v-model="newPermKeys" placeholder="权限标识（多个用逗号分隔）" />
+    <input v-model="newPermKeys" placeholder="插件名:操作" />
     <button :disabled="addingPerm" @click="addPerms"><Plus :size="16" />添加</button>
   </div>
+  <p style="font-size:0.78rem;color:var(--pico-muted-color);margin:-0.5rem 0 1rem 0">格式: <code>插件名:操作</code>，如 <code>permission_manager:manage</code>（多个用逗号分隔）</p>
   <div class="table-wrap">
     <table v-if="perms.length">
       <thead>
