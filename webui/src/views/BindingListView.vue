@@ -2,7 +2,7 @@
   <h3 class="page-title"><Link :size="22" />群绑定</h3>
 
   <div class="inline-form">
-    <input v-model="form.qq_group_id" type="number" placeholder="QQ群号" />
+    <input v-model="form.qq_group_id" type="text" inputmode="numeric" placeholder="QQ群号" />
     <select v-model="form.permission_group_id">
       <option value="" disabled>选择权限组</option>
       <option v-for="g in groupOptions" :key="g.id" :value="g.id">

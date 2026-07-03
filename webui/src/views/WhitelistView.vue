@@ -12,7 +12,8 @@
     <div class="inline-form">
       <input
         v-model="form.id"
-        type="number"
+        type="text"
+        inputmode="numeric"
         :placeholder="activeTab === 'users' ? 'QQ号' : '群号'"
         style="min-width: 160px"
       >
