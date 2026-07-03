@@ -99,7 +99,7 @@ async function load() {
     const res = await apiGet(`/permissions/groups/${route.params.id}`)
     group.value = res.data
     members.value = res.data.members || []
-    perms.value = res.data.perms || []
+    perms.value = res.data.permissions || []
   } catch (e) {
     showToast(e.message || '加载失败', 'error')
   }
