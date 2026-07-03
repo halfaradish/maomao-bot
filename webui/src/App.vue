@@ -42,6 +42,7 @@
 <script setup>
 import { useRoute, useRouter } from 'vue-router'
 import { useAuth } from './composables/useAuth'
+import { useConfirm } from './composables/useConfirm'
 import ConfirmDialog from './components/ConfirmDialog.vue'
 import ToastItem from './components/ToastItem.vue'
 import { PhGauge as Gauge, PhShieldCheck as ShieldCheck, PhLink as Link, PhProhibit as Prohibit, PhCheckCircle as CheckCircle, PhKey as Key, PhMagnifyingGlass as MagnifyingGlass, PhUserCircle as UserCircle, PhSignOut as SignOut } from "@phosphor-icons/vue"
@@ -49,8 +50,14 @@ import { PhGauge as Gauge, PhShieldCheck as ShieldCheck, PhLink as Link, PhProhi
 const route = useRoute()
 const router = useRouter()
 const { user, logout } = useAuth()
+const { showConfirm } = useConfirm()
 
 async function doLogout() {
+  try {
+    await showConfirm('退出登录', '确定要退出当前账号吗？')
+  } catch {
+    return
+  }
   await logout()
   router.push('/login')
 }
