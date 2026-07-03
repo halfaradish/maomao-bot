@@ -29,7 +29,7 @@ langchain-core
 langchain-community
 tiktoken
 cryptography
+python-jose[cryptography]
 jinja2
 loguru
 aiofiles
-nonebot-plugin-localstore

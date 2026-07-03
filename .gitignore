@@ -18,6 +18,10 @@ CLAUDE.md
 !.claude/skills/
 docs/superpowers
 
+# webui (Vite + Vue)
+node_modules/
+.vite/
+
 # Created by https://www.toptal.com/developers/gitignore/api/python
 # Edit at https://www.toptal.com/developers/gitignore?templates=python
 
