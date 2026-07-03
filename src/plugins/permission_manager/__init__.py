@@ -64,7 +64,8 @@ __plugin_meta__ = PluginMetadata(
         "perm 绑定/bind 解除/unbind <群号>\n"
         "perm 绑定/bind 列表/list [群号]\n"
         "perm 注册点/points 列表/list [插件名]\n"
-        "perm 查看/view <QQ号>"
+        "perm 查看/view <QQ号>\n"
+        "perm 登录/login - 获取Web管理面板登录验证码（二次确认）"
     ),
     config=Config,
     supported_adapters={"~onebot.v11"},
