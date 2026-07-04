@@ -11,6 +11,7 @@ ICPC 数据库 SQLAlchemy 模型
 - oj_account          OJ 账号映射
 - cf_all_submissions  Codeforces 全部提交记录
 - luogu_all_submissions 洛谷全部提交记录
+- gxu_major            专业信息表
 """
 from datetime import date, datetime
 
@@ -82,3 +83,15 @@ class LuoguAllSubmission(IcpcBase):
     difficulty: Mapped[int | None] = mapped_column(Integer, nullable=True)
     creation_time: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     is_pass: Mapped[int | None] = mapped_column(Integer, nullable=True)
+
+
+class GxuMajor(IcpcBase):
+    """专业信息表"""
+    __tablename__ = "gxu_major"
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    name: Mapped[str] = mapped_column(String(200))
+    code: Mapped[str] = mapped_column(String(50), unique=True)
+    status: Mapped[int] = mapped_column(Integer, default=1)
+    create_time: Mapped[datetime] = mapped_column(DateTime)
+    update_time: Mapped[datetime] = mapped_column(DateTime)
