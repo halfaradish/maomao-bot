@@ -799,6 +799,31 @@ async def remove_group_perm(
 # ---------------------------------------------------------------------------
 
 
+@router.get("/groups/{group_id}/bindings", summary="列出权限组已绑定的QQ群")
+async def list_group_bindings(
+    group_id: int,
+    auth: TokenPayload = Depends(verify_token),
+    request: Request = None,
+):
+    """列出指定权限组已绑定的所有QQ群。"""
+    async with async_session_factory() as session:
+        group = (await session.execute(
+            select(PermissionGroup.id).where(PermissionGroup.id == group_id).limit(1)
+        )).first()
+        if group is None:
+            return success(message=f"权限组 ID={group_id} 不存在", request=request)
+
+        result = await session.execute(
+            select(GroupPermBinding)
+            .where(GroupPermBinding.permission_group_id == group_id)
+            .order_by(GroupPermBinding.qq_group_id)
+        )
+        bindings = result.scalars().all()
+
+    items = [_serialize_binding(b) for b in bindings]
+    return success(data={"group_id": group_id, "bindings": items, "total": len(items)}, request=request)
+
+
 @router.get("/bindings", summary="列出群-权限组绑定")
 async def list_bindings(
     group_id: int = Query(None, description="按QQ群号过滤"),

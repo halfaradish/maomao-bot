@@ -67,6 +67,30 @@
     </table>
   </div>
   <div v-if="!perms.length" class="empty-state">暂无权限点</div>
+
+  <!-- Bindings -->
+  <h4 class="section-title"><Link :size="16" />已绑定的QQ群</h4>
+  <div class="table-wrap">
+    <table v-if="bindings.length">
+      <thead>
+        <tr>
+          <th>QQ群号</th>
+          <th>绑定时间</th>
+          <th>操作</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr v-for="b in bindings" :key="b.id">
+          <td>{{ b.qq_group_id }}</td>
+          <td>{{ fmt(b.created_at) }}</td>
+          <td>
+            <button class="secondary" @click="removeBinding(b.id, b.qq_group_id)"><LinkBreak :size="14" />解除</button>
+          </td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+  <div v-if="!bindings.length && !loadingBindings" class="empty-state">暂无绑定</div>
 </template>
 
 <script setup>
@@ -75,7 +99,7 @@ import { useRoute } from 'vue-router'
 import { apiGet, apiPost, apiDelete } from '../api/client'
 import { useConfirm } from '../composables/useConfirm'
 import { useToast } from '../composables/useToast'
-import { PhShieldCheck as ShieldCheck, PhCaretLeft as CaretLeft, PhUsersThree as UsersThree, PhLock as Lock, PhPlus as Plus, PhX as X } from "@phosphor-icons/vue"
+import { PhShieldCheck as ShieldCheck, PhCaretLeft as CaretLeft, PhUsersThree as UsersThree, PhLock as Lock, PhPlus as Plus, PhX as X, PhLink as Link, PhLinkBreak as LinkBreak } from "@phosphor-icons/vue"
 
 function fmt(ts) {
   if (!ts) return '—'
@@ -89,6 +113,8 @@ const route = useRoute()
 const group = ref(null)
 const members = ref([])
 const perms = ref([])
+const bindings = ref([])
+const loadingBindings = ref(false)
 
 const newMemberIds = ref('')
 const newPermKeys = ref('')
@@ -103,6 +129,18 @@ async function load() {
     perms.value = res.data.permissions || []
   } catch (e) {
     showToast(e.message || '加载失败', 'error')
+  }
+}
+
+async function loadBindings() {
+  loadingBindings.value = true
+  try {
+    const res = await apiGet(`/permissions/groups/${route.params.id}/bindings`)
+    bindings.value = res.data.bindings || []
+  } catch (e) {
+    showToast(e.message || '加载绑定列表失败', 'error')
+  } finally {
+    loadingBindings.value = false
   }
 }
 
@@ -183,5 +221,23 @@ async function removePerm(permKey) {
   }
 }
 
-onMounted(load)
+async function removeBinding(bindingId, qqGroupId) {
+  try {
+    await showConfirm('解除绑定', `确定将群 ${qqGroupId} 从该权限组解绑吗？`)
+  } catch {
+    return
+  }
+  try {
+    await apiDelete(`/permissions/bindings/${bindingId}`)
+    showToast('已解除')
+    loadBindings()
+  } catch (e) {
+    showToast(e.message || '解除失败', 'error')
+  }
+}
+
+onMounted(() => {
+  load()
+  loadBindings()
+})
 </script>
