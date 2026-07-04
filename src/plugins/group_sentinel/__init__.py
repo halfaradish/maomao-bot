@@ -73,7 +73,7 @@ else:
                 f"comment={comment}"
             )
         else:
-            await event.reject(bot, reason=reason)
+            await event.reject(bot, reason="学号前6位错误或虚假。有异议可上报群主1950482412")
             logger.info(
                 f"[group_sentinel] 拒绝入群: user={user_id} group={group_id} "
                 f"reason={reason}"
