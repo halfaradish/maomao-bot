@@ -13,7 +13,7 @@ import {
 import { Pagination } from "@heroui/pagination";
 import { Spinner } from "@heroui/spinner";
 import { Chip } from "@heroui/chip";
-import { motion } from "framer-motion";
+import { motion, AnimatePresence } from "framer-motion";
 
 import { usePermissionPoints, usePermissionPlugins } from "@/api/hooks";
 
@@ -120,25 +120,36 @@ export default function PointsPage() {
                 onClear={handleClear}
               />
               {/* 下拉建议列表 */}
-              {showDropdown && filteredPlugins.length > 0 && (
-                <div className="absolute z-50 top-full mt-1 w-full bg-white dark:bg-default-50 border border-default-200 rounded-lg shadow-lg max-h-[300px] overflow-y-auto">
-                  {filteredPlugins.map((name) => (
-                    <div
-                      key={name}
-                      className="px-3 py-2 cursor-pointer hover:bg-default-100 active:bg-default-200 transition-colors"
-                      onMouseDown={(e) => {
-                        // 用 onMouseDown 而非 onClick，保证在 input blur 之前触发
-                        e.preventDefault();
-                        handleSelect(name);
-                      }}
-                    >
-                      <Chip size="sm" variant="flat" color="secondary">
-                        {name}
-                      </Chip>
-                    </div>
-                  ))}
-                </div>
-              )}
+              <AnimatePresence>
+                {showDropdown && filteredPlugins.length > 0 && (
+                  <motion.div
+                    initial={{ opacity: 0, y: -8, scaleY: 0.95 }}
+                    animate={{ opacity: 1, y: 0, scaleY: 1 }}
+                    exit={{ opacity: 0, y: -8, scaleY: 0.95 }}
+                    transition={{ duration: 0.15, ease: "easeOut" }}
+                    className="absolute z-50 top-full mt-1 w-full origin-top bg-white dark:bg-default-50 border border-default-200 rounded-lg shadow-lg max-h-[300px] overflow-y-auto"
+                  >
+                    {filteredPlugins.map((name, i) => (
+                      <motion.div
+                        key={name}
+                        initial={{ opacity: 0, x: -8 }}
+                        animate={{ opacity: 1, x: 0 }}
+                        transition={{ duration: 0.12, delay: Math.min(i * 0.02, 0.2) }}
+                        className="px-3 py-2 cursor-pointer hover:bg-default-100 active:bg-default-200 transition-colors"
+                        onMouseDown={(e) => {
+                          // 用 onMouseDown 而非 onClick，保证在 input blur 之前触发
+                          e.preventDefault();
+                          handleSelect(name);
+                        }}
+                      >
+                        <Chip size="sm" variant="flat" color="secondary">
+                          {name}
+                        </Chip>
+                      </motion.div>
+                    ))}
+                  </motion.div>
+                )}
+              </AnimatePresence>
             </div>
             {activeFilter && (
               <Button variant="light" onPress={handleClear}>
