@@ -93,7 +93,7 @@ export default function BlacklistPage() {
         <Tab key="users" title="用户黑名单">
           <Card className="bg-white/60 dark:bg-black/40 backdrop-blur-xl border border-white/40 dark:border-white/10 shadow-sm">
             <CardBody className="space-y-4">
-              <form onSubmit={handleAddUser} className="flex gap-2">
+              <form onSubmit={handleAddUser} className="flex gap-2 items-end">
                 <Input
                   placeholder="QQ号"
                   value={userId}
@@ -101,6 +101,7 @@ export default function BlacklistPage() {
                   variant="bordered"
                   radius="lg"
                   isRequired
+                  className="w-40"
                 />
                 <Input
                   placeholder="原因（可选）"
@@ -109,6 +110,7 @@ export default function BlacklistPage() {
                   variant="bordered"
                   radius="lg"
                   className="flex-1"
+                  labelPlacement="outside"
                 />
                 <Button
                   type="submit"
@@ -156,7 +158,7 @@ export default function BlacklistPage() {
                           variant="light"
                           onPress={() => userList.handleDelete(item)}
                         >
-                          <MdDelete size={18} className="text-success" />
+                          <MdDelete size={18} className="text-danger" />
                         </Button>
                       </TableCell>
                     </TableRow>
@@ -182,7 +184,7 @@ export default function BlacklistPage() {
         <Tab key="groups" title="群黑名单">
           <Card className="bg-white/60 dark:bg-black/40 backdrop-blur-xl border border-white/40 dark:border-white/10 shadow-sm">
             <CardBody className="space-y-4">
-              <form onSubmit={handleAddGroup} className="flex gap-2">
+              <form onSubmit={handleAddGroup} className="flex gap-2 items-end">
                 <Input
                   placeholder="群号"
                   value={groupId}
@@ -190,6 +192,7 @@ export default function BlacklistPage() {
                   variant="bordered"
                   radius="lg"
                   isRequired
+                  className="w-40"
                 />
                 <Input
                   placeholder="原因（可选）"
@@ -198,6 +201,7 @@ export default function BlacklistPage() {
                   variant="bordered"
                   radius="lg"
                   className="flex-1"
+                  labelPlacement="outside"
                 />
                 <Button
                   type="submit"
@@ -245,7 +249,7 @@ export default function BlacklistPage() {
                           variant="light"
                           onPress={() => groupList.handleDelete(item)}
                         >
-                          <MdDelete size={18} className="text-success" />
+                          <MdDelete size={18} className="text-danger" />
                         </Button>
                       </TableCell>
                     </TableRow>
