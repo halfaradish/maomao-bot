@@ -64,7 +64,7 @@ else:
             return
 
         # 2. 执行审核逻辑
-        approved = await audit_join_request(comment, user_id, group_id)
+        approved, reason = await audit_join_request(comment, user_id, group_id)
 
         if approved:
             await event.approve(bot)
@@ -73,12 +73,23 @@ else:
                 f"comment={comment}"
             )
         else:
-            reason = "你的入群申请未通过审核，请检查验证信息后重试。"
             await event.reject(bot, reason=reason)
             logger.info(
                 f"[group_sentinel] 拒绝入群: user={user_id} group={group_id} "
                 f"reason={reason}"
             )
+
+            # 发送群通知，供群主/群友人工复核
+            notify_msg = (
+                f"⚠️ 入群审核拒绝通知\n"
+                f"申请人：{user_id}\n"
+                f"拒绝原因：{reason}\n"
+                f"申请信息：{comment or '(空)'}"
+            )
+            try:
+                await bot.send_group_msg(group_id=group_id, message=notify_msg)
+            except Exception as e:
+                logger.warning(f"[group_sentinel] 发送拒绝通知失败: {e}")
 
     # ── 启动时自动创建默认权限组 ──
     @get_driver().on_startup

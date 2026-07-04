@@ -1,23 +1,82 @@
 """入群审核逻辑
 
-当前为占位实现，统一返回 True（全部放行）。
-后续可接入：
-- 关键词/正则过滤
-- AI 模型审核
-- 用户画像/行为分析
-- 外部 API 审核
+规则：
+1. 从入群申请 comment 中提取"答案"字段值，去除非数字字符后必须恰好 6 位数字
+2. 前 2 位转为整数，必须在 [1, 当前年份后两位] 范围内
+3. 后 4 位字符串，须在 gxu_major 表中 code 字段存在精确匹配
+4. 仅当步骤 2 和 3 均通过才批准
 """
+import re
+from datetime import datetime
 from typing import Optional
 
 from nonebot import logger
+
+from src.common import get_icpc_db_connection
+
+
+def _extract_student_id(comment: Optional[str]) -> Optional[str]:
+    """从入群申请 comment 中提取学号前 6 位（纯数字）。
+
+    comment 格式: '问题：请输入学号前 6 位\\n答案：xxxxx'
+    按"答案："或"答案:"分割，取后半部分，去除所有非数字字符。
+    """
+    if not comment:
+        return None
+
+    # 按 "答案：" 或 "答案:" 分割
+    for sep in ("答案：", "答案:"):
+        if sep in comment:
+            answer = comment.split(sep, 1)[1].strip()
+            break
+    else:
+        # 没有"答案"标记，直接用整个 comment
+        answer = comment
+
+    # 去除非数字字符
+    digits = re.sub(r"\D", "", answer)
+    if len(digits) != 6:
+        return None
+
+    return digits
+
+
+def _get_max_grade() -> int:
+    """获取允许的最大年级（当前年份后两位）。
+
+    系统年份获取异常时默认返回 26。
+    """
+    try:
+        return datetime.now().year % 100
+    except Exception:
+        return 26
+
+
+async def _major_code_exists(code: str) -> bool:
+    """检查专业编码是否在 gxu_major 表中存在。
+
+    精确匹配，忽略首尾空格。
+    """
+    try:
+        async with get_icpc_db_connection() as db:
+            rows = await db.execute(
+                "SELECT code FROM gxu_major WHERE TRIM(code) = %s LIMIT 1",
+                [code],
+            )
+            return len(rows) > 0
+    except Exception as e:
+        logger.error(f"[group_sentinel] 查询 gxu_major 失败: {e}")
+        return False
 
 
 async def audit_join_request(
     comment: Optional[str],
     user_id: int,
     group_id: int,
-) -> bool:
+) -> tuple[bool, str]:
     """审核入群请求。
+
+    提取学号前 6 位，依次校验格式、年级范围、专业编码。
 
     Args:
         comment: 用户填写的入群验证信息（可能为 None）
@@ -25,13 +84,31 @@ async def audit_join_request(
         group_id: 目标群号
 
     Returns:
-        bool: True 批准入群，False 拒绝入群
+        tuple[bool, str]: (是否批准, 原因说明)
     """
-    logger.debug(
+    logger.info(
         f"[group_sentinel] 审核: user={user_id}, group={group_id}, "
         f"comment={comment!r}"
     )
 
-    # === TODO: 实现实际审核逻辑 ===
-    # 当前为占位实现，所有请求默认通过
-    return True
+    # 1. 提取学号，校验格式（去除非数字后必须恰好 6 位）
+    student_id = _extract_student_id(comment)
+    if student_id is None:
+        return False, "学号格式错误"
+
+    # 2. 前 2 位年级校验
+    try:
+        grade = int(student_id[:2])
+    except ValueError:
+        return False, "学号格式错误"
+
+    max_grade = _get_max_grade()
+    if grade < 1 or grade > max_grade:
+        return False, "学号年级不在允许范围"
+
+    # 3. 后 4 位专业编码校验
+    major_code = student_id[2:]  # 后 4 位
+    if not await _major_code_exists(major_code):
+        return False, "专业编码不存在"
+
+    return True, ""
