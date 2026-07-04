@@ -340,6 +340,13 @@ export function usePermissionPoints(page = 1, size = 20, plugin?: string) {
   });
 }
 
+export function usePermissionPlugins() {
+  return useQuery({
+    queryKey: ["permission-plugins"],
+    queryFn: () => apiGet<{ plugins: string[] }>(API.points.plugins),
+  });
+}
+
 // ---------------------------------------------------------------------------
 // User Status
 // ---------------------------------------------------------------------------

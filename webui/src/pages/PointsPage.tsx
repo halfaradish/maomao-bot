@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useMemo, useRef, useEffect, useCallback } from "react";
 import { Card, CardBody } from "@heroui/card";
 import { Input } from "@heroui/input";
 import { Button } from "@heroui/button";
@@ -13,27 +13,83 @@ import {
 import { Pagination } from "@heroui/pagination";
 import { Spinner } from "@heroui/spinner";
 import { Chip } from "@heroui/chip";
-import { MdSearch } from "react-icons/md";
 import { motion } from "framer-motion";
 
-import { usePermissionPoints } from "@/api/hooks";
+import { usePermissionPoints, usePermissionPlugins } from "@/api/hooks";
 
 export default function PointsPage() {
   const [page, setPage] = useState(1);
-  const [pluginFilter, setPluginFilter] = useState("");
+  const [inputValue, setInputValue] = useState("");
   const [activeFilter, setActiveFilter] = useState("");
+  const [showDropdown, setShowDropdown] = useState(false);
+  const wrapperRef = useRef<HTMLDivElement>(null);
 
   const { data, isLoading } = usePermissionPoints(page, 20, activeFilter || undefined);
+  const { data: pluginsData } = usePermissionPlugins();
 
   const points = data?.data?.items ?? [];
   const total = data?.data?.total ?? 0;
   const totalPages = Math.ceil(total / 20);
 
-  const handleSearch = (e: React.FormEvent) => {
-    e.preventDefault();
-    setActiveFilter(pluginFilter);
+  const pluginNames = useMemo(() => {
+    return pluginsData?.data?.plugins ?? [];
+  }, [pluginsData]);
+
+  const filteredPlugins = useMemo(() => {
+    if (!inputValue.trim()) return pluginNames;
+    const lower = inputValue.toLowerCase();
+    return pluginNames.filter((name) => name.toLowerCase().includes(lower));
+  }, [pluginNames, inputValue]);
+
+  // 点击外部关闭下拉
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (wrapperRef.current && !wrapperRef.current.contains(e.target as Node)) {
+        setShowDropdown(false);
+      }
+    };
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
+
+  const handleSelect = useCallback((name: string) => {
+    setInputValue(name);
+    setActiveFilter(name);
+    setShowDropdown(false);
     setPage(1);
-  };
+  }, []);
+
+  const handleClear = useCallback(() => {
+    setInputValue("");
+    setActiveFilter("");
+    setShowDropdown(false);
+    setPage(1);
+  }, []);
+
+  const handleKeyDown = useCallback(
+    (e: React.KeyboardEvent) => {
+      if (e.key === "Enter") {
+        e.preventDefault();
+        // 回车时如果有输入值则按输入值筛选（模糊匹配取第一个，或直接用输入值）
+        if (inputValue.trim()) {
+          const match = pluginNames.find((n) =>
+            n.toLowerCase().includes(inputValue.toLowerCase())
+          );
+          if (match) {
+            setActiveFilter(match);
+            setInputValue(match);
+          } else {
+            setActiveFilter(inputValue);
+          }
+        }
+        setShowDropdown(false);
+        setPage(1);
+      } else if (e.key === "Escape") {
+        setShowDropdown(false);
+      }
+    },
+    [inputValue, pluginNames]
+  );
 
   return (
     <motion.div
@@ -47,35 +103,49 @@ export default function PointsPage() {
       <Card className="bg-white/60 dark:bg-black/40 backdrop-blur-xl border border-white/40 dark:border-white/10 shadow-sm">
         <CardBody className="space-y-4">
           {/* Filter */}
-          <form onSubmit={handleSearch} className="flex gap-2">
-            <Input
-              placeholder="按插件名筛选"
-              value={pluginFilter}
-              onValueChange={setPluginFilter}
-              variant="bordered"
-              radius="lg"
-              className="flex-1"
-            />
-            <Button
-              type="submit"
-              color="primary"
-              startContent={<MdSearch size={18} />}
-            >
-              筛选
-            </Button>
-            {activeFilter && (
-              <Button
-                variant="light"
-                onPress={() => {
-                  setPluginFilter("");
-                  setActiveFilter("");
-                  setPage(1);
+          <div className="flex gap-2 items-end">
+            <div ref={wrapperRef} className="relative flex-1">
+              <Input
+                placeholder="按插件名筛选（支持模糊搜索）"
+                value={inputValue}
+                onValueChange={(v) => {
+                  setInputValue(v);
+                  setShowDropdown(true);
                 }}
-              >
+                onFocus={() => setShowDropdown(true)}
+                onKeyDown={handleKeyDown}
+                variant="bordered"
+                radius="lg"
+                isClearable
+                onClear={handleClear}
+              />
+              {/* 下拉建议列表 */}
+              {showDropdown && filteredPlugins.length > 0 && (
+                <div className="absolute z-50 top-full mt-1 w-full bg-white dark:bg-default-50 border border-default-200 rounded-lg shadow-lg max-h-[300px] overflow-y-auto">
+                  {filteredPlugins.map((name) => (
+                    <div
+                      key={name}
+                      className="px-3 py-2 cursor-pointer hover:bg-default-100 active:bg-default-200 transition-colors"
+                      onMouseDown={(e) => {
+                        // 用 onMouseDown 而非 onClick，保证在 input blur 之前触发
+                        e.preventDefault();
+                        handleSelect(name);
+                      }}
+                    >
+                      <Chip size="sm" variant="flat" color="secondary">
+                        {name}
+                      </Chip>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+            {activeFilter && (
+              <Button variant="light" onPress={handleClear}>
                 清除
               </Button>
             )}
-          </form>
+          </div>
 
           {/* Table */}
           <Table

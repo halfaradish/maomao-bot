@@ -76,6 +76,7 @@ export const API = {
       if (plugin) url += `&plugin=${plugin}`;
       return url;
     },
+    plugins: "/permissions/points/plugins",
   },
 
   // User Status
