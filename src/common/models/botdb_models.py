@@ -315,6 +315,7 @@ class MonitoredGroup(Base):
     group_id: Mapped[int] = mapped_column(BigInteger, unique=True)
     group_name: Mapped[str] = mapped_column(String(100), default="")
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    last_crawled_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True, default=None)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.now)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.now, onupdate=datetime.now)
 
