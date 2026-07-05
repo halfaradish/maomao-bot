@@ -65,10 +65,12 @@ export default function LoginPage() {
       >
         <Card className="w-full max-w-md bg-white/60 dark:bg-black/40 backdrop-blur-xl border border-white/40 dark:border-white/10 shadow-xl">
           <CardHeader className="flex flex-col items-center gap-2 pt-8 pb-4">
-            <div className="h-8 w-1.5 bg-primary rounded-full shadow-sm" />
-            <h1 className="text-2xl font-bold text-default-900 dark:text-white">
-              谛听 · 权限管理
-            </h1>
+            <div className="flex items-center gap-3">
+              <div className="h-8 w-1.5 bg-primary rounded-full shadow-sm" />
+              <h1 className="text-2xl font-bold text-default-900 dark:text-white">
+                谛听 · 权限管理
+              </h1>
+            </div>
             <p className="text-sm text-default-500">
               请使用QQ号和临时密码登录
             </p>
