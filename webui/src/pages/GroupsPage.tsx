@@ -13,7 +13,7 @@ import {
 } from "@heroui/table";
 import { Pagination } from "@heroui/pagination";
 import { Spinner } from "@heroui/spinner";
-import { MdAdd, MdDelete, MdVisibility } from "react-icons/md";
+import { MdAdd, MdDelete } from "react-icons/md";
 import { motion } from "framer-motion";
 
 import {
@@ -142,7 +142,9 @@ export default function GroupsPage() {
             classNames={{
               wrapper: "bg-transparent shadow-none",
               th: "bg-white/40 dark:bg-white/5 backdrop-blur-md text-default-600",
+              tr: "cursor-pointer hover:bg-default-100 transition-colors",
             }}
+            onRowAction={(key) => navigate(`/permissions/groups/${key}`)}
           >
             <TableHeader>
               <TableColumn>ID</TableColumn>
@@ -166,16 +168,6 @@ export default function GroupsPage() {
                   </TableCell>
                   <TableCell>
                     <div className="flex gap-1">
-                      <Button
-                        isIconOnly
-                        size="sm"
-                        variant="light"
-                        onPress={() =>
-                          navigate(`/permissions/groups/${group.id}`)
-                        }
-                      >
-                        <MdVisibility size={18} className="text-primary" />
-                      </Button>
                       <Button
                         isIconOnly
                         size="sm"
