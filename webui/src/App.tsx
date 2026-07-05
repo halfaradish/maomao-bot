@@ -25,11 +25,28 @@ export default function App() {
         toastOptions={{
           duration: 3000,
           style: {
-            background: "hsl(var(--heroui-content1))",
+            background: "hsl(var(--heroui-content1) / 0.8)",
             color: "hsl(var(--heroui-foreground))",
-            border: "1px solid hsl(var(--heroui-divider))",
-            borderRadius: "12px",
+            border: "1px solid hsl(var(--heroui-divider) / 0.4)",
+            borderRadius: "16px",
             fontSize: "14px",
+            fontWeight: 500,
+            padding: "12px 16px",
+            backdropFilter: "blur(16px) saturate(180%)",
+            WebkitBackdropFilter: "blur(16px) saturate(180%)",
+            boxShadow: "0 8px 32px rgba(0, 0, 0, 0.12), 0 2px 8px rgba(0, 0, 0, 0.06)",
+          },
+          success: {
+            iconTheme: {
+              primary: "hsl(var(--heroui-success))",
+              secondary: "white",
+            },
+          },
+          error: {
+            iconTheme: {
+              primary: "hsl(var(--heroui-danger))",
+              secondary: "white",
+            },
           },
         }}
       />

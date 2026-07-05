@@ -44,6 +44,10 @@ async function request<T = unknown>(
 
   if (res.status === 401) {
     setToken(null);
+    // 如果已经在登录页面，不进行重定向，统一返回通用错误消息
+    if (window.location.pathname === "/login") {
+      throw new Error("账号或密码错误");
+    }
     toast.error("登录已过期，请重新登录");
     window.location.href = "/login";
     throw new Error("登录已过期");
