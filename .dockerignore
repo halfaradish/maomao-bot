@@ -21,4 +21,4 @@ tmp/
 
 scripts/
 data/
-webui/.vite/
+webui/dist/

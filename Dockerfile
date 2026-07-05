@@ -2,7 +2,8 @@
 FROM node:20-alpine AS webui-builder
 WORKDIR /webui
 COPY webui/package.json webui/package-lock.json ./
-RUN npm ci
+RUN npm config set registry https://registry.npmmirror.com
+RUN npm ci --legacy-peer-deps
 COPY webui/ ./
 RUN npm run build
 

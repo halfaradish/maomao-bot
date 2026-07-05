@@ -941,6 +941,20 @@ async def delete_binding(
 # ---------------------------------------------------------------------------
 
 
+@router.get("/points/plugins", summary="列出所有插件名")
+async def list_permission_plugins(
+    auth: TokenPayload = Depends(verify_token),
+    request: Request = None,
+):
+    """列出所有已注册权限点的插件名（去重）。"""
+    async with async_session_factory() as session:
+        stmt = select(PermissionPoint.plugin_name).distinct().order_by(PermissionPoint.plugin_name)
+        result = await session.execute(stmt)
+        plugins = [row[0] for row in result.all()]
+
+    return success(data={"plugins": plugins}, request=request)
+
+
 @router.get("/points", summary="列出权限点")
 async def list_permission_points(
     plugin: str = Query(None, description="按插件名过滤"),
