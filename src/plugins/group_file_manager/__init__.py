@@ -1,4 +1,5 @@
 import os
+import asyncio
 import hashlib
 import aiohttp
 import aiofiles
@@ -49,6 +50,9 @@ else:
     
     # 获取调度器（用于定时任务）
     scheduler = require("nonebot_plugin_apscheduler").scheduler if require("nonebot_plugin_apscheduler") else None
+
+    # 防止同一群并发爬取
+    _group_crawl_locks: dict[int, asyncio.Lock] = {}
     
     # ========== 指令部分 ==========
     
@@ -127,15 +131,19 @@ else:
     crawl_history = on_command("爬取历史文件", aliases={"同步历史"}, priority=5)
     
     @crawl_history.handle()
-    async def handle_crawl(bot: Bot, event: GroupMessageEvent):
-        """手动触发爬取历史群文件"""
-        await crawl_history.send("🚀 开始爬取历史文件，请稍候...")
-    
+    async def handle_crawl(bot: Bot, event: GroupMessageEvent, args: Message = CommandArg()):
+        """手动触发爬取历史群文件，支持 --full 全量"""
+        raw_args = args.extract_plain_text().strip()
+        full_crawl = "--full" in raw_args or "全量" in raw_args
+
+        mode = "全量爬取" if full_crawl else "增量爬取"
+        await crawl_history.send(f"🚀 开始{mode}历史文件，请稍候...")
+
         try:
-            count = await crawl_group_files(bot, event.group_id)
-            await crawl_history.finish(f"✅ 爬取完成！共收集 {count} 个新文件")
+            count = await crawl_group_files(bot, event.group_id, full_crawl=full_crawl)
+            await crawl_history.finish(f"✅ {mode}完成！共收集 {count} 个新文件")
         except Exception as e:
-            await crawl_history.finish(f"❌ 爬取失败: {str(e)}")
+            await crawl_history.finish(f"❌ {mode}失败: {str(e)}")
     
     
     # 指令：添加监控群（新增）
@@ -236,7 +244,7 @@ else:
             for group in groups:
                 try:
                     logger.info(f"[定时任务] 开始爬取群 {group.group_id} ({group.group_name})")
-                    count = await crawl_group_files(bot, group.group_id)
+                    count = await crawl_group_files(bot, group.group_id, full_crawl=False)
                     logger.info(f"[定时任务] 群 {group.group_id} 完成，新增 {count} 个文件")
                 except Exception as e:
                     logger.error(f"[定时任务] 群 {group.group_id} 爬取失败: {e}")
@@ -352,38 +360,104 @@ else:
             await session.rollback()
     
     
-    async def crawl_group_files(bot: Bot, group_id: int) -> int:
-        """爬取群历史文件"""
-        async with async_session_factory() as session:
-            downloaded_count = 0
-    
-            root_files = await bot.get_group_root_files(group_id=group_id)
-    
-            files = root_files.get("files", [])
-            folders = root_files.get("folders", [])
-    
-            logger.info(f"[爬取] 群 {group_id}: 发现 {len(files)} 个文件, {len(folders)} 个文件夹")
-    
-            # 处理根目录文件
-            for file in files:
-                if await process_historical_file(bot, group_id, file, session):
-                    downloaded_count += 1
-    
-            # 处理子文件夹
-            for folder in folders[:10]:  # 增加到10个文件夹
-                try:
-                    folder_files = await bot.get_group_files_by_folder(
-                        group_id=group_id,
-                        folder_id=folder["folder_id"]
-                    )
-                    for file in folder_files.get("files", []):
-                        if await process_historical_file(bot, group_id, file, session):
-                            downloaded_count += 1
-                except Exception as e:
-                    logger.error(f"[错误] 读取文件夹失败: {e}")
-    
-            await session.commit()
-            return downloaded_count
+    async def crawl_group_files(bot: Bot, group_id: int, full_crawl: bool = False) -> int:
+        """爬取群历史文件（默认增量，full_crawl=True 时全量）
+
+        Args:
+            bot: Bot 实例
+            group_id: QQ 群号
+            full_crawl: 是否全量爬取（忽略 last_crawled_at）；
+                        默认 False 即增量模式（只处理上次爬取后的新文件）
+        """
+
+        # 防止同一群并发爬取
+        lock = _group_crawl_locks.setdefault(group_id, asyncio.Lock())
+        if lock.locked():
+            logger.warning(f"[爬取] 群 {group_id} 正在爬取中，跳过本次请求")
+            return 0
+
+        async with lock:
+            async with async_session_factory() as session:
+                # 查询群监控记录
+                result = await session.execute(
+                    select(MonitoredGroup).where(MonitoredGroup.group_id == group_id).limit(1)
+                )
+                group = result.scalars().first()
+                if not group:
+                    logger.error(f"[爬取] 群 {group_id} 不在监控列表中")
+                    return 0
+
+                last_crawled_at = group.last_crawled_at
+                is_incremental = not full_crawl and last_crawled_at is not None
+
+                if is_incremental:
+                    logger.info(f"[爬取] 群 {group_id} 增量模式 (上次爬取: {last_crawled_at})")
+                    assert last_crawled_at is not None  # type narrowed by is_incremental
+                else:
+                    reason = "全量模式（首次爬取）" if last_crawled_at is None else "全量模式（手动指定）"
+                    logger.info(f"[爬取] 群 {group_id} {reason}")
+
+                downloaded_count = 0
+                scanned_count = 0
+                skipped_count = 0
+                newest_upload_time: datetime | None = last_crawled_at
+
+                root_files = await bot.get_group_root_files(group_id=group_id)
+                files = root_files.get("files", [])
+                folders = root_files.get("folders", [])
+
+                logger.info(f"[爬取] 群 {group_id}: 发现 {len(files)} 个文件, {len(folders)} 个文件夹")
+
+                # 辅助函数：提取 upload_time 并追踪最新时间
+                def _update_newest(upload_time_ts: int | None) -> datetime | None:
+                    nonlocal newest_upload_time
+                    if upload_time_ts:
+                        ut = datetime.fromtimestamp(upload_time_ts)
+                        if newest_upload_time is None or ut > newest_upload_time:
+                            newest_upload_time = ut
+                        return ut
+                    return None
+
+                # 处理根目录文件
+                for file in files:
+                    upload_time = _update_newest(file.get("upload_time"))
+                    # 增量模式下：跳过 upload_time <= last_crawled_at 的旧文件
+                    if is_incremental and upload_time is not None and upload_time <= last_crawled_at:
+                        skipped_count += 1
+                        continue
+                    scanned_count += 1
+                    if await process_historical_file(bot, group_id, file, session):
+                        downloaded_count += 1
+
+                # 处理子文件夹（最多 10 个）
+                for folder in folders[:10]:
+                    try:
+                        folder_files = await bot.get_group_files_by_folder(
+                            group_id=group_id,
+                            folder_id=folder["folder_id"]
+                        )
+                        for file in folder_files.get("files", []):
+                            upload_time = _update_newest(file.get("upload_time"))
+                            if is_incremental and upload_time is not None and upload_time <= last_crawled_at:
+                                skipped_count += 1
+                                continue
+                            scanned_count += 1
+                            if await process_historical_file(bot, group_id, file, session):
+                                downloaded_count += 1
+                    except Exception as e:
+                        logger.error(f"[错误] 读取文件夹失败: {e}")
+
+                # 更新 last_crawled_at（取本次扫描到的最大 upload_time，兜底用当前时间）
+                new_last_crawled = newest_upload_time if newest_upload_time is not None else datetime.now()
+                group.last_crawled_at = new_last_crawled
+
+                await session.commit()
+
+                logger.info(
+                    f"[爬取完成] 群 {group_id}: 扫描 {scanned_count} 个文件, "
+                    f"新增 {downloaded_count} 个, 跳过 {skipped_count} 个已同步文件"
+                )
+                return downloaded_count
     
     
     async def process_historical_file(bot, group_id, file_info, session) -> bool:
@@ -578,11 +652,43 @@ else:
             print(msg)
     
     
+    async def _ensure_last_crawled_at_column() -> None:
+        """自动检测并添加 monitored_groups.last_crawled_at 列（幂等安全）"""
+        msg = "[初始化] 检查 monitored_groups.last_crawled_at 列..."
+        logger.info(msg)
+        print(msg)
+        try:
+            async with _db_engine.connect() as conn:
+                result = await conn.execute(text(
+                    "SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS "
+                    "WHERE TABLE_SCHEMA = DATABASE() "
+                    "  AND TABLE_NAME = 'monitored_groups' "
+                    "  AND COLUMN_NAME = 'last_crawled_at'"
+                ))
+                count = result.scalar()
+                if count == 0:
+                    logger.info("[初始化] 添加 last_crawled_at 列...")
+                    await conn.execute(text(
+                        "ALTER TABLE monitored_groups "
+                        "ADD COLUMN last_crawled_at DATETIME NULL DEFAULT NULL "
+                        "AFTER is_active"
+                    ))
+                    logger.info("[初始化] last_crawled_at 列添加成功")
+                    print("[初始化] last_crawled_at 列添加成功")
+                else:
+                    logger.info("[初始化] last_crawled_at 列已存在，跳过")
+        except Exception as e:
+            msg = f"[初始化] last_crawled_at 列迁移失败: {e}"
+            logger.error(msg)
+            print(msg)
+
+
     # ========== 插件启动时自动修复 FK（独立于 bot 连接） ==========
     
     @driver.on_startup
     async def _startup_fk_migration():
-        """启动时最早执行：自动修复 group_files 表外键约束（不依赖 bot 连接）"""
+        """启动时最早执行：自动修复 group_files 表外键约束 + 添加 last_crawled_at 列"""
+        await _ensure_last_crawled_at_column()
         await _ensure_fk_migration()
     
     
