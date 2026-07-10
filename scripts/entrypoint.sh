@@ -29,7 +29,11 @@ fi
 if [ "${HOT_RELOAD:-false}" = "true" ]; then
     echo "[entrypoint] HOT_RELOAD=enabled → watching /app/src"
     exec python3 -c "
-import sys, subprocess
+import sys, subprocess, multiprocessing
+# Linux 容器默认 spawn，但 -c 模式下子进程无法重新导入 __main__ 中的函数
+# 改用 fork 避免 pickle 序列化问题
+multiprocessing.set_start_method('fork')
+
 from watchfiles import run_process
 
 def start_bot():
