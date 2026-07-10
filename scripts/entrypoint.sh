@@ -28,12 +28,11 @@ fi
 #   生产：.env 中不设置 HOT_RELOAD  → 直接启动
 if [ "${HOT_RELOAD:-false}" = "true" ]; then
     echo "[entrypoint] HOT_RELOAD=enabled → watching /app/src"
-    exec python3 -c "
-import sys, subprocess, multiprocessing
-# Linux 容器默认 spawn，但 -c 模式下子进程无法重新导入 __main__ 中的函数
-# 改用 fork 避免 pickle 序列化问题
-multiprocessing.set_start_method('fork')
-
+    # 写临时 .py 文件而非用 python3 -c，因为 watchfiles 内部用
+    # multiprocessing spawn 子进程，子进程需要能重新导入 __main__
+    # 模块找到 target 函数。-c 的 __main__ 是 built-in，无法 pickle。
+    cat > /tmp/_watchbot.py << 'PYEOF'
+import sys, subprocess
 from watchfiles import run_process
 
 def start_bot():
@@ -43,16 +42,18 @@ def on_change(changes):
     for change, path in changes:
         print(f'[reload] {change.name}: {path}')
 
-run_process(
-    '/app/src',
-    '/app/bot.py',
-    target=start_bot,
-    callback=on_change,
-    debounce=500,
-    step=200,
-    recursive=True,
-)
-"
+if __name__ == '__main__':
+    run_process(
+        '/app/src',
+        '/app/bot.py',
+        target=start_bot,
+        callback=on_change,
+        debounce=500,
+        step=200,
+        recursive=True,
+    )
+PYEOF
+    exec python3 /tmp/_watchbot.py
 else
     echo "[entrypoint] HOT_RELOAD=disabled → starting normally"
     exec python bot.py
