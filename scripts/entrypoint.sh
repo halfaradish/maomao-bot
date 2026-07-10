@@ -38,6 +38,7 @@ def on_change(changes):
 
 run_process(
     '/app/src',
+    '/app/bot.py',
     target=lambda: subprocess.run([sys.executable, 'bot.py']),
     callback=on_change,
     debounce=500,
