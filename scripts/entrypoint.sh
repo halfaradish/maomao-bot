@@ -36,7 +36,10 @@ import sys, subprocess
 from watchfiles import run_process
 
 def start_bot():
-    return subprocess.run([sys.executable, 'bot.py'])
+    try:
+        return subprocess.run([sys.executable, 'bot.py'])
+    except KeyboardInterrupt:
+        pass
 
 def on_change(changes):
     for change, path in changes:
