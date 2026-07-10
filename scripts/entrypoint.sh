@@ -32,6 +32,9 @@ if [ "${HOT_RELOAD:-false}" = "true" ]; then
 import sys, subprocess
 from watchfiles import run_process
 
+def start_bot():
+    return subprocess.run([sys.executable, 'bot.py'])
+
 def on_change(changes):
     for change, path in changes:
         print(f'[reload] {change.name}: {path}')
@@ -39,7 +42,7 @@ def on_change(changes):
 run_process(
     '/app/src',
     '/app/bot.py',
-    target=lambda: subprocess.run([sys.executable, 'bot.py']),
+    target=start_bot,
     callback=on_change,
     debounce=500,
     step=200,
