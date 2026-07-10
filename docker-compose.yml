@@ -16,6 +16,9 @@ services:
       - "./logs:/app/logs"
       - "./data:/app/data"
       - "./src/plugins/auto_manage_group/sell_ad_group_model:/app/src/plugins/auto_manage_group/sell_ad_group_model"
+      # 常驻源码挂载 — 使容器始终读取宿主机代码，HOT_RELOAD 控制是否自动重启
+      - "./src:/app/src"
+      - "./bot.py:/app/bot.py"
     environment:
       - TZ=Asia/Shanghai
     extra_hosts:

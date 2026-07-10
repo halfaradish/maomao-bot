@@ -20,5 +20,6 @@ tmp/
 .idea/
 
 scripts/
+!scripts/entrypoint.sh
 data/
 webui/dist/
