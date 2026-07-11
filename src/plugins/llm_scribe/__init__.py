@@ -1,5 +1,6 @@
 import os
 
+from nonebot import logger
 from nonebot.plugin import PluginMetadata
 from src.common.model.model import PluginGroupEnum, PluginBadgeColor
 
@@ -17,6 +18,7 @@ if not LLM_SCRIBE_ENABLED:
             "badge_color": PluginBadgeColor.YELLOW.value,
         },
     )
+    logger.info(f"[llm_scribe] 插件已禁用 (LLM_SCRIBE_ENABLED=false)")
 else:
     from .src import interfaces
 
