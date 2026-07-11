@@ -97,14 +97,21 @@ if __name__ == "__main__":
 
         proc = subprocess.Popen([sys.executable, __file__], env=env)
 
-        for changes in watch(
-            "src", __file__, debounce=500, step=200, recursive=True
-        ):
-            for change, path in changes:
-                logger.info(f"[reload] {change.name}: {path}")
+        try:
+            for changes in watch(
+                "src", __file__, debounce=500, step=200, recursive=True
+            ):
+                for change, path in changes:
+                    logger.info(f"[reload] {change.name}: {path}")
+                proc.terminate()
+                proc.wait()
+                proc = subprocess.Popen([sys.executable, __file__], env=env)
+        except KeyboardInterrupt:
             proc.terminate()
             proc.wait()
-            proc = subprocess.Popen([sys.executable, __file__], env=env)
     else:
         # ── Worker 进程或普通启动 ──
-        start()
+        try:
+            start()
+        except KeyboardInterrupt:
+            pass
