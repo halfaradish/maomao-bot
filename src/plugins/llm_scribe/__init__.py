@@ -1,15 +1,35 @@
+import os
+
+from nonebot import logger
 from nonebot.plugin import PluginMetadata
-from .src import interfaces
 from src.common.model.model import PluginGroupEnum, PluginBadgeColor
 
-__plugin_meta__ = PluginMetadata(
-    name="智能总结",
-    description="基于LLM的聊天记录智能总结插件",
-    usage="",
-    config="",
-    supported_adapters={"~onebot.v11"},
-    extra={
-        "group": PluginGroupEnum.UTILITY.value,
-        "badge_color": PluginBadgeColor.YELLOW.value
-    }
-)
+# ── 插件启停开关 ──
+LLM_SCRIBE_ENABLED = os.getenv("LLM_SCRIBE_ENABLED", "true").lower() == "true"
+
+if not LLM_SCRIBE_ENABLED:
+    __plugin_meta__ = PluginMetadata(
+        name="智能总结（已禁用）",
+        description="基于LLM的聊天记录智能总结插件（当前已禁用，设置 LLM_SCRIBE_ENABLED=true 启用）",
+        usage="此插件已在环境变量中禁用",
+        supported_adapters={"~onebot.v11"},
+        extra={
+            "group": PluginGroupEnum.UTILITY.value,
+            "badge_color": PluginBadgeColor.YELLOW.value,
+        },
+    )
+    logger.info(f"[llm_scribe] 插件已禁用 (LLM_SCRIBE_ENABLED=false)")
+else:
+    from .src import interfaces
+
+    __plugin_meta__ = PluginMetadata(
+        name="智能总结",
+        description="基于LLM的聊天记录智能总结插件",
+        usage="",
+        config=None,
+        supported_adapters={"~onebot.v11"},
+        extra={
+            "group": PluginGroupEnum.UTILITY.value,
+            "badge_color": PluginBadgeColor.YELLOW.value,
+        },
+    )

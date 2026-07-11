@@ -19,6 +19,9 @@ services:
       # 常驻源码挂载 — 使容器始终读取宿主机代码，HOT_RELOAD 控制是否自动重启
       - "./src:/app/src"
       - "./bot.py:/app/bot.py"
+      # 环境文件挂载 — git pull 更新 .env.* 后可由 watcher 检测并触发重载
+      - "./.env:/app/.env:ro"
+      - "./.env.${ENVIRONMENT:-prod}:/app/.env.${ENVIRONMENT:-prod}:ro"
     environment:
       - TZ=Asia/Shanghai
     extra_hosts:
