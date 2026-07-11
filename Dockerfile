@@ -70,7 +70,10 @@ RUN g++ -fPIC -shared \
     $(pkg-config --cflags --libs cairo pango pangocairo jsoncpp) \
     -O3
 
+# 确保 entrypoint.sh 可执行
+RUN chmod +x scripts/entrypoint.sh
+
 # 从构建阶段复制前端产物
 COPY --from=webui-builder /webui/dist ./webui/dist
 
-CMD ["python", "bot.py"]
+CMD ["/bin/bash", "scripts/entrypoint.sh"]

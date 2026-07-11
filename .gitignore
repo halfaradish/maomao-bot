@@ -12,6 +12,8 @@ logs
 logs-dev
 *.bak
 
+table_gen.so
+
 # ai agent
 CLAUDE.md
 .claude/*

@@ -49,6 +49,61 @@
 
 6. 代码更改后，重新**构建**nonebot容器即可
 
+### 热加载（Hot Reload）
+
+开发环境下支持代码改动后**自动重启服务**，无需手动 rebuild 容器。
+
+#### 启用方式
+
+在 `.env` 中添加 `HOT_RELOAD=true`：
+
+```
+ENVIRONMENT=dev
+HOT_RELOAD=true
+```
+
+之后启动容器即可：
+```bash
+./scripts/docker-manager.sh build && ./scripts/docker-manager.sh start
+```
+
+#### 工作机制
+
+```
+宿主机修改 src/ 下任意 .py 文件
+    │
+    ▼
+bot.py 的 watcher 进程（基于 watchfiles + inotify）检测到变更
+    │
+    ▼
+终止旧 worker 进程 → 启动新 worker → 插件重新加载
+    │  全程约 3 秒，容器不重启
+    ▼
+日志输出：[reload] modified: /app/src/plugins/xxx/__init__.py
+```
+
+#### 本地开发
+
+热加载不依赖 Docker，可直接在本地使用：
+
+```bash
+HOT_RELOAD=true python bot.py
+```
+
+#### 关闭热加载
+
+从 `.env` 中移除 `HOT_RELOAD=true`，重启容器即可。生产环境不设置该变量，watcher 不会启动，零额外开销。
+
+#### 限制与注意事项
+
+- **监视范围**：仅监视 `src/` 目录和项目根目录的 `bot.py`。修改 `requirements.txt`、`pyproject.toml` 等依赖文件或 Docker 相关文件需手动 rebuild 容器。
+- **watcher 逻辑变更**：`bot.py` 第 85-107 行的 watcher 入口代码本身不被监视（watcher 不能重启自己），修改该段代码后需手动重启容器：
+  ```bash
+  ./scripts/docker-manager.sh restart
+  ```
+- **前端变更**：WebUI（`webui/`）的改动需 `npm run build` 后 rebuild 容器，不在热加载范围内。
+- **C++ 插件**：`table_gen.cpp` 的变更会在容器下次重启时由 `entrypoint.sh` 自动增量编译（`-nt` 守卫，仅在源码更新时编译）。
+
 ### Docker管理脚本使用指南<a id="docker脚本使用指南"></a>
 我们提供了一个便捷的Docker管理脚本，可以简化Docker操作：
 
