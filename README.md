@@ -70,7 +70,7 @@ HOT_RELOAD=true
 #### 工作机制
 
 ```
-宿主机修改 src/ 下任意 .py 文件
+宿主修改 src/ 下任意 .py 文件 或 .env / .env.dev 等环境文件
     │
     ▼
 bot.py 的 watcher 进程（基于 watchfiles + inotify）检测到变更
@@ -96,7 +96,7 @@ HOT_RELOAD=true python bot.py
 
 #### 限制与注意事项
 
-- **监视范围**：仅监视 `src/` 目录和项目根目录的 `bot.py`。修改 `requirements.txt`、`pyproject.toml` 等依赖文件或 Docker 相关文件需手动 rebuild 容器。
+- **监视范围**：监视 `src/` 目录、`bot.py` 以及项目根目录下所有 `.env*` 文件。修改 `requirements.txt`、`pyproject.toml` 等依赖文件或 Docker 相关文件需手动 rebuild 容器。
 - **watcher 逻辑变更**：`bot.py` 的 watcher 入口代码本身不被监视（watcher 不能重启自己），修改该段代码后需手动重启容器：
   ```bash
   ./scripts/docker-manager.sh restart
