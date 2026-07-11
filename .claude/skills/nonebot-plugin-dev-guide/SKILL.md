@@ -750,6 +750,8 @@ if config.clist_schedule_job_enable:
 ```python
 import os
 
+from nonebot import logger
+
 # 在模块顶层读取环境变量
 MY_PLUGIN_ENABLED = os.getenv("MY_PLUGIN_ENABLED", "true").lower() == "true"
 
@@ -764,6 +766,7 @@ if not MY_PLUGIN_ENABLED:
             "badge_color": PluginBadgeColor.GREEN.value,
         },
     )
+    logger.info(f"[my_plugin] 插件已禁用 (MY_PLUGIN_ENABLED=false)")
     # 不注册任何 handler，不加载配置
 else:
     # ===== 正常插件代码 =====
@@ -786,6 +789,7 @@ else:
 - 禁用时必须提供 `__plugin_meta__` 存根（NoneBot 加载器需要）
 - 禁用存根的 name 应带 `（已禁用）` 后缀
 - 禁用存根**不包含** `config=Config`
+- 禁用时应输出日志提示插件已关闭
 - 正常代码必须在 `else` 分支内（不会执行到）
 - 环境变量命名：`PLUGIN_NAME_ENABLED`
 
