@@ -31,24 +31,25 @@ from nonebot.log import default_format, logger
 # 这必须在 nonebot.init() 之前完成
 import src.config  # noqa: E402, F401
 
+# ── 配置文件日志 ────────────────────────────────────────────
+# watcher 和 worker 是独立的 Python 进程（通过 subprocess.Popen），
+# 各自导入 bot.py 一次，logger.add() 各执行一次，不存在 handler 冲突
+from src.config import LogConfig
+
+logger.add(
+    LogConfig.LOG_FILE_PATH,
+    rotation=LogConfig.LOG_FILE_ROTATION,
+    retention=LogConfig.LOG_FILE_RETENTION,
+    level=LogConfig.LOG_FILE_LEVEL,
+    encoding=LogConfig.LOG_FILE_ENCODING,
+    format=default_format,
+    enqueue=LogConfig.LOG_FILE_ENQUEUE,
+    compression=LogConfig.LOG_FILE_COMPRESSION,
+)
+
 
 def start():
     """初始化并启动 NoneBot。仅 worker 进程调用，watcher 进程不调此函数。"""
-
-    # ── 配置文件日志 ────────────────────────────────────────────
-    # 环境变量在 import src.config 时已通过 load_dotenv 加载
-    from src.config import LogConfig
-
-    logger.add(
-        LogConfig.LOG_FILE_PATH,
-        rotation=LogConfig.LOG_FILE_ROTATION,
-        retention=LogConfig.LOG_FILE_RETENTION,
-        level=LogConfig.LOG_FILE_LEVEL,
-        encoding=LogConfig.LOG_FILE_ENCODING,
-        format=default_format,
-        enqueue=LogConfig.LOG_FILE_ENQUEUE,
-        compression=LogConfig.LOG_FILE_COMPRESSION,
-    )
 
     # ── 初始化 NoneBot ──────────────────────────────────────────
     # 从 os.environ 读取 DRIVER、HOST、PORT、SUPERUSERS、COMMAND_START 等
