@@ -88,18 +88,23 @@ if __name__ == "__main__":
         and os.getenv("_HOT_RELOAD_WORKER") != "true"
     ):
         # ── Watcher 进程 ──
-        # 监视 src/ 和 bot.py 的变更，发现变更后重启 worker 子进程
+        # 监视 src/、bot.py 和所有 .env* 文件的变更，发现变更后重启 worker 子进程
         import subprocess
+        from pathlib import Path
         from watchfiles import watch
 
         env = os.environ.copy()
         env["_HOT_RELOAD_WORKER"] = "true"
 
+        # 收集项目根目录下所有 .env* 文件（已通过 volume 挂载的才能反映宿主机变更）
+        _env_files = [str(p) for p in Path.cwd().glob('.env*') if p.is_file()]
+        _watch_paths = [*_env_files, "src", __file__]
+
         proc = subprocess.Popen([sys.executable, __file__], env=env)
 
         try:
             for changes in watch(
-                "src", __file__, debounce=500, step=200, recursive=True
+                *_watch_paths, debounce=500, step=200, recursive=True
             ):
                 for change, path in changes:
                     logger.info(f"[reload] {change.name}: {path}")
