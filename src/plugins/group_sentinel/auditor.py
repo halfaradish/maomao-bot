@@ -16,29 +16,33 @@ from src.common import get_icpc_db_connection
 
 
 def _extract_student_id(comment: Optional[str]) -> Optional[str]:
-    """从入群申请 comment 中提取学号前 6 位（纯数字）。
+    """从入群申请 comment 中提取学号前6位（纯数字连续串≥6位，取前6位）。
 
-    comment 格式: '问题：请输入学号前 6 位\\n答案：xxxxx'
-    按"答案："或"答案:"分割，取后半部分，去除所有非数字字符。
+    comment 格式: '问题：请输入学号前 6 位\n答案：xxxxx'
+    按"答案："或"答案:"分割，取后半部分，提取最长连续数字串，长度≥6则返回前6位。
     """
     if not comment:
         return None
 
-    # 按 "答案：" 或 "答案:" 分割
+    # 按 "答案：" 或 "答案:" 分割提取答案部分
+    answer = comment
     for sep in ("答案：", "答案:"):
         if sep in comment:
             answer = comment.split(sep, 1)[1].strip()
             break
-    else:
-        # 没有"答案"标记，直接用整个 comment
-        answer = comment
 
-    # 去除非数字字符
-    digits = re.sub(r"\D", "", answer)
-    if len(digits) != 6:
+    # 匹配所有连续数字串
+    num_matches = re.findall(r"\d+", answer)
+    if not num_matches:
         return None
 
-    return digits
+    # 筛选长度≥6的数字串
+    valid_nums = [num for num in num_matches if len(num) >= 6]
+    if not valid_nums:
+        return None
+
+    # 取第一个符合条件的数字串，截取前6位返回
+    return valid_nums[0][:6]
 
 
 def _get_max_grade() -> int:
