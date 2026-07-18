@@ -1080,6 +1080,7 @@ nb run    # 启动 NoneBot（端口 6090）
 | 权限总是拒绝 | `permissions.py` 未被导入 | 在 `__init__.py` 中添加 `from . import permissions  # noqa: F401` |
 | APScheduler 不可用 | `require` 调用在 NoneBot 初始化之前 | 使用 `try/except (ValueError, RuntimeError)` 包裹 |
 | 日志不输出 | 日志级别设置过高 | 检查 [bot.py](../../bot.py) 中 `logger.add` 的 `level` 参数 |
+| 插件生成的文件误触发热重载 | 运行时缓存/数据文件写入 `src/`，被 watcher 检测到变更 | 将写入路径改为 `data/` 目录，或在项目根目录的 `.watchignore` 中添加忽略关键字 |
 
 ## 16. 新插件检查清单
 
@@ -1099,7 +1100,7 @@ nb run    # 启动 NoneBot（端口 6090）
 - [ ] 如需启停控制：实现 `_ENABLED` 环境变量检查 + 禁用存根 `__plugin_meta__`
 - [ ] 日志使用 `logger.info(f"[plugin_name] ...")` 格式，异常使用 `logger.opt(exception=True)`
 - [ ] 目录命名使用 snake_case
-- [ ] `nb run` 本地测试通过
+- [ ] 如插件在 `src/` 下生成运行时文件（缓存、数据记录等），将写入路径改为 `data/` 目录 或 在项目根 `.watchignore` 中添加忽略关键字，避免误触发热重载
 
 ## 17. 相关 Skills
 
