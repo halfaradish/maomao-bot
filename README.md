@@ -101,6 +101,7 @@ HOT_RELOAD=true python bot.py
   ```bash
   ./scripts/docker-manager.sh restart
   ```
+- **运行时数据目录**：`llm_scribe` 头像缓存等运行时生成文件不会触发热重载。忽略规则在 `.watchignore` 中维护（关键字匹配，一行一个），修改后需重启容器生效。
 - **前端变更**：WebUI（`webui/`）的改动需 `npm run build` 后 rebuild 容器，不在热加载范围内。
 - **C++ 插件**：`table_gen.cpp` 的变更会在容器下次重启时由 `entrypoint.sh` 自动增量编译（`-nt` 守卫，仅在源码更新时编译）。
 

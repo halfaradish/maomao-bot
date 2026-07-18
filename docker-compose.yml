@@ -22,6 +22,8 @@ services:
       # 环境文件挂载 — git pull 更新 .env.* 后可由 watcher 检测并触发重载
       - "./.env:/app/.env:ro"
       - "./.env.${ENVIRONMENT:-prod}:/app/.env.${ENVIRONMENT:-prod}:ro"
+      # 热重载忽略规则 — 修改后重启容器生效
+      - "./.watchignore:/app/.watchignore:ro"
     environment:
       - TZ=Asia/Shanghai
     extra_hosts:

@@ -92,6 +92,7 @@ if __name__ == "__main__":
         import subprocess
         from pathlib import Path
         from watchfiles import watch
+        from watchfiles.filters import DefaultFilter
 
         env = os.environ.copy()
         env["_HOT_RELOAD_WORKER"] = "true"
@@ -100,11 +101,31 @@ if __name__ == "__main__":
         _env_files = [str(p) for p in Path.cwd().glob('.env*') if p.is_file()]
         _watch_paths = [*_env_files, "src", __file__]
 
+        # 过滤规则：从 .watchignore 读取忽略模式（一行一个关键字），
+        # 再叠加 DefaultFilter（内置排除 __pycache__、*.pyc 等）。
+        _base_filter = DefaultFilter()
+        _ignore_patterns: list[str] = []
+        _ignore_file = Path(".watchignore")
+        if _ignore_file.is_file():
+            _ignore_patterns = [
+                line.strip() for line in _ignore_file.read_text(encoding="utf-8").splitlines()
+                if line.strip() and not line.strip().startswith("#")
+            ]
+
+        def _watch_filter(change, path: str) -> bool:
+            if not _base_filter(change, path):
+                return False
+            for pat in _ignore_patterns:
+                if pat in path:
+                    return False
+            return True
+
         proc = subprocess.Popen([sys.executable, __file__], env=env)
 
         try:
             for changes in watch(
-                *_watch_paths, debounce=500, step=200, recursive=True
+                *_watch_paths, watch_filter=_watch_filter,
+                debounce=500, step=200, recursive=True,
             ):
                 for change, path in changes:
                     logger.info(f"[reload] {change.name}: {path}")

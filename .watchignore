@@ -1,0 +1,9 @@
+# 热重载忽略规则 — 匹配路径中任意位置，命中即跳过
+# 格式：一行一个关键字/路径片段
+#
+# 现有规则：
+#   /cache/  — llm_scribe 头像缓存
+#   /data/   — refer_collector 内推图片/JSON 记录
+
+/cache/
+/data/
