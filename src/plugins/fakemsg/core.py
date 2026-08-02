@@ -67,12 +67,13 @@ async def process_command(event: GroupMessageEvent) -> Optional[str]:
                 pg = PermissionGroup(
                     name=DEFAULT_PG_NAME,
                     display_name="伪消息白名单",
-                    description="自动创建：伪消息无限制使用权限组",
+                    description="自动创建：伪消息无限制使用及管理权限组",
                     created_by=event.user_id,
                 )
                 session.add(pg)
                 await session.flush()
                 session.add(PermissionGroupPerm(group_id=pg.id, perm_key="fakemsg:use"))
+                session.add(PermissionGroupPerm(group_id=pg.id, perm_key="fakemsg:manage"))
 
             # 检查是否已是成员
             existing = await session.execute(

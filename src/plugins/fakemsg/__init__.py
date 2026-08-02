@@ -123,24 +123,37 @@ async def _(event: GroupMessageEvent, bot: Bot):
 async def _ensure_default_perm_group():
     """确保 fakemsg 的默认权限组存在
 
-    自动创建 fakemsg_users 权限组，包含 fakemsg:use 权限点。
-    -add/-rm 命令操作此组的成员。已存在的权限组不会被重复创建。
+    自动创建 fakemsg_users 权限组，包含 fakemsg:use 和 fakemsg:manage 权限点。
+    -add/-rm 命令操作此组的成员。已存在的权限组和权限点不会重复创建。
     """
     async with async_session_factory() as session:
-        existing = (await session.execute(
+        result = await session.execute(
             select(PermissionGroup).where(PermissionGroup.name == core.DEFAULT_PG_NAME)
-        )).scalars().first()
-        if not existing:
+        )
+        pg = result.scalars().first()
+        if not pg:
             pg = PermissionGroup(
                 name=core.DEFAULT_PG_NAME,
                 display_name="伪消息白名单",
-                description="自动创建：伪消息无限制使用权限组",
+                description="自动创建：伪消息无限制使用及管理权限组",
                 created_by=0,  # 系统自动创建
             )
             session.add(pg)
             await session.flush()
-            session.add(PermissionGroupPerm(group_id=pg.id, perm_key="fakemsg:use"))
             logger.info(f"[fakemsg] 自动创建权限组: {core.DEFAULT_PG_NAME}")
+
+        # 确保两个权限点都在组内（兼容旧版只注册了 use 的情况）
+        for perm_key in ("fakemsg:use", "fakemsg:manage"):
+            existing = (await session.execute(
+                select(PermissionGroupPerm.id).where(
+                    PermissionGroupPerm.group_id == pg.id,
+                    PermissionGroupPerm.perm_key == perm_key,
+                ).limit(1)
+            )).first()
+            if existing is None:
+                session.add(PermissionGroupPerm(group_id=pg.id, perm_key=perm_key))
+                logger.info(f"[fakemsg] 权限组 {core.DEFAULT_PG_NAME} 添加权限点: {perm_key}")
+
         await session.commit()
 
 
