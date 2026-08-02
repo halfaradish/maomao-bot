@@ -11,25 +11,20 @@ MAX_DAILY_TIME = config.fakemsg_max_daily_time
 bot_info: Optional["SenderInfo"] = None
 
 
-def get_plugin_config() -> tuple:
+def get_plugin_config() -> dict:
+    """获取每日使用次数日志"""
     data, _ = JsonUtils.read("fakemsg.json", {
-        "person_users": [],
-        "group_users": [],
         "daily_times_log": {}
     })
     if not isinstance(data, dict):
         logger.warning("无法正确读取文件，使用默认值")
-        return [], [], {}
-    return (
-        data.get("person_users", []),
-        data.get("group_users", []),
-        data.get('daily_times_log', {})
-    )
+        return {}
+    return data.get('daily_times_log', {})
 
 
 def daily_times_addone(user_id: str) -> dict:
     """增加使用次数并返回更新后的字典"""
-    _, _, daily_times_log = get_plugin_config()
+    daily_times_log = get_plugin_config()
     current_times = daily_times_log.get(user_id, 0)
     current_times += 1
     daily_times_log[user_id] = current_times
