@@ -18,15 +18,17 @@ from nonebot.params import CommandArg
 require("nonebot_plugin_apscheduler")
 from nonebot_plugin_apscheduler import scheduler
 
-from typing import List, Dict, Optional
+from typing import List, Optional
 from uuid import uuid4
 from datetime import datetime, timedelta
 
 from .config import Config
 from .contest_fetcher import contest_fetcher, ContestInfo
 from ...common.send_forward_msg import send_forward_msg
-from ...common import JsonUtils
 from src.common.model.model import PluginGroupEnum, PluginBadgeColor
+from src.common.permission import get_bound_group_ids
+
+from . import permissions  # noqa: F401
 
 
 __plugin_meta__ = PluginMetadata(
@@ -93,17 +95,6 @@ async def _(bot: Bot, event: GroupMessageEvent, args: Message = CommandArg()):
 
 
 # ===========================
-# 读取配置
-# ===========================
-def get_json_data() -> Dict:
-    data, _ = JsonUtils.read(
-        filename=config.clist_filename,
-        default={"groups_send_by_plugin": []}
-    )
-    return data
-
-
-# ===========================
 # 比赛提醒发送（支持 fallback）
 # ===========================
 async def remind_contest_to_groups(
@@ -111,18 +102,17 @@ async def remind_contest_to_groups(
     fallback_group_id: Optional[int] = None
 ):
     bot: Bot = get_bot()
-    data = get_json_data()
-    group_ids: List[str] = data.get("groups_send_by_plugin", [])
+    group_ids: List[int] = await get_bound_group_ids("contest_reminder_targets")
 
     # fallback：用于 mock / 测试
     if not group_ids:
         if fallback_group_id:
             logger.warning(
-                f"groups_send_by_plugin 为空，使用 fallback 群 {fallback_group_id}"
+                f"contest_reminder_targets 为空，使用 fallback 群 {fallback_group_id}"
             )
-            group_ids = [str(fallback_group_id)]
+            group_ids = [fallback_group_id]
         else:
-            logger.warning("groups_send_by_plugin 为空，未发送提醒")
+            logger.warning("contest_reminder_targets 为空，未发送提醒")
             return
 
     for group_id in group_ids:
@@ -131,7 +121,7 @@ async def remind_contest_to_groups(
             MessageSegment.text("\n"),
             MessageSegment.text(f"比赛提醒：\n{contest.to_string()}")
         ])
-        await bot.send_group_msg(group_id=int(group_id), message=message)
+        await bot.send_group_msg(group_id=group_id, message=message)
 
 
 # ===========================
