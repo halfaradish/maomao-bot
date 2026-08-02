@@ -24,6 +24,9 @@ from .html_gen import SimpleHTMLImageGenerator
 from ...common import JsonUtils
 from nonebot.exception import FinishedException
 from src.common.model.model import PluginGroupEnum, PluginBadgeColor
+from src.common.permission import check_permission
+
+from . import permissions  # noqa: F401
 
 __plugin_meta__ = PluginMetadata(
     name="需求管理",
@@ -53,15 +56,6 @@ prd = on_command(
     block=config.block,
     priority=config.priority
 )
-
-
-def get_whitelist():
-    """获取白名单"""
-    data, _ = JsonUtils.read(config.data_filename, {
-        "whitelist_person": [],
-        "whitelist_groups": []
-    })
-    return data.get("whitelist_person"), data.get("whitelist_groups")
 
 
 def update_to_do(to_do: list[dict]):
@@ -532,10 +526,7 @@ async def _(bot: Bot, event: Union[PrivateMessageEvent, GroupMessageEvent], args
     if not params:
         await prd.finish(config.default_msg)
 
-    whitelist_person, whitelist_groups = get_whitelist()
-    user_id = event.sender.user_id
-    group_id = event.group_id
-    if str(user_id) not in whitelist_person and str(group_id) not in whitelist_groups:
+    if not await check_permission(event, "prd:use"):
         await prd.finish("你没有权限使用这个插件")
 
     try:
