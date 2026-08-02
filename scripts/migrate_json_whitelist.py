@@ -6,16 +6,11 @@
     python scripts/migrate_json_whitelist.py
 
 特性：
+- 自动清理旧迁移数据后重新迁移
 - 幂等：重复运行不会产生重复数据
 - 保留 JSON 原文件不动，只读取并写入权限系统 DB
+- 每个权限组只含一个权限点，避免群绑定交叉污染
 - 输出详细迁移报告
-
-权限系统表结构：
-  - PermissionPoint        权限点定义（plugin_name, perm_key, name, description）
-  - PermissionGroup        权限组（name, display_name, description）
-  - PermissionGroupPerm     权限组绑定的权限点（group_id, perm_key）
-  - PermissionGroupMember   权限组成员（group_id, user_id）
-  - GroupPermBinding        QQ 群绑定权限组（qq_group_id, permission_group_id）
 """
 import asyncio
 import json
@@ -40,7 +35,7 @@ if _env_file.exists():
 import nonebot
 nonebot.init()
 
-from sqlalchemy import select
+from sqlalchemy import select, delete
 from src.common.database import async_session_factory
 from src.common.permission.models import (
     PermissionPoint,
@@ -54,10 +49,35 @@ from src.common.permission.cache import perm_cache
 DATA_DIR = Path(os.environ.get("DI_TING_DATA_DIR", "data"))
 
 # ============================================================
+# 旧数据清理：删除上次迁移产生的权限组及其关联数据
+# ============================================================
+# 这些权限组名是旧版迁移脚本创建的，需要清理后重建
+OLD_PG_NAMES = [
+    "group_ban_users",
+    "group_msg_del_users",
+    "group_statistics_managers",
+    "prd_users",
+    "sub_records_users",       # 旧版混了 use + notify
+    "check_up_users",          # 旧版混了 use + notify
+    "mass_kick_users",
+    "group_send_users",
+    "group_card_changer_targets",
+    "shadow_problem_view_targets",
+    "real_time_problems_targets",
+    "contest_reminder_targets",
+    "shit_transport_config",   # 旧版混了 use + receive
+    # 新版拆分后的名称也加入清理列表，确保重跑时完全重建
+    "sub_records_notify",
+    "check_up_notify",
+    "shit_transport_post",
+    "shit_transport_receive",
+]
+
+# ============================================================
 # 迁移配置
 # ============================================================
-# 每个条目定义一个权限组及其包含的权限点、用户白名单、群绑定
-# type: "auth" = 用户+群白名单鉴权, "notify" = 纯群绑定（推送目标）, "both" = 同时有鉴权和推送
+# 每个条目定义一个权限组（只含一个权限点）、用户白名单、群绑定
+# 多权限点的插件拆成多个条目，确保群绑定不会交叉污染
 
 MIGRATIONS = [
     # --- 类型 A: JSON 白名单鉴权 ---
@@ -118,7 +138,7 @@ MIGRATIONS = [
         "group_fields": [("whitelist_groups", "prd:use")],
     },
 
-    # 5. sub_records (鉴权 + 推送)
+    # 5a. sub_records - 鉴权
     {
         "plugin": "sub_records",
         "pg_name": "sub_records_users",
@@ -126,18 +146,27 @@ MIGRATIONS = [
         "pg_desc": "自动迁移：过题统计功能使用权限",
         "perms": [
             ("sub_records:use", "过题统计使用", "允许使用 过题 命令"),
-            ("sub_records:notify", "过题统计推送", "定时推送过题排名的目标群"),
         ],
         "json_file": "sub_records.json",
         "user_fields": ["person_users"],
-        # group_users -> 鉴权绑定, submission_groups -> 推送绑定
-        "group_fields": [
-            ("group_users", "sub_records:use"),
-            ("submission_groups", "sub_records:notify"),
-        ],
+        "group_fields": [("group_users", "sub_records:use")],
     },
 
-    # 6. check_up (鉴权 + 推送)
+    # 5b. sub_records - 推送
+    {
+        "plugin": "sub_records",
+        "pg_name": "sub_records_notify",
+        "pg_display": "过题统计推送目标群",
+        "pg_desc": "自动迁移：过题统计定时推送的目标群",
+        "perms": [
+            ("sub_records:notify", "过题统计推送", "定时推送过题排名的目标群"),
+        ],
+        "json_file": "sub_records.json",
+        "user_fields": [],
+        "group_fields": [("submission_groups", "sub_records:notify")],
+    },
+
+    # 6a. check_up - 鉴权
     {
         "plugin": "check_up",
         "pg_name": "check_up_users",
@@ -145,15 +174,24 @@ MIGRATIONS = [
         "pg_desc": "自动迁移：考勤管理功能使用权限",
         "perms": [
             ("check_up:use", "考勤使用", "允许使用 考勤 命令"),
-            ("check_up:notify", "考勤推送", "定时推送考勤信息的目标群"),
         ],
         "json_file": "check_up.json",
         "user_fields": ["person_whitelist"],
-        # group_whitelist -> 鉴权, group_id -> 推送
-        "group_fields": [
-            ("group_whitelist", "check_up:use"),
-            ("group_id", "check_up:notify"),
+        "group_fields": [("group_whitelist", "check_up:use")],
+    },
+
+    # 6b. check_up - 推送
+    {
+        "plugin": "check_up",
+        "pg_name": "check_up_notify",
+        "pg_display": "考勤推送目标群",
+        "pg_desc": "自动迁移：考勤定时推送的目标群",
+        "perms": [
+            ("check_up:notify", "考勤推送", "定时推送考勤信息的目标群"),
         ],
+        "json_file": "check_up.json",
+        "user_fields": [],
+        "group_fields": [("group_id", "check_up:notify")],
     },
 
     # --- 类型 B: 超级管理员硬编码 -> 权限系统（无数据迁移，仅注册权限点） ---
@@ -167,7 +205,7 @@ MIGRATIONS = [
         "perms": [
             ("mass_kick:use", "一键退群使用", "允许使用 一键退群 命令"),
         ],
-        "json_file": None,  # 无 JSON 白名单
+        "json_file": None,
         "user_fields": [],
         "group_fields": [],
     },
@@ -244,23 +282,32 @@ MIGRATIONS = [
         "group_fields": [("groups_send_by_plugin", "contest_reminder:notify")],
     },
 
-    # 13. shit_transport (双权限点：use + receive)
+    # 13a. shit_transport - 可发送群
     {
         "plugin": "shit_transport",
-        "pg_name": "shit_transport_config",
-        "pg_display": "搬史功能配置",
-        "pg_desc": "自动迁移：搬史功能使用权限和接收群配置",
+        "pg_name": "shit_transport_post",
+        "pg_display": "搬史可发送群",
+        "pg_desc": "自动迁移：允许使用搬史命令的群",
         "perms": [
             ("shit_transport:use", "搬史使用", "允许在群内使用搬史命令（可发送群）"),
+        ],
+        "json_file": "shit_transport.json",
+        "user_fields": [],
+        "group_fields": [("post_groups", "shit_transport:use")],
+    },
+
+    # 13b. shit_transport - 接收群
+    {
+        "plugin": "shit_transport",
+        "pg_name": "shit_transport_receive",
+        "pg_display": "搬史接收群",
+        "pg_desc": "自动迁移：接收搬史转发消息的群",
+        "perms": [
             ("shit_transport:receive", "搬史接收", "接收搬史转发消息的群"),
         ],
         "json_file": "shit_transport.json",
         "user_fields": [],
-        # post_groups -> 可发送群(use), receive_groups -> 接收群(receive)
-        "group_fields": [
-            ("post_groups", "shit_transport:use"),
-            ("receive_groups", "shit_transport:receive"),
-        ],
+        "group_fields": [("receive_groups", "shit_transport:receive")],
     },
 ]
 
@@ -278,6 +325,9 @@ class MigrationReport:
         self.total_groups_skipped = 0
         self.total_perms_registered = 0
         self.total_pg_created = 0
+        self.total_pg_cleaned = 0
+        self.total_bindings_cleaned = 0
+        self.total_members_cleaned = 0
 
     def add(self, line: str):
         self.lines.append(line)
@@ -290,8 +340,11 @@ class MigrationReport:
         )
         footer = (
             f"\n{'=' * 60}\n"
-            f"  汇总：权限组创建 {self.total_pg_created} 个，"
-            f"权限点注册 {self.total_perms_registered} 个\n"
+            f"  清理：删除权限组 {self.total_pg_cleaned} 个，"
+            f"群绑定 {self.total_bindings_cleaned} 条，"
+            f"成员 {self.total_members_cleaned} 条\n"
+            f"  新增：权限组 {self.total_pg_created} 个，"
+            f"权限点 {self.total_perms_registered} 个\n"
             f"  用户导入：新增 {self.total_users_added}，跳过 {self.total_users_skipped}\n"
             f"  群绑定导入：新增 {self.total_groups_added}，跳过 {self.total_groups_skipped}\n"
             f"{'=' * 60}\n"
@@ -344,6 +397,67 @@ def _extract_user_ids(data: dict, fields: list[str]) -> list[int]:
     return result
 
 
+async def cleanup_old_data(report: MigrationReport):
+    """清理旧迁移产生的权限组及其关联数据"""
+    report.add(f"\n{'─' * 40}")
+    report.add("  清理旧数据")
+    report.add(f"{'─' * 40}")
+
+    async with async_session_factory() as session:
+        # 查找所有需要清理的权限组
+        result = await session.execute(
+            select(PermissionGroup).where(PermissionGroup.name.in_(OLD_PG_NAMES))
+        )
+        old_groups = result.scalars().all()
+
+        if not old_groups:
+            report.add("  ℹ  无旧数据需要清理")
+            return
+
+        old_group_ids = [g.id for g in old_groups]
+        old_group_names = [g.name for g in old_groups]
+
+        # 1. 删除群绑定
+        result = await session.execute(
+            select(GroupPermBinding).where(
+                GroupPermBinding.permission_group_id.in_(old_group_ids)
+            )
+        )
+        bindings = result.scalars().all()
+        for b in bindings:
+            await session.delete(b)
+        report.total_bindings_cleaned += len(bindings)
+
+        # 2. 删除成员（PermissionGroupMember 有 cascade，但显式删除更安全）
+        result = await session.execute(
+            select(PermissionGroupMember).where(
+                PermissionGroupMember.group_id.in_(old_group_ids)
+            )
+        )
+        members = result.scalars().all()
+        for m in members:
+            await session.delete(m)
+        report.total_members_cleaned += len(members)
+
+        # 3. 删除权限点绑定（PermissionGroupPerm 有 cascade，但显式删除更安全）
+        await session.execute(
+            delete(PermissionGroupPerm).where(
+                PermissionGroupPerm.group_id.in_(old_group_ids)
+            )
+        )
+
+        # 4. 删除权限组
+        for g in old_groups:
+            await session.delete(g)
+        report.total_pg_cleaned += len(old_groups)
+
+        await session.commit()
+
+        report.add(f"  🗑  删除权限组: {', '.join(old_group_names)}")
+        report.add(f"  🗑  清理群绑定: {len(bindings)} 条")
+        report.add(f"  🗑  清理成员: {len(members)} 条")
+
+
 async def ensure_permission_point(session, perm_key: str, name: str, description: str, plugin_name: str) -> bool:
     """确保权限点已注册，返回 True 表示新增"""
     existing = (await session.execute(
@@ -372,7 +486,7 @@ async def ensure_permission_group(session, pg_name: str, display_name: str, desc
         name=pg_name,
         display_name=display_name,
         description=description,
-        created_by=0,  # 系统自动创建
+        created_by=0,
     )
     session.add(pg)
     await session.flush()
@@ -422,12 +536,12 @@ async def ensure_binding(session, qq_group_id: int, permission_group_id: int) ->
 
 
 async def migrate_one(config: dict, report: MigrationReport):
-    """执行单个插件的迁移"""
+    """执行单个权限组的迁移"""
     plugin = config["plugin"]
-    report.add(f"\n--- {plugin} ---")
+    report.add(f"\n--- {plugin} / {config['pg_name']} ---")
 
-    # 1. 注册权限点
     async with async_session_factory() as session:
+        # 1. 注册权限点
         for perm_key, perm_name, perm_desc in config["perms"]:
             is_new = await ensure_permission_point(
                 session, perm_key, perm_name, perm_desc, plugin
@@ -448,7 +562,7 @@ async def migrate_one(config: dict, report: MigrationReport):
         else:
             report.add(f"  ✓  权限组已存在: {config['pg_name']} (id={pg.id})")
 
-        # 3. 确保权限组绑定了所有权限点
+        # 3. 确保权限组绑定了权限点
         for perm_key, _, _ in config["perms"]:
             added = await ensure_group_perm(session, pg.id, perm_key)
             if added:
@@ -467,7 +581,6 @@ async def migrate_one(config: dict, report: MigrationReport):
         return
 
     async with async_session_factory() as session:
-        # 重新加载权限组（确保拿到 id）
         pg = (await session.execute(
             select(PermissionGroup).where(PermissionGroup.name == config["pg_name"]).limit(1)
         )).scalars().first()
@@ -493,7 +606,6 @@ async def migrate_one(config: dict, report: MigrationReport):
                 report.add(f"  ℹ  群列表为空: {json_field} -> {perm_key}")
                 continue
 
-            # 确保 perm_key 在权限组中（可能多个 json_field 映射到同一个 perm_key）
             await ensure_group_perm(session, pg.id, perm_key)
 
             added_cnt = 0
@@ -522,10 +634,14 @@ async def main():
 
     report = MigrationReport()
 
+    # Step 1: 清理旧数据
+    await cleanup_old_data(report)
+
+    # Step 2: 重新迁移
     for config in MIGRATIONS:
         await migrate_one(config, report)
 
-    # 清除权限缓存
+    # Step 3: 清除权限缓存
     perm_cache.clear_all()
     report.add("\n🧹 已清除权限缓存")
 
