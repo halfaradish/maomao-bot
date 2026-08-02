@@ -2,34 +2,13 @@ from nonebot import on_command, logger, get_plugin_config
 from nonebot.adapters.onebot.v11 import GroupMessageEvent, Message
 from nonebot.params import CommandArg
 from nonebot.plugin import PluginMetadata
-import json
-import os
 from .database import db_manager
 from .config import Config
 from ...config import DiTingData
-from ...common import JsonUtils
+from src.common.permission import check_permission
 
 # 获取插件配置
 config = get_plugin_config(Config)
-# 权限检查函数
-def check_permission(user_id: str) -> bool:
-    """检查用户是否有操作权限"""
-    try:
-        # 使用JsonUtils读取权限配置文件
-        permission_data, _ = JsonUtils.read(
-            filename=config.data_filename,
-            default={'userid': []}
-        )
-        
-        # 获取允许的用户ID列表
-        allowed_users = permission_data.get('userid', [])
-        
-        # 检查用户ID是否在允许列表中
-        return str(user_id) in allowed_users
-        
-    except Exception as e:
-        logger.error(f"权限检查失败: {e}")
-        return False
 
 
 
@@ -102,7 +81,7 @@ async def handle_group_statistics(event: GroupMessageEvent, args: Message = Comm
     
     elif len(parts) >= 4 and parts[0] == 'add':
         # 权限检查
-        if not check_permission(event.user_id):
+        if not await check_permission(event, "group_statistics:manage"):
             await group_statistics_cmd.finish("权限不足，无法执行添加操作")
             
         # 添加群聊信息
@@ -128,7 +107,7 @@ async def handle_group_statistics(event: GroupMessageEvent, args: Message = Comm
     
     elif len(parts) >= 4 and parts[0] == 'update':
         # 权限检查
-        if not check_permission(event.user_id):
+        if not await check_permission(event, "group_statistics:manage"):
             await group_statistics_cmd.finish("权限不足，无法执行更新操作")
             
         # 更新群聊信息
@@ -149,7 +128,7 @@ async def handle_group_statistics(event: GroupMessageEvent, args: Message = Comm
     
     elif len(parts) == 2 and parts[0] == 'rm':
         # 权限检查
-        if not check_permission(event.user_id):
+        if not await check_permission(event, "group_statistics:manage"):
             await group_statistics_cmd.finish("权限不足，无法执行删除操作")
             
         # 删除群聊信息
