@@ -22,6 +22,9 @@ from .config import Config
 from .sub_condition import Submission
 from ...common.timer import timer, timed_section
 from src.common.model.model import PluginGroupEnum, PluginBadgeColor
+from src.common.permission import check_permission, get_bound_group_ids
+
+from . import permissions  # noqa: F401
 
 require("nonebot_plugin_apscheduler")
 
@@ -82,8 +85,7 @@ if config.sub_record_schedule_enable:
         bot = get_bot()
         submission = Submission()
 
-        data, _ = JsonUtils.read(config.DATA_FILENAME, {"submission_groups": []})
-        group_ids = data["submission_groups"]
+        group_ids = await get_bound_group_ids("sub_records_notify")
 
         success, msg, pic = await submission.create_ranking_table(upstream_days=7)
         if not success:
@@ -120,13 +122,11 @@ async def _(bot: Bot, event: Union[GroupMessageEvent, PrivateMessageEvent], args
 
         data, _ = JsonUtils.read(config.DATA_FILENAME, {
             "roles_name": ["管理员", "现役", "退役", "预备役"],
-            "school": ["广西大学", "广西师范大学", "江西农业大学"],
-            "person_users": [],
-            "group_users": []
+            "school": ["广西大学", "广西师范大学", "江西农业大学"]
         })
         # 权限验证
         with timer("权限验证"):
-            if str(event.group_id) not in data["group_users"] and str(event.user_id) not in data["person_users"]:
+            if not await check_permission(event, "sub_records:use"):
                 logger.warning(f"权限不足 user={event.user_id}")
                 await cf_sub_command.finish("你没有权限使用 '过题' 功能")
 
