@@ -1,4 +1,4 @@
-from nonebot import Bot, on_command, require, get_driver, get_bot, logger, get_plugin_config
+from nonebot import Bot, on_command, require, get_bot, logger, get_plugin_config
 from nonebot.plugin import PluginMetadata
 from nonebot.adapters.onebot.v11 import MessageEvent, PrivateMessageEvent, GroupMessageEvent
 from nonebot.adapters import Message
@@ -10,9 +10,11 @@ from typing import Union
 
 from .working_time import get_working_time
 from .config import Config
-from ...common import JsonUtils
 from ...config.local_config import CheckUpDay
 from src.common.model.model import PluginGroupEnum, PluginBadgeColor
+from src.common.permission import check_permission, get_bound_group_ids
+
+from . import permissions  # noqa: F401
 
 __plugin_meta__ = PluginMetadata(
     name="考勤管理",
@@ -27,8 +29,6 @@ __plugin_meta__ = PluginMetadata(
 )
 
 plugin_config = get_plugin_config(Config)
-driver = get_driver()
-superuser = driver.config.superusers
 
 check_up_command = on_command(
     "考勤",
@@ -72,16 +72,6 @@ async def is_range_num(bot: Bot, evnet: Union[GroupMessageEvent, PrivateMessageE
         return None
     return int(range_str)
 
-def get_whitelist():
-    data, _ = JsonUtils.read("check_up.json", {
-        "group_whitelist": [],
-        "person_whitelist":[]
-    })
-    return (
-        data.get("group_whitelist", []),
-        data.get("person_whitelist", [])
-    )
-
 @check_up_command.handle()
 async def check_up(bot: Bot, event: Union[GroupMessageEvent, PrivateMessageEvent], args: Message = CommandArg()):
     try:
@@ -99,8 +89,7 @@ async def check_up(bot: Bot, event: Union[GroupMessageEvent, PrivateMessageEvent
             return
         
         # 权限检测
-        group_whitelist, person_whitelist = get_whitelist()
-        if str(event.group_id) not in group_whitelist and str(event.user_id) not in person_whitelist and str(event.user_id) not in superuser:
+        if not await check_permission(event, "check_up:use"):
             logger.warning(f"用户 {event.user_id} 尝试使用 '考勤' 功能，但没有权限")
             await check_up_command.finish(f"你没有权限使用 '考勤' 功能")
 
@@ -161,7 +150,7 @@ if plugin_config.check_up_enable:
 
         # 获取消息
         msg = await get_working_time(date=date_val, range=range_val)
-        group_ids = plugin_config.GROUP_IDS
+        group_ids = await get_bound_group_ids("check_up_notify")
 
         await send_msg_to_group(group_ids=group_ids, bot=bot, msg=msg)
     

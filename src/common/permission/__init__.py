@@ -28,6 +28,7 @@ from src.common.permission.checker import (
 from src.common.permission.cache import perm_cache, TTLCache
 from src.common.permission.supervisor import is_superuser
 from src.common.permission.permission import permission_checker
+from src.common.permission.queries import get_bound_group_ids
 
 # 触发 startup hook 注册
 from src.common.permission import auto_register  # noqa: F401
@@ -47,4 +48,6 @@ __all__ = [
     # 缓存（管理面板需要）
     "perm_cache",
     "TTLCache",
+    # 查询
+    "get_bound_group_ids",
 ]
