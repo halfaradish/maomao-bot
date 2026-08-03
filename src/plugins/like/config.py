@@ -10,5 +10,3 @@ class Config(BaseModel):
     like_time: int = 10
 
     like_auto_send_like: bool = False
-
-    data_filename: str = "like.json"

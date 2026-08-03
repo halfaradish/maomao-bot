@@ -6,23 +6,24 @@ from nonebot_plugin_apscheduler import scheduler
 
 import re
 import asyncio
-import json
-from functools import wraps
-from typing import Callable, List
+from typing import List
 
 from sqlalchemy import select, update as sa_update
 
 from ...common.database import async_session_factory
-from ...common.models.like_plugin_models import LikeRecord, PluginConfig
+from ...common.models.like_plugin_models import LikeRecord
 from .config import Config
 from src.common.model.model import PluginGroupEnum, PluginBadgeColor
+from src.common.permission import check_permission, get_bound_group_ids
+
+from . import permissions  # noqa: F401
 
 plugin_config = get_plugin_config(Config)
 
 __plugin_meta__ = PluginMetadata(
     name="点赞功能",
     description="NoneBot 的点赞功能，支持给自己和他人点赞，以及订阅每日点赞",
-    usage="/赞我 —— 获取10个赞\n/赞他 @用户 —— 给指定用户点赞\n/订阅赞 —— 订阅每日点赞\n/取消订阅赞 —— 取消订阅每日点赞",
+    usage="/赞我 -- 获取10个赞\n/赞他 @用户 -- 给指定用户点赞\n/订阅赞 -- 订阅每日点赞\n/取消订阅赞 -- 取消订阅每日点赞",
     config=Config,
     supported_adapters={ "~onebot.v11" },
     extra={
@@ -46,7 +47,7 @@ like_other = on_command(
 )
 like_follow = on_command(
     "订阅赞",
-    aliases={"dev-订阅赞"},  # ✅ 修复：添加测试环境前缀支持
+    aliases={"dev-订阅赞"},
     permission=GROUP,
     priority=plugin_config.priority,
     block=plugin_config.block
@@ -58,72 +59,6 @@ like_unfollow = on_command(
     block=plugin_config.block
 )
 
-async def _get_ban_groups() -> List:
-    """异步获取禁止点赞的群列表"""
-    async with async_session_factory() as session:
-        stmt = select(PluginConfig).where(PluginConfig.key == "ban_group_users")
-        result = await session.execute(stmt)
-        obj = result.scalars().first()
-        if obj:
-            return json.loads(obj.value)
-        return []
-
-
-async def _set_ban_groups(group_list: List):
-    """异步设置禁止点赞的群列表"""
-    async with async_session_factory() as session:
-        stmt = select(PluginConfig).where(PluginConfig.key == "ban_group_users")
-        result = await session.execute(stmt)
-        obj = result.scalars().first()
-        if obj:
-            obj.value = json.dumps(group_list)
-        else:
-            obj = PluginConfig(key="ban_group_users", value=json.dumps(group_list))
-            session.add(obj)
-        await session.commit()
-
-
-def perm_decorator(func: Callable) -> Callable:
-    """
-    权限装饰器，检查用户是否有权限
-    """
-    @wraps(func)
-    async def wrapper(*args, **kwargs):
-        logger.info("权限装饰器开始执行")
-
-        event = kwargs.get('event')
-        bot = kwargs.get('bot')
-
-        if not event or not bot:
-            for arg in args:
-                if isinstance(arg, GroupMessageEvent):
-                    event = arg
-                    logger.debug(f"从args中找到GroupMessageEvent参数，群ID: {event.group_id}")
-                elif isinstance(arg, Bot):
-                    bot = arg
-                    logger.debug("从args中找到Bot参数")
-
-        if not event or not bot:
-            logger.warning("无法获取必要的event或bot参数")
-            return await func(*args, **kwargs)
-
-        try:
-            # 从数据库读取禁止列表
-            ban_group_users: List = await _get_ban_groups()
-            logger.info(f"群ID: {event.group_id}，禁止列表: {ban_group_users}")
-
-            if str(event.group_id) in ban_group_users:
-                logger.info(f"群 {event.group_id} 没有权限使用该功能")
-                await bot.send(event, message="❌ 本群未开启点赞功能")
-                return
-
-            logger.info(f"群 {event.group_id} 有权限，继续执行原函数")
-            return await func(*args, **kwargs)
-        except Exception as e:
-            logger.error(f"权限检查过程中发生错误: {e}", exc_info=True)
-            return
-
-    return wrapper
 
 async def follow_or_not(follow: bool, user_id: str, nickname: str, group_id: str = None) -> str:
     """改变订阅赞的用户状态（SQLAlchemy 版）"""
@@ -210,7 +145,7 @@ async def send_like(bot: Bot, user_id) -> tuple[int, any]:
             })
             count += 10
             logger.success(f"给 {user_id} 点赞成功, 当前点赞次数:{count}")
-            await asyncio.sleep(1)  # ✅ 修复：增加延迟，防止风控
+            await asyncio.sleep(1)  # 增加延迟，防止风控
     except ActionFailed as e:
         logger.opt(exception=True).error(f"给 {user_id} 点赞 API 调用失败: {e}")
         err_msg = e.info
@@ -218,8 +153,14 @@ async def send_like(bot: Bot, user_id) -> tuple[int, any]:
         logger.opt(exception=True).error(f"给 {user_id} 点赞失败: {e}")
     return (count, err_msg)
 
+
 @like_me.handle()
 async def like_me_handle(bot: Bot, event: GroupMessageEvent):
+    # 黑名单检查
+    banned_groups = await get_bound_group_ids("like_ban")
+    if event.group_id in banned_groups:
+        await like_me.finish("❌ 本群未开启点赞功能")
+
     user_id = event.sender.user_id
     nickname = event.sender.nickname
     group_id = event.group_id
@@ -238,6 +179,11 @@ async def like_me_handle(bot: Bot, event: GroupMessageEvent):
 
 @like_other.handle()
 async def like_other_handle(bot: Bot, event: GroupMessageEvent):
+    # 黑名单检查
+    banned_groups = await get_bound_group_ids("like_ban")
+    if event.group_id in banned_groups:
+        await like_other.finish("❌ 本群未开启点赞功能")
+
     message = str(event.get_message()).strip()
     match = r"[1-9]([0-9]{5,11})"
     match_result = re.search(match, message)
@@ -269,14 +215,17 @@ async def like_other_handle(bot: Bot, event: GroupMessageEvent):
                 await like_other.finish(sender + " , 无法给指定的人 " + likeder + " 更多赞了哦")
 
 @like_follow.handle()
-@perm_decorator
 async def _(bot: Bot, event: GroupMessageEvent):
+    # 权限检查
+    if not await check_permission(event, "like:subscribe"):
+        await like_follow.finish("❌ 你没有权限使用订阅赞功能")
+
     follow: bool = True
     user_id = event.sender.user_id
     nickname = event.sender.nickname
     group_id = event.group_id
 
-    user_group_level = None 
+    user_group_level = None
     try:
         member_info = await bot.get_group_member_info(
             group_id=group_id,
@@ -293,7 +242,7 @@ async def _(bot: Bot, event: GroupMessageEvent):
 
     if user_group_level is not None and user_group_level < REQUIRED_LEVEL:
         await like_follow.finish(f"❌ 订阅失败：你的群荣誉等级为 {user_group_level}，未达到要求的 {REQUIRED_LEVEL} 级。")
-   
+
     msg = f"收到订阅请求！用户: {nickname}({user_id})\n"
     msg += await follow_or_not(follow=follow, user_id=str(user_id), nickname=nickname, group_id=str(group_id))
 
@@ -321,13 +270,12 @@ async def _():
     "给订阅的用户进行每日点赞"
     if not plugin_config.like_auto_send_like:
         return
-    
+
     bot = get_bot()
-    # ✅ 修复：增加 Bot 连接状态检查
     if not bot or not hasattr(bot, '_connected') or not bot._connected:
         logger.error("Bot 未连接，跳过定时点赞")
         return
-    
+
     async with async_session_factory() as session:
         stmt = select(LikeRecord).where(LikeRecord.is_following == True)
         result = await session.execute(stmt)

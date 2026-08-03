@@ -71,6 +71,9 @@ OLD_PG_NAMES = [
     "check_up_notify",
     "shit_transport_post",
     "shit_transport_receive",
+    # like 插件
+    "like",
+    "like_ban",
 ]
 
 # ============================================================
@@ -308,6 +311,34 @@ MIGRATIONS = [
         "json_file": "shit_transport.json",
         "user_fields": [],
         "group_fields": [("receive_groups", "shit_transport:receive")],
+    },
+
+    # 14a. like - 订阅赞权限（空权限组，后续通过权限命令管理）
+    {
+        "plugin": "like",
+        "pg_name": "like",
+        "pg_display": "点赞订阅权限",
+        "pg_desc": "允许使用订阅赞功能的群/用户",
+        "perms": [
+            ("like:subscribe", "订阅赞", "订阅每日自动点赞功能"),
+        ],
+        "json_file": None,
+        "user_fields": [],
+        "group_fields": [],
+    },
+
+    # 14b. like - 赞我/赞他黑名单
+    {
+        "plugin": "like",
+        "pg_name": "like_ban",
+        "pg_display": "点赞黑名单群",
+        "pg_desc": "被禁用赞我/赞他功能的群",
+        "perms": [
+            ("like:banned", "点赞黑名单", "被禁用赞我/赞他功能的群"),
+        ],
+        "json_file": "like.json",
+        "user_fields": [],
+        "group_fields": [("ban_group_users", "like:banned")],
     },
 ]
 
