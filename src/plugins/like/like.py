@@ -103,9 +103,9 @@ async def follow_or_not(
                 defaults["group_number"] = str(group_id)
 
             if obj:
+                was_following = obj.is_following
                 for key, value in defaults.items():
                     setattr(obj, key, value)
-                was_following = obj.is_following
                 await session.commit()
                 if follow:
                     if is_trial:
