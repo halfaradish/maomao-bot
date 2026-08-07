@@ -6,7 +6,7 @@ from nonebot_plugin_apscheduler import scheduler
 
 import re
 import asyncio
-from typing import List
+from datetime import datetime, timedelta
 
 from sqlalchemy import select, update as sa_update
 
@@ -59,39 +59,70 @@ like_unfollow = on_command(
     block=plugin_config.block
 )
 
+# 试用订阅门槛：非权限用户需达到此群荣誉等级
+TRIAL_REQUIRED_LEVEL = 15
+# 试用订阅有效期（天）
+TRIAL_DAYS = 7
 
-async def follow_or_not(follow: bool, user_id: str, nickname: str, group_id: str = None) -> str:
-    """改变订阅赞的用户状态（SQLAlchemy 版）"""
+
+async def follow_or_not(
+    follow: bool,
+    user_id: str,
+    nickname: str,
+    group_id: str | None = None,
+    is_trial: bool = False,
+) -> str:
+    """改变订阅赞的用户状态
+
+    Args:
+        follow: True=订阅, False=取消订阅
+        user_id: 用户 QQ 号
+        nickname: 用户昵称
+        group_id: 群号
+        is_trial: 是否为试用订阅（True=7天有效期, False=永久）
+    """
     try:
         async with async_session_factory() as session:
             stmt = select(LikeRecord).where(LikeRecord.user_id == user_id)
             result = await session.execute(stmt)
             obj = result.scalars().first()
 
+            if follow and is_trial:
+                trial_expires = datetime.now() + timedelta(days=TRIAL_DAYS)
+                expires_str = trial_expires.strftime("%Y-%m-%d")
+            else:
+                trial_expires = None
+                expires_str = None
+
             defaults = {
                 "nickname": nickname,
                 "is_following": follow,
+                "trial_expires_at": trial_expires,
             }
             if group_id:
                 defaults["group_number"] = str(group_id)
 
             if obj:
-                # 更新已有记录
                 for key, value in defaults.items():
                     setattr(obj, key, value)
                 was_following = obj.is_following
                 await session.commit()
                 if follow:
-                    return "订阅成功" if not was_following else "您已订阅，无需再次订阅"
+                    if is_trial:
+                        return f"试用订阅成功，有效期 {TRIAL_DAYS} 天（至 {expires_str}）"
+                    else:
+                        return "订阅成功" if not was_following else "您已订阅，无需再次订阅"
                 else:
                     return "取消订阅成功" if was_following else "您未在订阅名单中，取消订阅失败"
             else:
-                # 创建新记录
                 obj = LikeRecord(user_id=user_id, **defaults)
                 session.add(obj)
                 await session.commit()
                 if follow:
-                    return "订阅成功"
+                    if is_trial:
+                        return f"试用订阅成功，有效期 {TRIAL_DAYS} 天（至 {expires_str}）"
+                    else:
+                        return "订阅成功"
                 else:
                     return "取消订阅成功"
     except Exception as e:
@@ -99,12 +130,9 @@ async def follow_or_not(follow: bool, user_id: str, nickname: str, group_id: str
         return f"订阅操作失败，请稍后再试"
 
 
-async def count_liked_times(user_id, count: int, nickname, group_id: str = None):
-    """
-    点赞次数计数（SQLAlchemy 版）
-    """
+async def count_liked_times(user_id, count: int, nickname, group_id: str | None = None):
+    """点赞次数计数"""
     async with async_session_factory() as session:
-        # 确保用户记录存在
         stmt = select(LikeRecord).where(LikeRecord.user_id == user_id)
         result = await session.execute(stmt)
         obj = result.scalars().first()
@@ -119,7 +147,6 @@ async def count_liked_times(user_id, count: int, nickname, group_id: str = None)
             session.add(obj)
         await session.flush()
 
-        # 原子递增 count
         stmt = (
             sa_update(LikeRecord)
             .where(LikeRecord.user_id == user_id)
@@ -132,9 +159,7 @@ async def count_liked_times(user_id, count: int, nickname, group_id: str = None)
         await session.commit()
 
 async def send_like(bot: Bot, user_id) -> tuple[int, any]:
-    """
-    点赞函数
-    """
+    """点赞函数"""
     count = 0
     err_msg = None
     try:
@@ -145,13 +170,34 @@ async def send_like(bot: Bot, user_id) -> tuple[int, any]:
             })
             count += 10
             logger.success(f"给 {user_id} 点赞成功, 当前点赞次数:{count}")
-            await asyncio.sleep(1)  # 增加延迟，防止风控
+            await asyncio.sleep(1)
     except ActionFailed as e:
         logger.opt(exception=True).error(f"给 {user_id} 点赞 API 调用失败: {e}")
         err_msg = e.info
     except Exception as e:
         logger.opt(exception=True).error(f"给 {user_id} 点赞失败: {e}")
     return (count, err_msg)
+
+
+async def _expire_trial_subscriptions():
+    """将过期的试用订阅标记为取消"""
+    now = datetime.now()
+    async with async_session_factory() as session:
+        stmt = (
+            sa_update(LikeRecord)
+            .where(
+                LikeRecord.is_following == True,
+                LikeRecord.trial_expires_at.is_not(None),
+                LikeRecord.trial_expires_at < now,
+            )
+            .values(is_following=False)
+        )
+        result = await session.execute(stmt)
+        await session.commit()
+        expired_count = result.rowcount
+        if expired_count > 0:
+            logger.info(f"[点赞] 清理 {expired_count} 个过期试用订阅")
+        return expired_count
 
 
 @like_me.handle()
@@ -216,15 +262,25 @@ async def like_other_handle(bot: Bot, event: GroupMessageEvent):
 
 @like_follow.handle()
 async def _(bot: Bot, event: GroupMessageEvent):
-    # 权限检查
-    if not await check_permission(event, "like:subscribe"):
-        await like_follow.finish("❌ 你没有权限使用订阅赞功能")
-
-    follow: bool = True
     user_id = event.sender.user_id
     nickname = event.sender.nickname
     group_id = event.group_id
 
+    # 权限检查
+    has_permission = await check_permission(event, "like:subscribe")
+
+    if has_permission:
+        # 权限通过 -> 永久订阅，无等级要求
+        msg = f"收到订阅请求！用户: {nickname}({user_id})\n"
+        msg += await follow_or_not(
+            follow=True, user_id=str(user_id), nickname=nickname,
+            group_id=str(group_id), is_trial=False
+        )
+        logger.info(msg)
+        await bot.send(event, message=msg)
+        return
+
+    # 无权限 -> 检查群荣誉等级
     user_group_level = None
     try:
         member_info = await bot.get_group_member_info(
@@ -235,17 +291,21 @@ async def _(bot: Bot, event: GroupMessageEvent):
         level_str = member_info.get('level', '0')
         user_group_level = int(level_str)
     except Exception as e:
-        logger.warning(f"获取等级失败，已自动放行：{e}")
+        logger.warning(f"获取等级失败：{e}")
         user_group_level = None
 
-    REQUIRED_LEVEL = 10
+    if user_group_level is not None and user_group_level < TRIAL_REQUIRED_LEVEL:
+        await like_follow.finish(
+            f"❌ 订阅失败：你的群荣誉等级为 {user_group_level}，"
+            f"未达到要求的 {TRIAL_REQUIRED_LEVEL} 级（或无订阅权限）。"
+        )
 
-    if user_group_level is not None and user_group_level < REQUIRED_LEVEL:
-        await like_follow.finish(f"❌ 订阅失败：你的群荣誉等级为 {user_group_level}，未达到要求的 {REQUIRED_LEVEL} 级。")
-
+    # 等级达标 -> 试用订阅 7 天
     msg = f"收到订阅请求！用户: {nickname}({user_id})\n"
-    msg += await follow_or_not(follow=follow, user_id=str(user_id), nickname=nickname, group_id=str(group_id))
-
+    msg += await follow_or_not(
+        follow=True, user_id=str(user_id), nickname=nickname,
+        group_id=str(group_id), is_trial=True
+    )
     logger.info(msg)
     await bot.send(event, message=msg)
 
@@ -275,6 +335,9 @@ async def _():
     if not bot or not hasattr(bot, '_connected') or not bot._connected:
         logger.error("Bot 未连接，跳过定时点赞")
         return
+
+    # 清理过期试用订阅
+    await _expire_trial_subscriptions()
 
     async with async_session_factory() as session:
         stmt = select(LikeRecord).where(LikeRecord.is_following == True)
