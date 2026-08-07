@@ -3,7 +3,6 @@ from nonebot.adapters.onebot.v11 import Bot, MessageEvent, GroupMessageEvent
 from nonebot.params import CommandArg
 from nonebot.adapters import Message
 from nonebot.plugin import PluginMetadata
-from nonebot import get_driver
 
 import http.client
 import json
@@ -11,6 +10,7 @@ import json
 from .config import Config
 from ...config.local_config import QQControlConfig
 from src.common.model.model import PluginGroupEnum, PluginBadgeColor
+from src.common.permission import check_permission
 
 __plugin_meta__ = PluginMetadata(
     name="分组发送",
@@ -24,6 +24,7 @@ __plugin_meta__ = PluginMetadata(
     }
 )
 
+from . import permissions  # noqa: F401
 from ..group_manager import _get_group_detail
 
 
@@ -31,10 +32,6 @@ from ..group_manager import _get_group_detail
 api_host: str = QQControlConfig.QQ_CONTROL_HOST
 api_port: int = QQControlConfig.QQ_CONTROL_PORT
 api_token: str = 'Bearer ' + QQControlConfig.QQ_CONTROL_TOKEN
-
-
-# 获取驱动器和超级用户配置
-driver = get_driver()
 
 # 通过HTTP API发送私聊消息的函数
 def send_private_msg_via_api(user_id: int, message_id: int) -> bool:
@@ -85,8 +82,8 @@ async def handle_group_send_command(
     event: MessageEvent,
     args: Message = CommandArg()
 ):
-    # 检查权限，只有超级用户才能使用此命令
-    if str(event.user_id) not in driver.config.superusers:
+    # 检查权限
+    if not await check_permission(event, "group_send:use"):
         await group_pull_cmd.finish("您没有权限使用此命令")
     
     # 解析参数

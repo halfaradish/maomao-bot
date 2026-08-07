@@ -1,6 +1,5 @@
 from nonebot import (
     get_plugin_config,
-    get_driver,
     on_command,
     logger,
     Bot
@@ -20,6 +19,8 @@ import asyncio
 from .config import Config
 from ...common import JsonUtils
 from src.common.model.model import PluginGroupEnum, PluginBadgeColor
+from src.common.permission import check_permission
+from . import permissions  # noqa: F401 - 注册权限点到权限系统
 
 __plugin_meta__ = PluginMetadata(
     name="一键退群",
@@ -34,7 +35,6 @@ __plugin_meta__ = PluginMetadata(
 )
 
 config = get_plugin_config(Config)
-driver = get_driver()
 
 # 创建命令处理器
 mass_kick_cmd = on_command("一键退群", priority=5, block=True)
@@ -48,14 +48,6 @@ def get_managed_groups():
         }
     )
     return data.get('managed_groups', [])
-async def is_super_admin(user_id: str) -> bool:
-    """验证用户是否为超级管理员"""
-    # 调试信息：打印超级管理员列表和当前用户ID
-    logger.info(f"超级管理员列表: {driver.config.superusers}")
-    logger.info(f"当前用户ID: {user_id}")
-    result = str(user_id) in driver.config.superusers
-    logger.info(f"权限验证结果: {result}")
-    return result
 
 async def get_group_member_role(bot: Bot, group_id: str, user_id: str) -> str:
     """获取群成员角色
@@ -189,7 +181,7 @@ async def handle_mass_kick(bot: Bot, event: GroupMessageEvent, args: Message = C
     """处理一键退群命令"""
     
     # 验证权限
-    if not await is_super_admin(str(event.user_id)):
+    if not await check_permission(event, "mass_kick:use"):
         await mass_kick_cmd.finish("您没有权限使用此功能")
     
     # 解析参数

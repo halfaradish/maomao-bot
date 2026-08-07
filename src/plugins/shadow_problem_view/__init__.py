@@ -15,10 +15,13 @@ from datetime import datetime, timedelta, date
 from nonebot_plugin_apscheduler import scheduler
 import asyncio
 
-from ...common import utils, JsonUtils
+from ...common import utils
 from .config import Config
 from .get_range_sub import DailySubCondition
 from src.common.model.model import PluginGroupEnum, PluginBadgeColor
+from src.common.permission import get_bound_group_ids
+
+from . import permissions  # noqa: F401
 
 __plugin_meta__ = PluginMetadata(
     name="影子过题",
@@ -53,13 +56,7 @@ async def send_record_to_groups(record: dict):
             f"{record['real_name']} 在 {datetime.now().year - record['enter_time'].year} 年前的今天 {record['ac_time'].strftime('%Y-%m-%d %H:%M:%S')} 完成了 {record['platform']} 题目 '{record['problem_name']}'\n"
             f"题目链接：{problem_url}"
         )
-        data, _ = JsonUtils.read(
-            filename=config.data_filename,
-            default={
-                "groups_send_by_plugin": []
-            }
-        )
-        groups: list[str] = data.get('groups_send_by_plugin', [])
+        groups: list[int] = await get_bound_group_ids("shadow_problem_view_targets")
         # 发送消息
         for group_id in groups:
             await bot.send_group_msg(

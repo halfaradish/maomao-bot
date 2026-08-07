@@ -1,17 +1,9 @@
 from pydantic import BaseModel
-from typing import List
 
 from ...config import CheckUpDay
-from ...common import JsonUtils
 
 class Config(BaseModel):
     """Plugin Config Here"""
-    @staticmethod
-    def load_json_to_group_id(filename: str = 'check_up.json') -> List[int]:
-        content = []
-        content, _=JsonUtils.read(filename, {"group_id": []})
-
-        return content['group_id']
 
     # enable
     check_up_enable: bool = False
@@ -26,8 +18,6 @@ class Config(BaseModel):
     # 考勤结束时间
     DAY_END: int = CheckUpDay.DAY_END
 
-    # 要发送定时消息的群
-    GROUP_IDS: List[int] = load_json_to_group_id()
     # 定时发送的时间
     TIMING_HOUR: str = CheckUpDay.TIMING_HOUR
     TIMING_MINUTE: str = CheckUpDay.TIMING_MINUTE

@@ -8,9 +8,11 @@ from datetime import date
 import asyncio
 
 from src.common.model.model import PluginGroupEnum, PluginBadgeColor
+from src.common.permission import get_bound_group_ids
 from .config import Config
-from ...common.json_utils import JsonUtils
 from .holidays import get_holidays
+
+from . import permissions  # noqa: F401
 
 require("nonebot_plugin_apscheduler")
 from nonebot_plugin_apscheduler import scheduler
@@ -33,16 +35,6 @@ driver = get_driver()
 
 config: Config = get_plugin_config(Config)
 
-PLUGIN_DATA = 'nickname_changer.json'
-def _read_plugin_data():
-    data, _ = JsonUtils.read(
-        filename=PLUGIN_DATA,
-        default={
-            "group_whitelist": []
-        }
-    )
-    return data
-
 async def change_bot_nickname():
     logger.info("开始执行昵称更换任务")
     
@@ -57,12 +49,10 @@ async def change_bot_nickname():
         bot_user_id = int(bot.self_id)
         
         # 更新每个群的机器人昵称
-        json_data = _read_plugin_data()
-        group_whitelist = json_data.get('group_whitelist', [])
+        group_whitelist = await get_bound_group_ids("group_card_changer_targets")
         logger.info(f"更改群昵称的群列表：{group_whitelist}")
 
         for group_id in group_whitelist:
-            group_id = int(group_id)
             if not group_id:
                 logger.warning(f"跳过无效的群ID: {group_id}")
                 continue

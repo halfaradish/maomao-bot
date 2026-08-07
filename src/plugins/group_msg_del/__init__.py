@@ -3,8 +3,9 @@ from nonebot.plugin import PluginMetadata
 from nonebot.adapters.onebot.v11 import GroupMessageEvent, Bot
 from nonebot.exception import FinishedException, ActionFailed
 
-from ...common.json_utils import JsonUtils
+from src.common.permission import check_permission
 from src.common.model.model import PluginGroupEnum, PluginBadgeColor
+from . import permissions  # noqa: F401 - 注册权限点到权限系统
 
 __plugin_meta__ = PluginMetadata(
     name="群消息撤回",
@@ -25,34 +26,14 @@ delete_msg = on_command(
     block=False
 )
 
-PLUGIN_DATA = 'group_msg_del.json'
-
-def _read_plugin_data():
-    data, _ = JsonUtils.read(
-        filename=PLUGIN_DATA,
-        default={
-            "user_whitelist": []
-        }
-    )
-    return data
-    
 
 @delete_msg.handle()
 async def _(bot: Bot, event: GroupMessageEvent):
     if not event.reply:
         return
-    
-    json_data = _read_plugin_data()
-    user_whitelist = json_data.get('user_whitelist', [])
 
-    current_user_id = str(event.sender.user_id)
-    whitelist_str = [str(uid) for uid in user_whitelist]
-    
-    logger.info(f"[群消息撤回] 当前用户: {current_user_id}, 白名单: {whitelist_str}")
-    
-    if current_user_id not in whitelist_str:
-        # 非白名单用户直接忽略，不暴露机器人功能
-        logger.info(f"[群消息撤回] 用户 {current_user_id} 不在白名单中，忽略操作")
+    if not await check_permission(event, "group_msg_del:use"):
+        logger.info(f"[群消息撤回] 用户 {event.user_id} 无权限，忽略操作")
         return
     
     target_msg_id  = event.reply.message_id

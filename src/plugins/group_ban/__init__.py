@@ -18,8 +18,9 @@ from nonebot.params import CommandArg
 from nonebot.plugin import PluginMetadata
 from nonebot.rule import Rule
 
-from ...common import JsonUtils
+from ...common.permission import check_permission
 from .config import Config
+from . import permissions  # noqa: F401 - 注册权限点到权限系统
 from src.common.model.model import PluginGroupEnum, PluginBadgeColor
 
 __plugin_meta__ = PluginMetadata(
@@ -35,37 +36,11 @@ __plugin_meta__ = PluginMetadata(
     },
 )
 
-# 白名单配置文件
-WHITELIST_FILENAME = "ban_whitelist.json"
-DEFAULT_WHITELIST = {
-    "group_whitelist": [],
-    "user_whitelist": ["3026754892","434732989"],
-}
-
 driver = get_driver()
 
 
-def _load_whitelist() -> dict:
-    data, _ = JsonUtils.read(WHITELIST_FILENAME, DEFAULT_WHITELIST)
-    if not isinstance(data, dict):
-        return DEFAULT_WHITELIST.copy()
-    data.setdefault("group_whitelist", [])
-    data.setdefault("user_whitelist", [])
-    return data
-
-
-def _is_allowed(event: GroupMessageEvent) -> bool:
-    whitelist = _load_whitelist()
-    user_id = str(event.user_id)
-    group_id = str(event.group_id)
-
-    if user_id in driver.config.superusers:
-        return True
-    if user_id in whitelist["user_whitelist"]:
-        return True
-    if group_id in whitelist["group_whitelist"]:
-        return True
-    return False
+async def _check_allowed(event: GroupMessageEvent) -> bool:
+    return await check_permission(event, "group_ban:use")
 
 
 def _extract_target(event: GroupMessageEvent) -> int | None:
@@ -142,7 +117,7 @@ async def handle_ban(bot: Bot, event: GroupMessageEvent, args: Message = Command
         await ban_cmd.finish("仅支持在群聊中使用禁言功能")
         return
 
-    if not _is_allowed(event):
+    if not await _check_allowed(event):
         await ban_cmd.finish("你没有权限使用禁言功能")
         return
 
@@ -197,7 +172,7 @@ async def handle_unban(bot: Bot, event: GroupMessageEvent, args: Message = Comma
         await unban_cmd.finish("仅支持在群聊中使用禁言功能")
         return
 
-    if not _is_allowed(event):
+    if not await _check_allowed(event):
         await unban_cmd.finish("你没有权限使用解除禁言功能")
         return
 
@@ -246,7 +221,7 @@ async def handle_kick(bot: Bot, event: GroupMessageEvent, args: Message = Comman
         await kick_cmd.finish("仅支持在群聊中使用踢人功能")
         return
 
-    if not _is_allowed(event):
+    if not await _check_allowed(event):
         await kick_cmd.finish("你没有权限使用踢人功能")
         return
 

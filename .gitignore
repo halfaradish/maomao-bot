@@ -11,6 +11,7 @@ src/plugins/auto_manage_group/sell_ad_group_model
 logs
 logs-dev
 *.bak
+cache
 
 table_gen.so
 

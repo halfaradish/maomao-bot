@@ -24,6 +24,7 @@ class LikeRecord(Base):
     group_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
     subscription_source: Mapped[str] = mapped_column(String(255), default="diting_bot")
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.now)
+    trial_expires_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True, default=None)
 
 
 class PluginConfig(Base):

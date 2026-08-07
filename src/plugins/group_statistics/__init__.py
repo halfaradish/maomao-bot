@@ -10,6 +10,7 @@ from src.common.model.model import PluginGroupEnum, PluginBadgeColor
 
 # 导入commands模块以确保命令被注册
 from . import commands
+from . import permissions  # noqa: F401 - 注册权限点到权限系统
 
 __plugin_meta__ = PluginMetadata(
     name="群统计",
