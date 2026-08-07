@@ -47,7 +47,6 @@ like_other = on_command(
 )
 like_follow = on_command(
     "订阅赞",
-    aliases={"dev-订阅赞"},
     permission=GROUP,
     priority=plugin_config.priority,
     block=plugin_config.block
