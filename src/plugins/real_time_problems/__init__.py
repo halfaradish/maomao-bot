@@ -14,8 +14,11 @@ from typing import List, Dict, Any
 from .config import Config
 # 导入HourSubCondition类
 from .get_hour_problems import HourSubCondition
-from ...common import utils, JsonUtils
+from ...common import utils
 from src.common.model.model import PluginGroupEnum, PluginBadgeColor
+from src.common.permission import get_bound_group_ids
+
+from . import permissions  # noqa: F401
 
 # 插件基本信息
 __plugin_meta__ = PluginMetadata(
@@ -158,14 +161,8 @@ async def send_to_groups(message: Message):
     try:
         bot = get_bot()
 
-        data, _ = JsonUtils.read(
-            filename=config.data_filename,
-            default={
-                "target_groups": []
-            }
-        )
         # 获取配置中的目标群组列表
-        target_groups = data.get('target_groups', [])
+        target_groups = await get_bound_group_ids("real_time_problems_targets")
         
         # 遍历所有配置的群组
         for group_id in target_groups:

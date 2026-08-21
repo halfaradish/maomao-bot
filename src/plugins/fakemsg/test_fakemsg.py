@@ -69,17 +69,11 @@ class MockJsonUtils:
 
 def get_plugin_config(json_utils):
     data, _ = json_utils.read("fakemsg.json", {
-        "person_users": [],
-        "group_users": [],
         "daily_times_log": {}
     })
     if not isinstance(data, dict):
-        return [], [], {}
-    return (
-        data.get("person_users", []),
-        data.get("group_users", []),
-        data.get('daily_times_log', {})
-    )
+        return {}
+    return data.get('daily_times_log', {})
 
 
 def get_last_refresh_date(json_utils):
@@ -213,9 +207,7 @@ class TestFakemsgRefresh(unittest.TestCase):
     def test_get_plugin_config_default(self):
         if os.path.exists(self.test_file):
             os.remove(self.test_file)
-        person_users, group_users, daily_times_log = get_plugin_config(MockJsonUtils)
-        self.assertEqual(person_users, [])
-        self.assertEqual(group_users, [])
+        daily_times_log = get_plugin_config(MockJsonUtils)
         self.assertEqual(daily_times_log, {})
 
 
