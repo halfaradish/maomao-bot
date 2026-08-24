@@ -114,6 +114,26 @@ class TransportService:
         })
 
     @staticmethod
+    def get_banshi_frequency_statistics() -> Dict[str, Any]:
+        """获取搬史频率统计数据"""
+        TransportService.ensure_data_initialized()
+        data, _ = JsonUtils.read(config.bs_data_filename, {
+            config.banshi_frequency_statistics: {},
+            config.postshi_frequency_statistics: {}
+        })
+        return data.get(config.banshi_frequency_statistics, {})
+
+    @staticmethod
+    def get_postshi_frequency_statistics() -> Dict[str, Any]:
+        """获取发史频率统计数据"""
+        TransportService.ensure_data_initialized()
+        data, _ = JsonUtils.read(config.bs_data_filename, {
+            config.banshi_frequency_statistics: {},
+            config.postshi_frequency_statistics: {}
+        })
+        return data.get(config.postshi_frequency_statistics, {})
+
+    @staticmethod
     def forward_group_single_msg(group_id: int, message_id: int) -> bool:
         """转发消息到指定群组"""
         try:
