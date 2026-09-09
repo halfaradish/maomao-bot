@@ -88,4 +88,35 @@ export const API = {
   cache: {
     clear: "/permissions/cache/clear",
   },
+
+  // Bot 基础信息
+  bot: {
+    info: "/bot/info",
+  },
+
+  // 插件管理（只读）
+  plugins: {
+    list: "/plugins",
+  },
+
+  // QQ 群管理（区别于上面的权限组 groups）
+  qqGroups: {
+    list: (page = 1, size = 20) => `/groups/list?page=${page}&size=${size}`,
+    stats: (groupId: number) => `/groups/${groupId}/stats`,
+    features: (groupId: number) => `/groups/features/${groupId}`,
+    toggleFeature: (groupId: number) => `/groups/features/${groupId}/toggle`,
+  },
+
+  // 消息日志
+  logs: {
+    messages: (params: Record<string, string | number | undefined>) => {
+      const query = new URLSearchParams();
+      Object.entries(params).forEach(([key, value]) => {
+        if (value !== undefined && value !== null && value !== "") {
+          query.set(key, String(value));
+        }
+      });
+      return `/logs/messages?${query.toString()}`;
+    },
+  },
 };

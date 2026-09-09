@@ -27,6 +27,7 @@ import {
 import { useListManager } from "@/hooks/useListManager";
 import ConfirmDialog from "@/components/ConfirmDialog";
 import type { BlacklistUser, BlacklistGroup } from "@/types/api";
+import { GLASS_CARD_CLASS, TABLE_CLASS_NAMES } from "@/constants";
 
 export default function BlacklistPage() {
   // User blacklist
@@ -86,12 +87,14 @@ export default function BlacklistPage() {
       transition={{ duration: 0.3 }}
       className="space-y-4"
     >
-      <h1 className="text-2xl font-bold text-default-900">黑名单管理</h1>
+      <h1 className="text-2xl font-bold text-default-900 dark:text-white">
+        黑名单管理
+      </h1>
 
       <Tabs aria-label="黑名单">
         {/* User blacklist */}
         <Tab key="users" title="用户黑名单">
-          <Card className="bg-white/60 dark:bg-black/40 backdrop-blur-xl border border-white/40 dark:border-white/10 shadow-sm">
+          <Card className={GLASS_CARD_CLASS}>
             <CardBody className="space-y-4">
               <form onSubmit={handleAddUser} className="flex gap-2 items-end">
                 <Input
@@ -115,6 +118,9 @@ export default function BlacklistPage() {
                 <Button
                   type="submit"
                   color="danger"
+                  radius="full"
+                  variant="shadow"
+                  className="font-medium"
                   isLoading={userList.addMutation.isPending}
                   startContent={<MdAdd size={18} />}
                 >
@@ -124,10 +130,7 @@ export default function BlacklistPage() {
 
               <Table
                 radius="sm"
-                classNames={{
-                  wrapper: "bg-transparent shadow-none",
-                  th: "bg-white/40 dark:bg-white/5 backdrop-blur-md text-default-600",
-                }}
+                classNames={TABLE_CLASS_NAMES}
               >
                 <TableHeader>
                   <TableColumn>QQ号</TableColumn>
@@ -182,7 +185,7 @@ export default function BlacklistPage() {
 
         {/* Group blacklist */}
         <Tab key="groups" title="群黑名单">
-          <Card className="bg-white/60 dark:bg-black/40 backdrop-blur-xl border border-white/40 dark:border-white/10 shadow-sm">
+          <Card className={GLASS_CARD_CLASS}>
             <CardBody className="space-y-4">
               <form onSubmit={handleAddGroup} className="flex gap-2 items-end">
                 <Input
@@ -206,6 +209,9 @@ export default function BlacklistPage() {
                 <Button
                   type="submit"
                   color="danger"
+                  radius="full"
+                  variant="shadow"
+                  className="font-medium"
                   isLoading={groupList.addMutation.isPending}
                   startContent={<MdAdd size={18} />}
                 >
@@ -215,10 +221,7 @@ export default function BlacklistPage() {
 
               <Table
                 radius="sm"
-                classNames={{
-                  wrapper: "bg-transparent shadow-none",
-                  th: "bg-white/40 dark:bg-white/5 backdrop-blur-md text-default-600",
-                }}
+                classNames={TABLE_CLASS_NAMES}
               >
                 <TableHeader>
                   <TableColumn>群号</TableColumn>
@@ -277,6 +280,7 @@ export default function BlacklistPage() {
         title={userList.confirmState.options?.title ?? ""}
         message={userList.confirmState.options?.message ?? ""}
         confirmText={userList.confirmState.options?.confirmText}
+        color={userList.confirmState.options?.color}
         onConfirm={userList.confirmState.handleConfirm}
         onCancel={userList.confirmState.handleCancel}
       />
@@ -285,6 +289,7 @@ export default function BlacklistPage() {
         title={groupList.confirmState.options?.title ?? ""}
         message={groupList.confirmState.options?.message ?? ""}
         confirmText={groupList.confirmState.options?.confirmText}
+        color={groupList.confirmState.options?.color}
         onConfirm={groupList.confirmState.handleConfirm}
         onCancel={groupList.confirmState.handleCancel}
       />
