@@ -6,8 +6,8 @@ from nonebot.params import CommandArg
 import re
 
 from .config import Config
+from . import dao
 from .get_problem import get_one_problem_by_random, get_problem_id_by_rating_tags, get_daily_problem
-from ...common.json_utils import JsonUtils
 from src.common.model.model import PluginGroupEnum, PluginBadgeColor
 
 plugin_config = get_plugin_config(Config)
@@ -71,48 +71,42 @@ class CommandHandler:
                 tags.append(param)
 
         if tags:
-            data, _ = JsonUtils.read(plugin_config.filename, {
-                "map": {},
-                "quick_map": {}
-            })
-            tags_quick_map = data.get("quick_map", {})
-            tags = [tags_quick_map.get(tag, tag) for tag in tags]
+            tags = [await dao.resolve_alias(tag) or tag for tag in tags]
 
         await bot.send(event=event, message=await get_problem_id_by_rating_tags(rating, tags))
 
     @staticmethod
-    def handle_map_tags(data: dict) -> str:
+    async def handle_map_tags() -> str:
         """列出所有可用标签"""
-        tags_map = data.get("map", {})
-        return "\n".join(tags_map.keys())
+        alias_map = await dao.get_alias_map()
+        return "\n".join(alias_map.keys())
 
     @staticmethod
-    def handle_map_current(data: dict) -> str:
+    async def handle_map_current() -> str:
         """列出当前映射关系"""
-        tags_map = data.get("map", {})
-        if not tags_map:
+        alias_map = await dao.get_alias_map()
+        if not alias_map:
             return "当前没有任何标签映射，请使用\n/duel map add\n命令添加新的映射。"
 
         lines = []
-        for key, values in tags_map.items():
+        for key, values in alias_map.items():
             if values:
                 sub_msg = "".join(f"[{value}]" for value in values)
                 lines.append(f"{key} -> {sub_msg}")
         return "\n".join(lines)
 
     @staticmethod
-    async def handle_map_add(bot: Bot, event: MessageEvent, params: list[str], data: dict):
+    async def handle_map_add(bot: Bot, event: MessageEvent, params: list[str]):
         """添加映射关系"""
         if len(params) != 2:
             await bot.send(event=event, message=f"参数个数有误！需要两个参数，实际收到{len(params)}个参数")
             return
 
         map_key, map_value = params
-        tags_map = data.get("map", {})
-        tags_quick_map = data.get("quick_map", {})
 
-        if map_key not in tags_map:
-            may_mention_key = CommandHandler.regex_search(list(tags_map.keys()), map_key)
+        if not await dao.has_tag(map_key):
+            alias_map = await dao.get_alias_map()
+            may_mention_key = CommandHandler.regex_search(list(alias_map.keys()), map_key)
             if not may_mention_key:
                 msg = f"输入的参数 '{map_key}' 不在标准的 tags 中，请输入\n/duel map tags\n查看可映射的 tags"
             else:
@@ -120,32 +114,25 @@ class CommandHandler:
             await bot.send(event=event, message=msg)
             return
 
-        if map_value in tags_map[map_key]:
+        if not await dao.add_alias(map_key, map_value):
             await bot.send(event=event, message=f"当前映射已存在 '{map_key}' - '{map_value}'")
             return
 
-        tags_map[map_key].append(map_value)
-        tags_quick_map[map_value] = map_key
-        JsonUtils.update(plugin_config.filename, {
-            "map": tags_map,
-            "quick_map": tags_quick_map
-        })
         await bot.send(event=event,
                        message=f"映射键值对添加成功：'{map_key}' - '{map_value}'\n可通过\n/duel map current\n查看")
 
     @staticmethod
-    async def handle_map_remove(bot: Bot, event: MessageEvent, params: list[str], data: dict):
+    async def handle_map_remove(bot: Bot, event: MessageEvent, params: list[str]):
         """删除映射关系"""
         if len(params) != 2:
             await bot.send(event=event, message=f"参数个数有误！需要两个参数，实际收到{len(params)}个参数")
             return
 
         map_key, map_value = params
-        tags_map = data.get("map", {})
-        tags_quick_map = data.get("quick_map", {})
 
-        if map_key not in tags_map:
-            may_mention_key = CommandHandler.regex_search(list(tags_map.keys()), map_key)
+        if not await dao.has_tag(map_key):
+            alias_map = await dao.get_alias_map()
+            may_mention_key = CommandHandler.regex_search(list(alias_map.keys()), map_key)
             if not may_mention_key:
                 msg = f"输入的参数 '{map_key}' 不在标准的 tags 中，请输入\n/duel map tags\n查看可映射的 tags"
             else:
@@ -153,26 +140,15 @@ class CommandHandler:
             await bot.send(event=event, message=msg)
             return
 
-        if map_value not in tags_map[map_key]:
+        if not await dao.remove_alias(map_key, map_value):
             await bot.send(event=event, message=f"当前映射不存在 '{map_key}' : '{map_value}'")
             return
 
-        tags_map[map_key].remove(map_value)
-        tags_quick_map.pop(map_value)
-        JsonUtils.update(plugin_config.filename, {
-            "map": tags_map,
-            "quick_map": tags_quick_map
-        })
         await bot.send(event=event, message=f"映射键值对删除成功：'{map_key}' : '{map_value}'")
 
     @staticmethod
     async def handle_map(bot: Bot, event: MessageEvent, params: list[str]):
         """处理映射命令"""
-        data, _ = JsonUtils.read(plugin_config.filename, {
-            "map": {},
-            "quick_map": {}
-        })
-
         if not params:
             await bot.send(event=event, message=plugin_config.MAP_DEFAULT_MSG)
             return
@@ -180,16 +156,22 @@ class CommandHandler:
         subcommand = params[0]
         sub_params = params[1:]
 
+        async def send_tags():
+            await bot.send(event=event, message=await CommandHandler.handle_map_tags())
+
+        async def send_current():
+            await bot.send(event=event, message=await CommandHandler.handle_map_current())
+
         handlers = {
-            "tags": lambda: bot.send(event=event, message=CommandHandler.handle_map_tags(data)),
-            "current": lambda: bot.send(event=event, message=CommandHandler.handle_map_current(data)),
-            "add": lambda: CommandHandler.handle_map_add(bot, event, sub_params, data),
-            "rm": lambda: CommandHandler.handle_map_remove(bot, event, sub_params, data),
-            "remove": lambda: CommandHandler.handle_map_remove(bot, event, sub_params, data)
+            "tags": send_tags,
+            "current": send_current,
+            "add": lambda: CommandHandler.handle_map_add(bot, event, sub_params),
+            "rm": lambda: CommandHandler.handle_map_remove(bot, event, sub_params),
+            "remove": lambda: CommandHandler.handle_map_remove(bot, event, sub_params)
         }
 
         if subcommand in handlers:
-            handlers[subcommand]()
+            await handlers[subcommand]()
         else:
             await bot.send(event=event, message=f"map 后跟了未知参数: {subcommand}，请使用\n/duel map\n查看可用的命令")
 
