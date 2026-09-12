@@ -13,6 +13,7 @@ from .botdb_models import (
     TodoReminderLog,
 )
 from .like_plugin_models import LikeRecord, PluginConfig
+from .vv_models import VvGroupBlacklist
 from .icpc_models import (
     DingCheckup,
     CfOfficialProblem,
@@ -43,4 +44,5 @@ __all__ = [
     "QQRobotMessage",
     "TodoReminder",
     "TodoReminderLog",
+    "VvGroupBlacklist",
 ]
