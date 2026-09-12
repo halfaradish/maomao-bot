@@ -4,7 +4,8 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-environment: str = os.getenv('ENVIRONMENT') or 'prod'
+# 未设 ENVIRONMENT 时回退 dev（fail-safe）：独立脚本/临时进程不应误用 prod 配置与 prod 数据空间
+environment: str = os.getenv('ENVIRONMENT') or 'dev'
 
 _env_file = f".env.{environment}"
 

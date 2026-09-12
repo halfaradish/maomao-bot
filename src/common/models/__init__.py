@@ -18,6 +18,7 @@ from .duel_models import DuelDailyProblemState, DuelStandardTag, DuelTagAlias
 from .fakemsg_models import FakemsgDailyUsage
 from .mass_kick_models import MassKickManagedGroup
 from .prd_models import PrdTodo
+from .plugin_usage_models import PluginUsageRecord
 from .shit_transport_models import ShitTransportStats
 from .icpc_models import (
     DingCheckup,
@@ -48,6 +49,7 @@ __all__ = [
     "MonitoredGroup",
     "OjAccount",
     "PluginConfig",
+    "PluginUsageRecord",
     "PrdTodo",
     "QQMessageReaction",
     "QQMessageReceiptSummary",

@@ -34,7 +34,7 @@ sys.path.insert(0, str(PROJECT_ROOT))
 from dotenv import load_dotenv
 
 load_dotenv(str(PROJECT_ROOT / ".env"), override=True)
-_env = os.environ.get("ENVIRONMENT", "prod")
+_env = os.environ.get("ENVIRONMENT", "dev")
 _env_file = PROJECT_ROOT / f".env.{_env}"
 if _env_file.exists():
     load_dotenv(str(_env_file), override=True)

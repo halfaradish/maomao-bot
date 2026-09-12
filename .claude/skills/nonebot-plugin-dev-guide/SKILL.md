@@ -506,6 +506,8 @@ async with async_session_factory() as session:
     await session.commit()
 ```
 
+> **新建表必读**：Bot DB 新表**默认必加 `env_tag` 列**（同库多环境数据隔离），DAO 读写统一用 `src.common.database.current_env_tag()` 过滤。标准列定义、按 id 校验写法与豁免清单见 [diting-db-guide 第 7 节「env_tag 环境隔离约定」](../diting-db-guide/SKILL.md)。
+
 ### 6.2 CRUD 包装器
 
 来自 [src/common/crud.py](../../src/common/crud.py) 的 5 个便捷函数，支持**Django 风格过滤器**：

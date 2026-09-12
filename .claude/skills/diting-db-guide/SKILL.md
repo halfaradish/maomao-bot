@@ -372,8 +372,7 @@ async with async_session_factory() as session:
 
 这些表来自 5 个原使用 `JsonUtils` JSON 文件存储的插件，数据由
 `scripts/migrate_json_to_db.py`（幂等，`--archive` 归档源文件）一次性迁入。
-**所有按 `id` 的读写必须校验 `env_tag`**（自增主键跨环境共享），
-环境标签统一用 `src/common.database.current_env_tag()`。
+env_tag 的取值来源、DAO 过滤模式与按 id 校验规范，见第 7 节「env_tag 环境隔离约定」。
 
 | 模型类（文件） | MySQL 表名 | 来源 JSON | 说明 |
 |---|---|---|---|
@@ -402,7 +401,92 @@ from src.common.models import TodoReminder, LikeRecord
 
 ---
 
-## 7. 添加新表
+## 7. env_tag 环境隔离约定
+
+同一 MySQL 库（`diting_qq_bot`）会被多个环境实例共用（prod/dev/local/docker，由 `.env` 的 `ENVIRONMENT` 决定）。`env_tag` 列标记每行数据的归属环境，防止 dev 测试数据混入 prod、或 dev 环境误改 prod 数据。
+
+> 列宽口径：`String(20)`（现有 7 张表一致）。早期设计文档写的 `VARCHAR(32)` 已废弃，以本节为准。
+
+### 7.1 取值来源 — 只用 `current_env_tag()`
+
+```python
+from src.common.database import current_env_tag
+```
+
+- **bot 运行时**：读 nonebot 配置 `config.environment`（即 `.env` 的 `ENVIRONMENT`）
+- **独立脚本**（未 `nonebot.init()`）：回退读 `ENVIRONMENT` 环境变量，缺省 `dev`
+
+**禁止**在插件/DAO 中自行读环境（`get_driver().config.environment`、`os.getenv("ENVIRONMENT")` 等）——统一走 `current_env_tag()`，保证打标与过滤口径一致。
+
+### 7.2 标准列定义
+
+`env_tag` 紧跟 `id` 之后，`String(20)`；复合 UNIQUE / INDEX 一律以 env_tag 为首位：
+
+```python
+from sqlalchemy import BigInteger, Index, String, UniqueConstraint
+from sqlalchemy.orm import Mapped, mapped_column
+from src.common.database import Base
+
+class YourNewModel(Base):
+    __tablename__ = "your_mysql_table_name"
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    env_tag: Mapped[str] = mapped_column(String(20))
+    # ... 业务字段 ...
+
+    __table_args__ = (
+        UniqueConstraint("env_tag", "user_id", name="uq_your_table_env_user"),
+        # 或 Index("idx_your_table_env_xxx", "env_tag", "..."),
+    )
+```
+
+### 7.3 DAO 读写模式
+
+**写入**：插入时显式打标（参考 `plugin_usage_stats/dao.py`）：
+
+```python
+session.add(PluginUsageRecord(
+    module_name=module_name,
+    env_tag=current_env_tag(),   # ← 显式打标
+    ...
+))
+```
+
+**查询/更新/删除**：每条 where 都带环境过滤：
+
+```python
+stmt = stmt.where(PluginUsageRecord.env_tag == current_env_tag())
+```
+
+**按自增 id 读写必须校验 env_tag**（自增主键跨环境共享序列，防止 dev 误改 prod），参考 `prd/dao.py`：
+
+```python
+async with async_session_factory() as session:
+    row = await session.get(PrdTodo, todo_id)
+    if row is None or row.env_tag != current_env_tag():
+        return None              # 不是本环境的数据，视同不存在
+    # ... 修改并 commit ...
+```
+
+### 7.4 适用边界 — 默认必加 + 豁免清单
+
+**所有 Bot DB 新表默认必加 `env_tag`。** 拿不准就加——忘加的代价（dev/prod 数据串）远大于多一列。
+
+| 判定 | 数据类别 | 例子 |
+|---|---|---|
+| ✅ 必加 | 每个环境有独立语义的插件私有数据 | 每日额度、标签词表、需求待办、管理名单、使用统计 |
+| ⛔ 可豁免 | 纯全局共享数据（跨环境本就应共享同一份） | 用户分组、平台级只读配置 |
+
+豁免时删掉 env_tag 列，并在模型 docstring 中写明豁免理由。
+
+**现有豁免清单**（历史表，维持现状，不回溯加列）：
+
+- `botdb_models.py` 全部 12 张、`like_plugin_models.py` 2 张、`vv_models.py`
+- ICPC 库整体不适用（独立数据库，不存在同库多环境问题）
+
+---
+
+## 8. 添加新表
 
 ### 步骤
 
@@ -418,11 +502,14 @@ class YourNewModel(Base):
     __tablename__ = "your_mysql_table_name"  # 必须与 MySQL 表名一致
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    env_tag: Mapped[str] = mapped_column(String(20))  # 默认必加，见第 7 节
     name: Mapped[str] = mapped_column(String(100))
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.now)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.now, onupdate=datetime.now)
 ```
+
+> **env_tag 豁免确认**：新表默认必加 `env_tag`（模板已含）。只有纯全局共享数据才可豁免——删掉该列并在模型 docstring 写明理由。判定标准、列定义与 DAO 过滤模式见第 7 节「env_tag 环境隔离约定」。
 
 **（2）在 MySQL 中建表** — 直接执行 DDL 或通过代码：
 
@@ -448,7 +535,7 @@ rows = await async_get_many(YourNewModel, filters={"name__icontains": "es"})
 
 ---
 
-## 8. DateTime 处理
+## 9. DateTime 处理
 
 项目使用 **naive datetime**（无时区信息），时区约定为北京时间（Asia/Shanghai）：
 
@@ -477,7 +564,7 @@ def _ensure_naive_local(dt):
 
 ---
 
-## 9. 插件实战参考
+## 10. 插件实战参考
 
 以下是项目中每个插件使用的 DB 模式和技巧，可作为写新代码时的参考：
 
@@ -496,9 +583,9 @@ def _ensure_naive_local(dt):
 
 ---
 
-## 10. 常见陷阱
+## 11. 常见陷阱
 
-### 10.1 `metadata` 字段名冲突
+### 11.1 `metadata` 字段名冲突
 
 SQLAlchemy 的 `Base` 保留了 `metadata` 属性名。如果表中正好有名为 `metadata` 的列，定义模型时需要重命名 Python 属性：
 
@@ -509,7 +596,7 @@ metadata_: Mapped[dict] = mapped_column("metadata", JSON, default=dict)
 
 访问时用 `obj.metadata_`，写入 DB 的列名仍是 `metadata`。
 
-### 10.2 UUID 主键用 hex 字符串
+### 11.2 UUID 主键用 hex 字符串
 
 项目使用 **32 位 hex 字符串**（无横杠），对应 Django `UUIDField` 默认格式：
 
@@ -523,7 +610,7 @@ id: Mapped[str] = mapped_column(
 # 不是: "a1b2c3d4-e5f6-...-..." (不要用 str(uuid.uuid4()))
 ```
 
-### 10.3 外键指向非主键列
+### 11.3 外键指向非主键列
 
 `GroupMember.group_name` 的外键指向 `group.name`（不是 `group.id`），这是历史遗留设计：
 
@@ -535,7 +622,7 @@ group_name: Mapped[str] = mapped_column(
 
 新表不应模仿此模式——FK 应该指向目标表的主键。
 
-### 10.4 不要在 session 外使用 ORM 对象的懒加载关系
+### 11.4 不要在 session 外使用 ORM 对象的懒加载关系
 
 ```python
 # ❌ 错误：在 async with 外访问关系属性可能失败（MissingGreenlet）
@@ -556,7 +643,7 @@ async with async_session_factory() as session:
 # 现在可以在会话外安全使用 members
 ```
 
-### 10.5 查询返回类型对照
+### 11.5 查询返回类型对照
 
 ```python
 result = await session.execute(stmt)
@@ -570,7 +657,7 @@ rows = result.mappings().all()      # → List[dict-like], 每行可 row["col_na
 row  = result.mappings().first()    # → Optional[dict-like]
 ```
 
-### 10.6 CRUD 调用之间不是同一事务
+### 11.6 CRUD 调用之间不是同一事务
 
 ```python
 # ⚠️ 这两步不在同一事务中！
@@ -582,13 +669,13 @@ await async_create_record(QQMessageReceiptSummary, ...)  # 独立 session
 
 这种情况应改用直接 SQLAlchemy，在同一个 `async with` 块中完成，保证原子性。
 
-### 10.7 `pymysql` 仅限 `llm_scribe`
+### 11.7 `pymysql` 仅限 `llm_scribe`
 
 整个代码库中，**只有** `llm_scribe` 插件还在使用 `pymysql`（独立的数据库连接，非 Bot DB）。所有 Bot DB 操作都已迁移到 SQLAlchemy async。不要在 Bot DB 相关代码中引入 `pymysql`。
 
 ---
 
-## 11. 与 ICPC DB 的区别
+## 12. 与 ICPC DB 的区别
 
 这个项目有 **两套独立的数据库**，不要混淆：
 
