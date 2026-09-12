@@ -20,6 +20,7 @@ CLAUDE.md
 .claude/*
 !.claude/skills/
 docs/superpowers
+.zcode/
 
 # webui (Vite + Vue)
 node_modules/
