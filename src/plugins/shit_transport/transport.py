@@ -1,7 +1,8 @@
 from nonebot import (
     on_command,
     logger,
-    get_plugin_config
+    get_plugin_config,
+    get_driver
 )
 from nonebot.adapters.onebot.v11 import (
     GroupMessageEvent,
@@ -20,19 +21,25 @@ from sqlalchemy import select
 
 from .config import Config
 from .image_generator import BsCountImageGenerator
-from ...common import JsonUtils
+from . import dao
+from . import permissions  # noqa: F401
 from ...config import QQControlConfig
 from src.common.model.model import PluginGroupEnum, PluginBadgeColor
 from src.common.permission import check_permission, get_bound_group_ids
 from src.common.permission.cache import perm_cache
-from src.common.database import async_session_factory
+from src.common.database import Base, engine, async_session_factory
 from src.common.permission.models import PermissionGroup, GroupPermBinding
-
-from . import permissions  # noqa: F401
 
 # 加载插件配置
 config = get_plugin_config(Config)
 bs_count_image_generator = BsCountImageGenerator()
+
+
+@get_driver().on_startup
+async def _create_tables() -> None:
+    """建表（幂等，仅创建缺失表）"""
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
 
 api_host: str = QQControlConfig.QQ_CONTROL_HOST
 api_port: int = QQControlConfig.QQ_CONTROL_PORT
@@ -71,67 +78,6 @@ class GroupInfo:
 
 class TransportService:
     """消息转发服务类，封装转发相关的核心逻辑"""
-
-    @staticmethod
-    def ensure_data_initialized():
-        """确保统计数据结构已初始化"""
-        JsonUtils.read(config.bs_data_filename, {
-            config.banshi_frequency_statistics: {},
-            config.postshi_frequency_statistics: {}
-        })
-
-    @staticmethod
-    def update_frequency_statistics(
-        transmit_shit_user_id: str,
-        transmit_shit_nickname: str,
-        post_shit_user_id: str,
-        post_shit_nickname: str
-    ):
-        """搬史插件使用频率统计更新"""
-        TransportService.ensure_data_initialized()
-        data, _ = JsonUtils.read(config.bs_data_filename, {
-            config.banshi_frequency_statistics: {},
-            config.postshi_frequency_statistics: {}
-        })
-
-        transmit_freq: Dict[str, Any] = data.get(config.banshi_frequency_statistics, {})
-        transmit_user_stats = transmit_freq.get(transmit_shit_user_id, {"count": 0})
-        transmit_freq[transmit_shit_user_id] = {
-            "count": transmit_user_stats.get("count", 0) + 1,
-            "nickname": transmit_shit_nickname
-        }
-
-        post_freq: Dict[str, Any] = data.get(config.postshi_frequency_statistics, {})
-        post_user_stats = post_freq.get(post_shit_user_id, {"count": 0})
-        post_freq[post_shit_user_id] = {
-            "count": post_user_stats.get("count", 0) + 1,
-            "nickname": post_shit_nickname
-        }
-
-        JsonUtils.update(config.bs_data_filename, {
-            config.banshi_frequency_statistics: transmit_freq,
-            config.postshi_frequency_statistics: post_freq
-        })
-
-    @staticmethod
-    def get_banshi_frequency_statistics() -> Dict[str, Any]:
-        """获取搬史频率统计数据"""
-        TransportService.ensure_data_initialized()
-        data, _ = JsonUtils.read(config.bs_data_filename, {
-            config.banshi_frequency_statistics: {},
-            config.postshi_frequency_statistics: {}
-        })
-        return data.get(config.banshi_frequency_statistics, {})
-
-    @staticmethod
-    def get_postshi_frequency_statistics() -> Dict[str, Any]:
-        """获取发史频率统计数据"""
-        TransportService.ensure_data_initialized()
-        data, _ = JsonUtils.read(config.bs_data_filename, {
-            config.banshi_frequency_statistics: {},
-            config.postshi_frequency_statistics: {}
-        })
-        return data.get(config.postshi_frequency_statistics, {})
 
     @staticmethod
     def forward_group_single_msg(group_id: int, message_id: int) -> bool:
@@ -252,13 +198,12 @@ async def handle_forward_operation(bot: Bot, event: GroupMessageEvent, message_i
         else:
             error_groups.append(str(group_id))
 
-    # 使用频率统计更新
-    TransportService.update_frequency_statistics(
-        transmit_shit_user_id=str(event.sender.user_id),
-        transmit_shit_nickname=event.sender.nickname,
-        post_shit_user_id=str(event.reply.sender.user_id),
-        post_shit_nickname=event.reply.sender.nickname
-    )
+    # 使用频率统计更新（失败不影响转发结果）
+    try:
+        await dao.incr_stats(int(event.sender.user_id), dao.KIND_BANSHI, event.sender.nickname)
+        await dao.incr_stats(int(event.reply.sender.user_id), dao.KIND_POSTSHI, event.reply.sender.nickname)
+    except Exception as e:
+        logger.warning(f"[搬史] 更新使用统计失败（不影响转发）: {e}")
 
     # 构建结果消息
     result_msg = f"已成功转发到 {success_cnt} 个群组"
@@ -334,8 +279,8 @@ def build_count_rows(statistics: Dict[str, Any], action_text: str, is_show_all: 
     return rows
 
 async def handle_count_image_operation(is_show_all: bool) -> bytes:
-    banshi_freq = TransportService.get_banshi_frequency_statistics()
-    postshi_freq = TransportService.get_postshi_frequency_statistics()
+    banshi_freq = await dao.get_stats(dao.KIND_BANSHI)
+    postshi_freq = await dao.get_stats(dao.KIND_POSTSHI)
     transmit_rows = build_count_rows(banshi_freq, '搬史', is_show_all)
     post_rows = build_count_rows(postshi_freq, '发史', is_show_all)
     return bs_count_image_generator.generate_image(
@@ -347,8 +292,8 @@ async def handle_count_image_operation(is_show_all: bool) -> bytes:
 
 async def handle_count_operation(is_show_all: bool) -> str:
     """处理使用次数统计操作"""
-    banshi_freq = TransportService.get_banshi_frequency_statistics()
-    postshi_freq = TransportService.get_postshi_frequency_statistics()
+    banshi_freq = await dao.get_stats(dao.KIND_BANSHI)
+    postshi_freq = await dao.get_stats(dao.KIND_POSTSHI)
     transmit_rows = build_count_rows(banshi_freq, '搬史', is_show_all)
     post_rows = build_count_rows(postshi_freq, '发史', is_show_all)
 

@@ -5,11 +5,6 @@ class Config(BaseModel):
     bs_priority: int = 10
     bs_block: bool = True
 
-    bs_data_filename: str = 'shit_transport.json'
-
-    banshi_frequency_statistics: str = "banshi_frequency_statistics"
-    postshi_frequency_statistics: str = "postshi_frequency_statistics"
-
     bs_max_show_cnt: int = 5
 
     HELP_MSG: str = (
