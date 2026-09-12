@@ -1,35 +1,26 @@
+import datetime
+
 from nonebot import logger, get_bot
 from nonebot.adapters.onebot.v11 import Bot, Message
 from typing import Optional, cast
 
-from ...common.json_utils import JsonUtils
 from ...common.send_forward_msg import SenderInfo
 from .config import config
+from . import dao
 
 
 MAX_DAILY_TIME = config.fakemsg_max_daily_time
 bot_info: Optional["SenderInfo"] = None
 
 
-def get_plugin_config() -> dict:
-    """获取每日使用次数日志"""
-    data, _ = JsonUtils.read("fakemsg.json", {
-        "daily_times_log": {}
-    })
-    if not isinstance(data, dict):
-        logger.warning("无法正确读取文件，使用默认值")
-        return {}
-    return data.get('daily_times_log', {})
+async def get_daily_usage(user_id: str) -> int:
+    """获取用户当日已使用次数"""
+    return await dao.get_count(int(user_id), datetime.date.today())
 
 
-def daily_times_addone(user_id: str) -> dict:
-    """增加使用次数并返回更新后的字典"""
-    daily_times_log = get_plugin_config()
-    current_times = daily_times_log.get(user_id, 0)
-    current_times += 1
-    daily_times_log[user_id] = current_times
-    JsonUtils.update("fakemsg.json", updates={"daily_times_log": daily_times_log})
-    return daily_times_log
+async def daily_times_addone(user_id: str) -> None:
+    """当日使用次数 +1（原子 upsert）"""
+    await dao.incr(int(user_id), datetime.date.today())
 
 
 async def get_bot_info() -> "SenderInfo":
@@ -42,17 +33,3 @@ async def get_bot_info() -> "SenderInfo":
         nickname = info['nickname']
         bot_info = SenderInfo(user_id=self_id, nickname=nickname, message=Message())
     return bot_info
-
-
-def get_last_refresh_date() -> str:
-    """获取上次刷新日期"""
-    data, _ = JsonUtils.read("fakemsg.json", {})
-    if not isinstance(data, dict):
-        logger.warning("无法正确读取文件，使用默认值")
-        return ""
-    return data.get("last_refresh_date", "")
-
-
-def set_last_refresh_date(date_str: str) -> bool:
-    """设置上次刷新日期"""
-    return JsonUtils.update("fakemsg.json", updates={"last_refresh_date": date_str})

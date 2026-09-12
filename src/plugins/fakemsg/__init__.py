@@ -62,15 +62,12 @@ async def _(event: GroupMessageEvent, bot: Bot):
     is_plugin_user = False
 
     try:
-        scheduler.check_and_refresh_on_demand()
-
-        daily_times_log = utils.get_plugin_config()
         logger.info(f"用户 {event.user_id} 在群 {event.group_id} 使用伪消息功能")
 
         is_plugin_user = await check_permission(event, "fakemsg:use")
 
         if not is_plugin_user:
-            times = daily_times_log.get(str(event.user_id), 0)
+            times = await utils.get_daily_usage(str(event.user_id))
 
             logger.info(f"用户 {event.user_id} 今日已使用 {times}/{MAX_DAILY_TIME} 次")
             if times >= MAX_DAILY_TIME:
@@ -112,12 +109,23 @@ async def _(event: GroupMessageEvent, bot: Bot):
         await fakemsg.finish(f"发送失败：{str(e)}")
     finally:
         if should_consume_quota and not is_plugin_user:
-            utils.daily_times_addone(user_id=str(event.user_id))
+            try:
+                await utils.daily_times_addone(user_id=str(event.user_id))
+            except Exception as e:
+                logger.error(f"[伪消息] 记录使用次数失败: {e}")
 
 
 # ============================================================
-# 启动钩子：自动创建 fakemsg 默认权限组
+# 启动钩子：建表 + 自动创建 fakemsg 默认权限组
 # ============================================================
+
+@get_driver().on_startup
+async def _create_tables():
+    """建表（幂等，仅创建缺失表）"""
+    from src.common.database import Base, engine
+
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
 
 @get_driver().on_startup
 async def _ensure_default_perm_group():
@@ -155,6 +163,3 @@ async def _ensure_default_perm_group():
                 logger.info(f"[fakemsg] 权限组 {core.DEFAULT_PG_NAME} 添加权限点: {perm_key}")
 
         await session.commit()
-
-
-scheduler.init_scheduler()

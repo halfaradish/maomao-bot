@@ -1,54 +1,30 @@
-from nonebot import logger
 import datetime
+
+from nonebot import logger
 
 from nonebot.plugin import require
 
 from .config import config
-from . import utils
+from . import dao
 
 require("nonebot_plugin_apscheduler")
 from nonebot_plugin_apscheduler import scheduler
 
-def refresh_daily_times_log() -> bool:
-    """
-    刷新daily_times_log，将所有用户的使用次数重置为0
-    考虑数据一致性和并发安全问题
-    """
-    try:
-        logger.info("[fakemsg] 开始执行每日额度刷新任务")
 
-        today = datetime.date.today().strftime("%Y-%m-%d")
+async def cleanup_expired_usage() -> int:
+    """清理历史日期的使用计数行
 
-        from ...common.json_utils import JsonUtils
-        success = JsonUtils.update("fakemsg.json", updates={"daily_times_log": {}, "last_refresh_date": today})
-
-        if success:
-            logger.info(f"[fakemsg] 每日额度刷新成功，日期: {today}")
-        else:
-            logger.error("[fakemsg] 每日额度刷新失败")
-
-        return success
-    except Exception as e:
-        logger.error(f"[fakemsg] 每日额度刷新发生异常: {e}", exc_info=True)
-        return False
-
-
-def check_and_refresh_on_demand() -> bool:
-    """
-    按需检查并刷新daily_times_log
-    用于防范24:00时bot掉线导致未更新的情况
+    计数按 usage_date 维度存储，天然按日期隔离，无需整体重置；
+    当日之后的查询不受影响，只需定期清理旧行。
     """
     try:
-        today = datetime.date.today().strftime("%Y-%m-%d")
-        last_refresh = utils.get_last_refresh_date()
-
-        if last_refresh != today:
-            logger.info(f"[fakemsg] 检测到日期变更，上次刷新日期: {last_refresh}，当前日期: {today}，需要执行刷新")
-            return refresh_daily_times_log()
-        return True
+        today = datetime.date.today()
+        deleted = await dao.delete_before(today)
+        logger.info(f"[fakemsg] 每日额度清理完成，删除 {deleted} 行历史计数")
+        return deleted
     except Exception as e:
-        logger.error(f"[fakemsg] 按需检查刷新发生异常: {e}", exc_info=True)
-        return False
+        logger.error(f"[fakemsg] 每日额度清理发生异常: {e}", exc_info=True)
+        return 0
 
 
 if config.fakemsg_schedule_enable:
@@ -57,13 +33,8 @@ if config.fakemsg_schedule_enable:
         hour=config.fakemsg_schedule_hour,
         minute=config.fakemsg_schedule_minute,
         second=config.fakemsg_schedule_second,
-        id="fakemsg_daily_refresh"
+        id="fakemsg_daily_cleanup"
     )
-    async def fakemsg_daily_refresh():
-        """每日定时刷新额度"""
-        refresh_daily_times_log()
-
-
-def init_scheduler():
-    """初始化调度器"""
-    check_and_refresh_on_demand()
+    async def fakemsg_daily_cleanup():
+        """每日定时清理历史额度计数"""
+        await cleanup_expired_usage()
