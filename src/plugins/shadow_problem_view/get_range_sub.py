@@ -6,7 +6,7 @@ from nonebot import(
 from datetime import datetime, timedelta
 
 from .config import Config
-from ...common import get_icpc_db_connection, JsonUtils, utils
+from ...common import get_icpc_db_connection, utils
 
 config = get_plugin_config(Config)
 
