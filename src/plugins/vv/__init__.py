@@ -8,7 +8,7 @@
 import asyncio
 import re
 
-from nonebot import get_plugin_config, logger, on_command, on_regex
+from nonebot import get_driver, get_plugin_config, logger, on_command, on_regex
 from nonebot.adapters.onebot.v11 import (
     GroupMessageEvent,
     Message,
@@ -55,11 +55,26 @@ __plugin_meta__ = PluginMetadata(
         "group": PluginGroupEnum.UTILITY.value,
         "badge_color": PluginBadgeColor.GREEN.value,
         "author": "half",
-        "version": "0.1.0",
+        "version": "0.1.1",
     },
 )
 
 config = get_plugin_config(Config)
+
+
+# ============================================================
+# 命令前缀：on_regex 不经过 COMMAND_START，需自行对齐其语义
+# （非空前缀必选；配置含空串时前缀可省略）
+# ============================================================
+def _build_prefix_pattern(starts) -> str:
+    prefixes = sorted((p for p in starts if p), key=len, reverse=True)
+    alts = "|".join(re.escape(p) for p in prefixes)
+    if not alts:
+        return ""
+    return f"(?:{alts})?" if "" in starts else f"(?:{alts})"
+
+
+_PREFIX = _build_prefix_pattern(get_driver().config.command_start)
 
 # ============================================================
 # 数据懒加载（43MB 缓存 + B站映射，线程中加载避免阻塞事件循环）
@@ -130,7 +145,7 @@ async def send_vv_result(matcher, result: dict) -> None:
 # ============================================================
 # 指令层：随机vv / vv说xxx
 # ============================================================
-random_vv = on_regex(r"^[随隨][机機]\s*[vVｖＶ]{1,2}$", priority=5, block=True)
+random_vv = on_regex(rf"^{_PREFIX}[随隨][机機]\s*[vVｖＶ]{{1,2}}$", priority=5, block=True)
 
 
 @random_vv.handle()
@@ -148,7 +163,7 @@ async def handle_random_vv(event: MessageEvent):
 
 _SAY_RE = re.compile(r"[vVｖＶ]{1,2}\s*[说說]\s*(.+)", re.S)
 
-vv_say = on_regex(r"^[vVｖＶ]{1,2}\s*[说說]\s*(.+)$", priority=5, block=True)
+vv_say = on_regex(rf"^{_PREFIX}[vVｖＶ]{{1,2}}\s*[说說]\s*(.+)$", priority=5, block=True)
 
 
 @vv_say.handle()
