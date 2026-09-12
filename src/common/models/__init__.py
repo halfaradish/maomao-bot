@@ -14,7 +14,7 @@ from .botdb_models import (
 )
 from .like_plugin_models import LikeRecord, PluginConfig
 from .vv_models import VvGroupBlacklist
-from .duel_models import DuelDailyProblemState, DuelTagAlias
+from .duel_models import DuelDailyProblemState, DuelStandardTag, DuelTagAlias
 from .fakemsg_models import FakemsgDailyUsage
 from .mass_kick_models import MassKickManagedGroup
 from .prd_models import PrdTodo
@@ -34,6 +34,7 @@ __all__ = [
     "CustomHoliday",
     "DingCheckup",
     "DuelDailyProblemState",
+    "DuelStandardTag",
     "DuelTagAlias",
     "FakemsgDailyUsage",
     "Group",

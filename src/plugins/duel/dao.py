@@ -1,8 +1,9 @@
 """duel 插件 — 数据访问层
 
-标签别名映射（原 duel.json 的 map/quick_map → duel_tag_aliases 表，
-双向冗余关系化后消失，反查走 UNIQUE(env_tag, alias)）与
-每日一题状态（原 daily_problems → duel_daily_problem_state 表）。
+标准标签词表（原 duel.json 的 map 键集合 → duel_tags 表）、
+别名映射（原 map/quick_map 值 → duel_tag_aliases 表，双向冗余消失，
+反查走 UNIQUE(env_tag, alias)）与每日一题状态（原 daily_problems
+→ duel_daily_problem_state 表）。
 """
 from datetime import date
 
@@ -10,29 +11,34 @@ from sqlalchemy import delete, select
 from sqlalchemy.dialects.mysql import insert as mysql_insert
 
 from src.common.database import async_session_factory, current_env_tag
-from src.common.models.duel_models import DuelDailyProblemState, DuelTagAlias
+from src.common.models.duel_models import DuelDailyProblemState, DuelStandardTag, DuelTagAlias
 
 
 async def get_alias_map() -> dict[str, list[str]]:
-    """返回 {tag: [alias, ...]}（原 map 结构），按插入顺序"""
-    stmt = (
-        select(DuelTagAlias.tag, DuelTagAlias.alias)
-        .where(DuelTagAlias.env_tag == current_env_tag())
-        .order_by(DuelTagAlias.id)
-    )
+    """返回 {tag: [alias, ...]}（原 map 结构，含空别名列表的标签），按插入顺序"""
+    env_tag = current_env_tag()
     async with async_session_factory() as session:
-        rows = (await session.execute(stmt)).all()
-    alias_map: dict[str, list[str]] = {}
-    for tag, alias in rows:
+        tags = list((await session.scalars(
+            select(DuelStandardTag.tag)
+            .where(DuelStandardTag.env_tag == env_tag)
+            .order_by(DuelStandardTag.id)
+        )).all())
+        alias_rows = (await session.execute(
+            select(DuelTagAlias.tag, DuelTagAlias.alias)
+            .where(DuelTagAlias.env_tag == env_tag)
+            .order_by(DuelTagAlias.id)
+        )).all()
+    alias_map: dict[str, list[str]] = {tag: [] for tag in tags}
+    for tag, alias in alias_rows:
         alias_map.setdefault(tag, []).append(alias)
     return alias_map
 
 
 async def has_tag(tag: str) -> bool:
-    """标签是否已存在于映射表中"""
-    stmt = select(DuelTagAlias.id).where(
-        DuelTagAlias.env_tag == current_env_tag(),
-        DuelTagAlias.tag == tag,
+    """标签是否在标准词表中"""
+    stmt = select(DuelStandardTag.id).where(
+        DuelStandardTag.env_tag == current_env_tag(),
+        DuelStandardTag.tag == tag,
     ).limit(1)
     async with async_session_factory() as session:
         return await session.scalar(stmt) is not None
