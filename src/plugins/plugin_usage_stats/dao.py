@@ -4,17 +4,12 @@
 """
 from datetime import datetime
 
-from nonebot import get_driver, get_loaded_plugins, logger
+from nonebot import get_loaded_plugins, logger
 from sqlalchemy import delete as sa_delete
 from sqlalchemy import func, select
 
-from src.common.database import async_session_factory
+from src.common.database import async_session_factory, current_env_tag
 from src.common.models.plugin_usage_models import PluginUsageRecord
-
-
-def current_env_tag() -> str:
-    """当前运行环境标签（.env 的 ENVIRONMENT，如 prod/local）"""
-    return get_driver().config.environment
 
 
 async def insert_usage_record(module_name: str, user_id: int, group_id: int | None) -> None:

@@ -14,6 +14,11 @@ from .botdb_models import (
 )
 from .like_plugin_models import LikeRecord, PluginConfig
 from .vv_models import VvGroupBlacklist
+from .duel_models import DuelDailyProblemState, DuelTagAlias
+from .fakemsg_models import FakemsgDailyUsage
+from .mass_kick_models import MassKickManagedGroup
+from .prd_models import PrdTodo
+from .shit_transport_models import ShitTransportStats
 from .icpc_models import (
     DingCheckup,
     CfOfficialProblem,
@@ -28,20 +33,26 @@ __all__ = [
     "CfOfficialProblem",
     "CustomHoliday",
     "DingCheckup",
+    "DuelDailyProblemState",
+    "DuelTagAlias",
+    "FakemsgDailyUsage",
     "Group",
     "GroupFile",
     "GroupMember",
     "IcpcUser",
     "LikeRecord",
     "LuoguAllSubmission",
+    "MassKickManagedGroup",
     "MessageEventLog",
     "MonitoredGroup",
     "OjAccount",
     "PluginConfig",
+    "PrdTodo",
     "QQMessageReaction",
     "QQMessageReceiptSummary",
     "QQMessageReminder",
     "QQRobotMessage",
+    "ShitTransportStats",
     "TodoReminder",
     "TodoReminderLog",
     "VvGroupBlacklist",
