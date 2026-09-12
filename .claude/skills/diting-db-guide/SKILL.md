@@ -27,7 +27,10 @@ src/common/database.py
        ▼
 src/common/models/
   ├─ botdb_models.py        ← 12 个 Bot DB 表模型
-  └─ like_plugin_models.py  ← 2 个 like 插件表模型
+  ├─ like_plugin_models.py  ← 2 个 like 插件表模型
+  ├─ plugin_usage_models.py / vv_models.py  ← 插件专属模型文件
+  └─ duel/fakemsg/mass_kick/prd/shit_transport_models.py
+                            ← 原 JSON 存储插件迁移后的模型（均含 env_tag 隔离列）
        │
        ▼
 src/common/crud.py           ← 5 个异步 CRUD 包装函数（可选，封装了 session 管理）
@@ -365,7 +368,26 @@ async with async_session_factory() as session:
 | 13 | `LikeRecord` | `like_plugin_likerecord` | 点赞记录 | `user_id` String UNIQUE | `user_id` 即主键 |
 | 14 | `PluginConfig` | `like_plugin_pluginconfig` | 插件 KV 配置 | `key` String UNIQUE | 键值存储模式 |
 
-### 6.3 导入方式
+### 6.3 原 JSON 存储插件模型（2026-09 由 data/*.json 迁入，均含 `env_tag` 隔离列）
+
+这些表来自 5 个原使用 `JsonUtils` JSON 文件存储的插件，数据由
+`scripts/migrate_json_to_db.py`（幂等，`--archive` 归档源文件）一次性迁入。
+**所有按 `id` 的读写必须校验 `env_tag`**（自增主键跨环境共享），
+环境标签统一用 `src/common.database.current_env_tag()`。
+
+| 模型类（文件） | MySQL 表名 | 来源 JSON | 说明 |
+|---|---|---|---|
+| `DuelStandardTag`（duel_models.py） | `duel_tags` | duel.json `map` 键 | CF 标准标签词表，`UNIQUE(env_tag, tag)` |
+| `DuelTagAlias`（duel_models.py） | `duel_tag_aliases` | duel.json `map`/`quick_map` | 标签别名，`UNIQUE(env_tag, alias)`（原双向冗余消失） |
+| `DuelDailyProblemState`（duel_models.py） | `duel_daily_problem_state` | duel.json `daily_problems` | 每环境单行，`history` 为 JSON 列（字符串题号） |
+| `FakemsgDailyUsage`（fakemsg_models.py） | `fakemsg_daily_usage` | fakemsg.json `daily_times_log` | 按 `(env_tag, user_id, usage_date)` 唯一，旧 `last_refresh_date` 键由 usage_date 取代 |
+| `MassKickManagedGroup`（mass_kick_models.py） | `mass_kick_managed_groups` | mass_kick.json `managed_groups` | `UNIQUE(env_tag, group_id)` |
+| `PrdTodo`（prd_models.py） | `prd_todos` | prd.json `to_do` | 编号即自增主键（迁移保留原编号）；`group` 为 MySQL 保留字，属性名 `group_name`；`prd_exist_groups` 改为插件配置 |
+| `ShitTransportStats`（shit_transport_models.py） | `shit_transport_stats` | shit_transport.json 两个统计 dict | `kind` = banshi/postshi，`UNIQUE(env_tag, user_id, kind)` |
+
+对应 DAO 层在各插件目录 `dao.py`（模块级异步函数），参考 `plugin_usage_stats/dao.py` 的分层模式。
+
+### 6.4 导入方式
 
 模型通过 `src/common/models/__init__.py` 统一 re-export，推荐直接从 `__init__` 导入：
 
@@ -469,6 +491,8 @@ def _ensure_naive_local(dt):
 | `group_manager` | 直接 SQLAlchemy | Group, GroupMember | `func.count` + `outerjoin` + `group_by`；`selectinload` 预加载；`sa_delete`；存在性检查 |
 | `group_file_manager` | 直接 SQLAlchemy | MonitoredGroup, GroupFile | 原始 DDL (`ALTER TABLE`)；FK 约束检测；session 作为函数参数传递；文件去重；`ENABLED` 条件导入 |
 | `group_statistics` | 直接 SQLAlchemy | GroupStatistic | `session.delete()` 删除；独立 DAO 类；异常静默返回 False |
+| `plugin_usage_stats` | 直接 SQLAlchemy | PluginUsageRecord | DAO 模块级异步函数分层；`env_tag` 环境隔离；热路径异常吞掉不阻断消息 |
+| `mass_kick` / `shit_transport` / `fakemsg` / `duel` / `prd` | 直接 SQLAlchemy | 各自 `*_models.py`（见 6.3） | 由 JSON 存储迁移而来；MySQL upsert（`mysql_insert.on_duplicate_key_update`）做原子计数；DAO 返回 legacy dict 保持旧字段形状 |
 
 ---
 
