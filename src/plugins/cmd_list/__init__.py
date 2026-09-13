@@ -1,22 +1,24 @@
-from nonebot import get_plugin_config, on_command, logger
+import asyncio
+
+from nonebot import get_driver, get_plugin_config, on_command, logger
 from nonebot.plugin import PluginMetadata
 from nonebot.exception import FinishedException
 from nonebot.matcher import Matcher
-from nonebot.adapters.onebot.v11 import  MessageSegment, MessageEvent
-from pathlib import Path
+from nonebot.adapters.onebot.v11 import MessageSegment, MessageEvent
 from typing import Optional
 
 from .config import Config
 from .get_plugin_usage import get_help_usage, get_plugin_detail
-from .img_generator import get_img, get_detail_img
+from .img_generator import get_img, get_detail_img, refresh_img, preheat, shutdown_browser
 from src.common.model.model import PluginGroupEnum, PluginBadgeColor
 
 config = get_plugin_config(Config)
+driver = get_driver()
 
 __plugin_meta__ = PluginMetadata(
     name="帮助菜单",
     description="生成插件帮助菜单",
-    usage="/help 查看已加载插件列表\n/help -n 插件名 查看插件详情\n/help -id 插件ID 查看插件详情",
+    usage="/help 查看已加载插件列表\n/help -n 插件名 查看插件详情\n/help -id 插件ID 查看插件详情\n/help -refresh 管理员强制刷新帮助图缓存",
     config=Config,
     supported_adapters={"~onebot.v11"},
     extra={
@@ -25,16 +27,32 @@ __plugin_meta__ = PluginMetadata(
     }
 )
 
-help_cmd = on_command("help")
+help_cmd = on_command("help", priority=config.priority, block=config.block)
 
-TEMPLATE_PATH = Path(__file__).parent
-TEMPLATE_FILENAME = "help_template.html"
+
+@driver.on_startup
+async def _preheat_help_cache():
+    # 后台预热，不阻塞启动
+    asyncio.create_task(preheat())
+
+
+@driver.on_shutdown
+async def _close_help_browser():
+    await shutdown_browser()
+
 
 @help_cmd.handle()
 async def _(event: MessageEvent):
     text = event.raw_message
     _, _, result = text.partition('help')
     args = result.split()
+
+    if any(arg in ('-refresh', '--refresh') for arg in args):
+        if str(event.get_user_id()) not in driver.config.superusers:
+            await help_cmd.finish("仅管理员可刷新帮助图缓存")
+        await generate_all_plugins(help_cmd, force=True)
+        return
+
     # 指定插件名
     assign_name = None
     for idx, arg in enumerate(args):
@@ -82,17 +100,25 @@ async def generate_detail(matcher: type[Matcher], plugin_name: Optional[str] = N
         logger.error(f"生成插件详情失败: {e}")
         await matcher.finish("生成插件详情时发生错误")
 
-async def generate_all_plugins(matcher: type[Matcher]):
+async def generate_all_plugins(matcher: type[Matcher], force: bool = False):
     plugins_data = get_help_usage()
     if not plugins_data:
         await matcher.finish("没有插件信息")
 
-    logger.info(f"正在生成帮助菜单，共 {len(plugins_data)} 个插件")
+    if force:
+        logger.info(f"管理员强制刷新帮助菜单，共 {len(plugins_data)} 个插件")
+    else:
+        logger.info(f"正在生成帮助菜单，共 {len(plugins_data)} 个插件")
 
     try:
-        img = await get_img(plugins_data)
-        if not img:
-            await matcher.finish("图片生成失败")
+        if force:
+            img = await refresh_img(plugins_data)
+            if not img:
+                await matcher.finish("帮助图缓存刷新失败，请查看日志")
+        else:
+            img = await get_img(plugins_data)
+            if not img:
+                await matcher.finish("图片生成失败")
 
         await matcher.finish(MessageSegment.image(img))
     except FinishedException:
