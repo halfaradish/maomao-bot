@@ -8,13 +8,13 @@ from nonebot import get_loaded_plugins, logger
 from sqlalchemy import delete as sa_delete
 from sqlalchemy import func, select
 
-from src.common.database import async_session_factory, current_env_tag
+from src.common.database import current_env_tag, get_session
 from src.common.models.plugin_usage_models import PluginUsageRecord
 
 
 async def insert_usage_record(module_name: str, user_id: int, group_id: int | None) -> None:
     """插入一条使用明细"""
-    async with async_session_factory() as session:
+    async with get_session() as session:
         session.add(PluginUsageRecord(
             module_name=module_name,
             user_id=user_id,
@@ -22,7 +22,6 @@ async def insert_usage_record(module_name: str, user_id: int, group_id: int | No
             env_tag=current_env_tag(),
             used_at=datetime.now(),
         ))
-        await session.commit()
 
 
 async def query_ranking(
@@ -49,17 +48,16 @@ async def query_ranking(
         .order_by(func.count(PluginUsageRecord.id).desc())
         .limit(limit)
     )
-    async with async_session_factory() as session:
+    async with get_session(commit=False) as session:
         return (await session.execute(stmt)).all()
 
 
 async def delete_expired_records(before: datetime) -> int:
     """清理 before 之前的使用明细，返回删除行数"""
-    async with async_session_factory() as session:
+    async with get_session() as session:
         result = await session.execute(
             sa_delete(PluginUsageRecord).where(PluginUsageRecord.used_at < before)
         )
-        await session.commit()
         return result.rowcount
 
 

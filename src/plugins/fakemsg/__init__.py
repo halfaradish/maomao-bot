@@ -122,10 +122,10 @@ async def _(event: GroupMessageEvent, bot: Bot):
 @get_driver().on_startup
 async def _create_tables():
     """建表（幂等，仅创建缺失表）"""
-    from src.common.database import Base, engine
+    from src.common.database import ensure_tables
+    from src.common.models.fakemsg_models import FakemsgDailyUsage
 
-    async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
+    await ensure_tables(FakemsgDailyUsage)
 
 @get_driver().on_startup
 async def _ensure_default_perm_group():

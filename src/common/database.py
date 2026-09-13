@@ -5,6 +5,8 @@ SQLAlchemy 异步引擎与会话工厂
 配置沿用 BOT_DB_* 环境变量，与之前 Django 设置保持一致。
 """
 import os
+from contextlib import asynccontextmanager
+from typing import AsyncIterator, Type
 from urllib.parse import quote
 
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
@@ -56,3 +58,30 @@ async_session_factory = async_sessionmaker(
     class_=AsyncSession,
     expire_on_commit=False,
 )
+
+
+@asynccontextmanager
+async def get_session(*, commit: bool = True) -> AsyncIterator[AsyncSession]:
+    """打开一个 Bot DB 会话：退出时自动 commit（可传 commit=False 关闭），异常时 rollback 并向上抛出。
+
+    多个操作写在同一个 with 块内即共享同一事务；纯读取场景建议 commit=False。
+    """
+    async with async_session_factory() as session:
+        try:
+            yield session
+            if commit:
+                await session.commit()
+        except Exception:
+            await session.rollback()
+            raise
+
+
+async def ensure_tables(*models: Type[Base]) -> None:
+    """幂等创建模型对应的表（只建缺失的表）。
+
+    传入模型时只创建这些模型映射的表；不传参数则创建 Base 上全部已注册
+    模型的表（全库 schema 引导，由 permission/auto_register.py 在启动时调用）。
+    """
+    tables = [model.__table__ for model in models] or None
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all, tables=tables)

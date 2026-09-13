@@ -8,7 +8,7 @@ import datetime
 from sqlalchemy import delete, select
 from sqlalchemy.dialects.mysql import insert as mysql_insert
 
-from src.common.database import async_session_factory, current_env_tag
+from src.common.database import current_env_tag, get_session
 from src.common.models.fakemsg_models import FakemsgDailyUsage
 
 
@@ -19,7 +19,7 @@ async def get_count(user_id: int, usage_date: datetime.date) -> int:
         FakemsgDailyUsage.user_id == user_id,
         FakemsgDailyUsage.usage_date == usage_date,
     )
-    async with async_session_factory() as session:
+    async with get_session(commit=False) as session:
         return await session.scalar(stmt) or 0
 
 
@@ -32,19 +32,17 @@ async def incr(user_id: int, usage_date: datetime.date) -> None:
         count=1,
     )
     stmt = stmt.on_duplicate_key_update(count=FakemsgDailyUsage.count + 1)
-    async with async_session_factory() as session:
+    async with get_session() as session:
         await session.execute(stmt)
-        await session.commit()
 
 
 async def delete_before(before: datetime.date) -> int:
     """清理当前环境 before 之前（不含）的历史计数行，返回删除行数"""
-    async with async_session_factory() as session:
+    async with get_session() as session:
         result = await session.execute(
             delete(FakemsgDailyUsage).where(
                 FakemsgDailyUsage.env_tag == current_env_tag(),
                 FakemsgDailyUsage.usage_date < before,
             )
         )
-        await session.commit()
         return result.rowcount

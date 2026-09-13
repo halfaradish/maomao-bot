@@ -11,7 +11,7 @@ from datetime import date
 
 from sqlalchemy import select
 
-from src.common.database import async_session_factory, current_env_tag
+from src.common.database import current_env_tag, get_session
 from src.common.models.prd_models import PrdTodo
 
 _DATE_FMT = "%Y-%m-%d"
@@ -44,14 +44,14 @@ async def list_todos() -> list[dict]:
         .where(PrdTodo.env_tag == current_env_tag())
         .order_by(PrdTodo.id)
     )
-    async with async_session_factory() as session:
+    async with get_session(commit=False) as session:
         rows = (await session.scalars(stmt)).all()
     return [to_legacy_dict(row) for row in rows]
 
 
 async def add_todo(content: str, create_by: str) -> dict:
     """新增需求，返回带自增编号的 legacy dict"""
-    async with async_session_factory() as session:
+    async with get_session() as session:
         row = PrdTodo(
             env_tag=current_env_tag(),
             content=content,
@@ -62,72 +62,61 @@ async def add_todo(content: str, create_by: str) -> dict:
         )
         session.add(row)
         await session.flush()
-        result = to_legacy_dict(row)
-        await session.commit()
-        return result
+        return to_legacy_dict(row)
 
 
 async def remove_todo(todo_id: int) -> dict | None:
     """删除需求，返回被删条目；不存在返回 None"""
-    async with async_session_factory() as session:
+    async with get_session() as session:
         row = await session.get(PrdTodo, todo_id)
         if row is None or row.env_tag != current_env_tag():
             return None
         result = to_legacy_dict(row)
         await session.delete(row)
-        await session.commit()
         return result
 
 
 async def update_content(todo_id: int, content: str, last_modify_by: str) -> dict | None:
     """修改需求内容并记录修改人"""
-    async with async_session_factory() as session:
+    async with get_session() as session:
         row = await session.get(PrdTodo, todo_id)
         if row is None or row.env_tag != current_env_tag():
             return None
         row.content = content
         row.last_modify_by = last_modify_by or ""
         row.last_modify_at = date.today()
-        result = to_legacy_dict(row)
-        await session.commit()
-        return result
+        return to_legacy_dict(row)
 
 
 async def toggle_finish(todo_id: int, finish_by: str) -> dict | None:
     """翻转需求完成状态（与原实现一致：取消完成时同样刷新 finish_at/by）"""
-    async with async_session_factory() as session:
+    async with get_session() as session:
         row = await session.get(PrdTodo, todo_id)
         if row is None or row.env_tag != current_env_tag():
             return None
         row.finish = not row.finish
         row.finish_at = date.today()
         row.finish_by = finish_by or ""
-        result = to_legacy_dict(row)
-        await session.commit()
-        return result
+        return to_legacy_dict(row)
 
 
 async def set_group(todo_id: int, group_name: str) -> dict | None:
     """设置需求分组"""
-    async with async_session_factory() as session:
+    async with get_session() as session:
         row = await session.get(PrdTodo, todo_id)
         if row is None or row.env_tag != current_env_tag():
             return None
         row.group_name = group_name
-        result = to_legacy_dict(row)
-        await session.commit()
-        return result
+        return to_legacy_dict(row)
 
 
 async def assign(todo_id: int, assign_to: str, assign_by: str) -> dict | None:
     """为需求分配执行人"""
-    async with async_session_factory() as session:
+    async with get_session() as session:
         row = await session.get(PrdTodo, todo_id)
         if row is None or row.env_tag != current_env_tag():
             return None
         row.assign_to = assign_to
         row.assign_at = date.today()
         row.assign_by = assign_by or ""
-        result = to_legacy_dict(row)
-        await session.commit()
-        return result
+        return to_legacy_dict(row)

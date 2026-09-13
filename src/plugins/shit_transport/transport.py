@@ -27,7 +27,8 @@ from ...config import QQControlConfig
 from src.common.model.model import PluginGroupEnum, PluginBadgeColor
 from src.common.permission import check_permission, get_bound_group_ids
 from src.common.permission.cache import perm_cache
-from src.common.database import Base, engine, async_session_factory
+from src.common.database import async_session_factory, ensure_tables
+from src.common.models.shit_transport_models import ShitTransportStats
 from src.common.permission.models import PermissionGroup, GroupPermBinding
 
 # 加载插件配置
@@ -38,8 +39,7 @@ bs_count_image_generator = BsCountImageGenerator()
 @get_driver().on_startup
 async def _create_tables() -> None:
     """建表（幂等，仅创建缺失表）"""
-    async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
+    await ensure_tables(ShitTransportStats)
 
 api_host: str = QQControlConfig.QQ_CONTROL_HOST
 api_port: int = QQControlConfig.QQ_CONTROL_PORT

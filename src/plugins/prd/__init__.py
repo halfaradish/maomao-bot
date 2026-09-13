@@ -61,10 +61,10 @@ prd = on_command(
 @get_driver().on_startup
 async def _create_tables():
     """建表（幂等，仅创建缺失表）"""
-    from src.common.database import Base, engine
+    from src.common.database import ensure_tables
+    from src.common.models.prd_models import PrdTodo
 
-    async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
+    await ensure_tables(PrdTodo)
 
 
 async def send_forward_msg(bot: Bot, event: MessageEvent, messges: list[str]):

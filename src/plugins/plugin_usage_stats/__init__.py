@@ -15,7 +15,8 @@ from nonebot.message import run_preprocessor
 from nonebot.plugin import PluginMetadata
 from nonebot.typing import T_State
 
-from src.common.database import Base, engine
+from src.common.database import ensure_tables
+from src.common.models.plugin_usage_models import PluginUsageRecord
 from src.common.model.model import PluginBadgeColor, PluginGroupEnum
 
 from . import dao
@@ -44,8 +45,7 @@ if config.plugin_usage_stats_enable:
 
     @driver.on_startup
     async def _ensure_tables():
-        async with engine.begin() as conn:
-            await conn.run_sync(Base.metadata.create_all)
+        await ensure_tables(PluginUsageRecord)
 
     @run_preprocessor
     async def _record_plugin_usage(matcher: Matcher, bot: Bot, event: Event, state: T_State):

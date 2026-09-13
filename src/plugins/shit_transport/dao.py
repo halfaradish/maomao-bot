@@ -8,7 +8,7 @@ from typing import Any
 from sqlalchemy import select
 from sqlalchemy.dialects.mysql import insert as mysql_insert
 
-from src.common.database import async_session_factory, current_env_tag
+from src.common.database import current_env_tag, get_session
 from src.common.models.shit_transport_models import ShitTransportStats
 
 KIND_BANSHI = "banshi"    # 转发发起人
@@ -28,9 +28,8 @@ async def incr_stats(user_id: int, kind: str, nickname: str) -> None:
         count=ShitTransportStats.count + 1,
         nickname=stmt.inserted.nickname,
     )
-    async with async_session_factory() as session:
+    async with get_session() as session:
         await session.execute(stmt)
-        await session.commit()
 
 
 async def get_stats(kind: str) -> dict[str, dict[str, Any]]:
@@ -43,7 +42,7 @@ async def get_stats(kind: str) -> dict[str, dict[str, Any]]:
         ShitTransportStats.env_tag == current_env_tag(),
         ShitTransportStats.kind == kind,
     )
-    async with async_session_factory() as session:
+    async with get_session(commit=False) as session:
         rows = (await session.execute(stmt)).all()
     return {
         str(user_id): {"count": count, "nickname": nickname}

@@ -10,14 +10,14 @@ from datetime import date
 from sqlalchemy import delete, select
 from sqlalchemy.dialects.mysql import insert as mysql_insert
 
-from src.common.database import async_session_factory, current_env_tag
+from src.common.database import current_env_tag, get_session
 from src.common.models.duel_models import DuelDailyProblemState, DuelStandardTag, DuelTagAlias
 
 
 async def get_alias_map() -> dict[str, list[str]]:
     """返回 {tag: [alias, ...]}（原 map 结构，含空别名列表的标签），按插入顺序"""
     env_tag = current_env_tag()
-    async with async_session_factory() as session:
+    async with get_session(commit=False) as session:
         tags = list((await session.scalars(
             select(DuelStandardTag.tag)
             .where(DuelStandardTag.env_tag == env_tag)
@@ -40,7 +40,7 @@ async def has_tag(tag: str) -> bool:
         DuelStandardTag.env_tag == current_env_tag(),
         DuelStandardTag.tag == tag,
     ).limit(1)
-    async with async_session_factory() as session:
+    async with get_session(commit=False) as session:
         return await session.scalar(stmt) is not None
 
 
@@ -50,7 +50,7 @@ async def resolve_alias(alias: str) -> str | None:
         DuelTagAlias.env_tag == current_env_tag(),
         DuelTagAlias.alias == alias,
     )
-    async with async_session_factory() as session:
+    async with get_session(commit=False) as session:
         return await session.scalar(stmt)
 
 
@@ -63,15 +63,14 @@ async def add_alias(tag: str, alias: str) -> bool:
     """
     if await resolve_alias(alias) is not None:
         return False
-    async with async_session_factory() as session:
+    async with get_session() as session:
         session.add(DuelTagAlias(env_tag=current_env_tag(), tag=tag, alias=alias))
-        await session.commit()
     return True
 
 
 async def remove_alias(tag: str, alias: str) -> bool:
     """删除标签下的别名；该别名不归属此标签时返回 False"""
-    async with async_session_factory() as session:
+    async with get_session() as session:
         result = await session.execute(
             delete(DuelTagAlias).where(
                 DuelTagAlias.env_tag == current_env_tag(),
@@ -79,7 +78,6 @@ async def remove_alias(tag: str, alias: str) -> bool:
                 DuelTagAlias.alias == alias,
             )
         )
-        await session.commit()
         return result.rowcount > 0
 
 
@@ -88,7 +86,7 @@ async def get_daily_state() -> DuelDailyProblemState | None:
     stmt = select(DuelDailyProblemState).where(
         DuelDailyProblemState.env_tag == current_env_tag()
     )
-    async with async_session_factory() as session:
+    async with get_session(commit=False) as session:
         return await session.scalar(stmt)
 
 
@@ -105,6 +103,5 @@ async def save_daily_state(current_date: date, current_problem: int, history: li
         current_problem=stmt.inserted.current_problem,
         history=stmt.inserted.history,
     )
-    async with async_session_factory() as session:
+    async with get_session() as session:
         await session.execute(stmt)
-        await session.commit()

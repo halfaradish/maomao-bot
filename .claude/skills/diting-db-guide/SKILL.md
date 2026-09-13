@@ -49,33 +49,49 @@ src/common/crud.py           ← 5 个异步 CRUD 包装函数（可选，封装
 
 ## 1. 获取会话
 
-所有数据库操作的入口是 `async_session_factory()`：
+**推荐入口是 `get_session()`**（自动 commit/rollback/关闭）：
 
 ```python
-from src.common.database import async_session_factory
+from src.common.database import get_session
 from sqlalchemy import select
 
 async def example():
-    async with async_session_factory() as session:
+    async with get_session() as session:        # 退出时自动 commit，异常时 rollback 并抛出
         result = await session.execute(select(SomeModel).where(...))
         data = result.scalars().all()
-        # with 块正常结束时自动 commit
-        # 发生异常时自动 rollback
+
+async def read_only_example():
+    async with get_session(commit=False) as session:   # 纯读取：不提交
+        ...
 ```
+
+仍可直接使用 `async_session_factory()`（自管 commit/rollback），但新代码建议统一走 `get_session()`。
 
 **绝对不要**在模块顶层（插件导入时）创建会话：
 
 ```python
 # ❌ 错误：插件 import 时就执行数据库查询
-async with async_session_factory() as session:  # 报错！
+async with get_session() as session:  # 报错！
     ...
 
 # ✅ 正确：放在 async 函数/命令处理器内部
 @cmd.handle()
 async def handler():
-    async with async_session_factory() as session:
+    async with get_session() as session:
         ...
 ```
+
+**建表**：用 `ensure_tables(*models)`（幂等，只建传入模型对应的表）：
+
+```python
+from src.common.database import ensure_tables
+
+@get_driver().on_startup
+async def _create_tables():
+    await ensure_tables(MyModelA, MyModelB)
+```
+
+`permission/auto_register.py` 启动时会额外做一次全量建表（创建 Base 上全部已注册模型的缺失表）。
 
 ---
 
@@ -164,7 +180,18 @@ deleted = await async_delete_records(TodoReminder, id=42, user_id=123456)
 # 返回删除的行数 (int)
 ```
 
-**注意**：每个 CRUD 函数都独立打开/关闭 session。多个 CRUD 调用之间**不是同一个事务**——如果需要在同一个事务中执行多个操作，请使用直接 SQLAlchemy（第 4 节）。
+**注意**：每个 CRUD 函数默认独立提交，且**数据库错误会原样抛出**（不会转换为 None/[]/0）——需要降级语义时自行 try/except。所有函数都接受关键字参数 `session=`：传入一个会话即可把多个 CRUD 调用组成同一事务（此时不提交，由外层 `get_session()` 统一提交）：
+
+```python
+from src.common.database import get_session
+from src.common.crud import async_create_record, async_update_records
+
+async def composed():
+    async with get_session() as session:
+        obj = await async_create_record(SomeModel, session=session, name="x")
+        await async_update_records(OtherModel, {"id": 1}, {"ref": obj.id}, session=session)
+    # with 退出时统一提交；任一步抛异常则整体回滚
+```
 
 ---
 

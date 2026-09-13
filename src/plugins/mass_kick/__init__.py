@@ -19,7 +19,8 @@ import asyncio
 
 from .config import Config
 from . import dao
-from src.common.database import Base, engine
+from src.common.database import ensure_tables
+from src.common.models.mass_kick_models import MassKickManagedGroup
 from src.common.model.model import PluginGroupEnum, PluginBadgeColor
 from src.common.permission import check_permission
 from . import permissions  # noqa: F401 - 注册权限点到权限系统
@@ -45,8 +46,7 @@ mass_kick_cmd = on_command("一键退群", priority=5, block=True)
 @get_driver().on_startup
 async def _create_tables() -> None:
     """建表（幂等，仅创建缺失表）"""
-    async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
+    await ensure_tables(MassKickManagedGroup)
 
 
 async def get_managed_groups() -> list[int]:
