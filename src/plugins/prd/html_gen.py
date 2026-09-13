@@ -1,25 +1,21 @@
 #!/usr/bin/env python3
 """
 PRD插件HTML图片生成器
-使用HTML+CSS生成美观的需求卡片，然后转换为图片
+使用HTML+CSS生成美观的需求卡片，通过内置 Chromium 浏览器池渲染为图片
 """
 
-import os
-import tempfile
 import hashlib
 import json
 from pathlib import Path
 from typing import List, Dict, Optional
 from datetime import datetime, timedelta
 
-try:
-    from html2image import Html2Image
-
-    HTML2IMAGE_AVAILABLE = True
-except ImportError:
-    HTML2IMAGE_AVAILABLE = False
-
 from nonebot import logger
+
+from src.common.rendering import BrowserPool
+
+# PRD 渲染共用一个懒启动浏览器池：空闲 5 分钟自动关闭
+_browser_pool = BrowserPool(idle_timeout=300, tag="prd")
 
 
 class SimpleHTMLImageGenerator:
@@ -46,10 +42,6 @@ class SimpleHTMLImageGenerator:
         if self.enable_cache:
             self.single_cache_dir.mkdir(parents=True, exist_ok=True)
             self.batch_cache_dir.mkdir(parents=True, exist_ok=True)
-
-        # 检查html2image是否可用
-        if not HTML2IMAGE_AVAILABLE:
-            logger.warning("html2image库未安装，将只生成HTML文件")
 
     def _get_status_color(self, finish: bool) -> str:
         """根据完成状态获取颜色"""
@@ -509,7 +501,7 @@ class SimpleHTMLImageGenerator:
         </style>
         """
 
-    def generate_requirement_card(self, requirement: Dict) -> Optional[str]:
+    async def generate_requirement_card(self, requirement: Dict) -> Optional[str]:
         """生成单个需求卡片"""
         try:
             # 首先检查缓存
@@ -547,45 +539,21 @@ class SimpleHTMLImageGenerator:
             # 生成文件名
             timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
             filename = f"requirement_{requirement.get('id', 'unknown')}_{timestamp}"
+            output_path = self.output_dir / f"{filename}.png"
 
-            if HTML2IMAGE_AVAILABLE:
-                try:
-                    # 生成图片
-                    logger.info("开始使用html2image生成需求卡片PNG图片...")
-                    hti = Html2Image(output_path=str(self.output_dir.absolute()))
-                    output_path = self.output_dir / f"{filename}.png"
+            try:
+                logger.info("开始使用浏览器池生成需求卡片PNG图片...")
+                png = await _browser_pool.render(html_content, width=800)
+                output_path.write_bytes(png)
+                logger.info(f"需求卡片图片生成成功: {output_path}")
+                # 保存到缓存
+                self._save_to_cache(output_path, requirement, "single")
+                return str(output_path)
 
-                    logger.info(f"准备生成需求卡片图片到: {output_path}")
-                    logger.info(f"输出目录是否存在: {self.output_dir.exists()}")
-
-                    hti.screenshot(
-                        html_str=html_content,
-                        save_as=f"{filename}.png",
-                        size=(800, 600)
-                    )
-
-                    # 检查文件是否真的生成了
-                    if output_path.exists():
-                        logger.info(f"需求卡片图片生成成功: {output_path}")
-                        # 保存到缓存
-                        self._save_to_cache(output_path, requirement, "single")
-                        return str(output_path)
-                    else:
-                        logger.error(f"需求卡片图片文件未生成: {output_path}")
-                        raise Exception("需求卡片图片文件未生成")
-
-                except Exception as e:
-                    logger.error(f"使用html2image生成需求卡片图片失败: {e}")
-                    logger.info("回退到生成HTML文件...")
-                    # 回退到生成HTML文件
-                    html_path = self.output_dir / f"{filename}.html"
-                    with open(html_path, 'w', encoding='utf-8') as f:
-                        f.write(html_content)
-
-                    logger.info(f"需求卡片HTML生成成功: {html_path}")
-                    return str(html_path)
-            else:
-                # 只生成HTML文件
+            except Exception as e:
+                logger.error(f"生成需求卡片图片失败: {e}")
+                logger.info("回退到生成HTML文件...")
+                # 回退到生成HTML文件
                 html_path = self.output_dir / f"{filename}.html"
                 with open(html_path, 'w', encoding='utf-8') as f:
                     f.write(html_content)
@@ -596,52 +564,6 @@ class SimpleHTMLImageGenerator:
         except Exception as e:
             logger.error(f"生成需求卡片失败: {e}")
             return None
-
-    def _calculate_dynamic_height(self, requirements: List[Dict], max_height: int = 4000) -> int:
-        """根据需求数量动态计算图片高度"""
-        if not requirements:
-            return 600  # 空内容时的最小高度
-
-        # 基础高度：头部 + 统计 + 底部
-        base_height = 200 + 100 + 100  # 头部200px + 统计100px + 底部100px
-
-        # 每个分组的标题高度
-        groups = set(req.get('group', '其他') for req in requirements)
-        group_title_height = len(groups) * 60  # 每个分组标题60px
-
-        # 动态计算每个需求卡片的高度
-        total_cards_height = 0
-        for req in requirements:
-            # 基础卡片高度：头部 + 主体padding + 边框
-            card_base_height = 15 + 20 + 20 + 20  # 头部padding + 主体padding + 边框 + margin
-
-            # 标题高度（估算，考虑换行）
-            title = req.get('title', '')
-            title_lines = max(1, len(title) // 30)  # 每行约30个字符
-            title_height = title_lines * 24  # 每行24px
-
-            # 描述高度（估算，考虑换行）
-            description = req.get('description', '')
-            desc_lines = max(1, len(description) // 50)  # 每行约50个字符
-            desc_height = desc_lines * 20  # 每行20px
-
-            # 标签高度
-            tags_height = 40  # 标签行高度
-
-            # 总卡片高度
-            card_height = card_base_height + title_height + desc_height + tags_height
-            total_cards_height += card_height
-
-        # 计算总高度
-        total_height = base_height + group_title_height + total_cards_height
-
-        # 设置最小和最大高度限制
-        min_height = 800
-
-        calculated_height = max(min_height, min(total_height, max_height))
-
-        logger.info(f"动态计算图片高度: {calculated_height}px (需求数量: {len(requirements)}, 分组数: {len(groups)})")
-        return calculated_height
 
     def _split_requirements_by_height(self, requirements: List[Dict], max_height: int = 4000,
                                       max_per_page: int = None) -> List[List[Dict]]:
@@ -745,12 +667,12 @@ class SimpleHTMLImageGenerator:
 
         return pages
 
-    def generate_requirements_list_paginated(self, requirements: List[Dict], title: str = "需求列表",
+    async def generate_requirements_list_paginated(self, requirements: List[Dict], title: str = "需求列表",
                                              max_height: int = 4000, max_per_page: int = None) -> List[str]:
         """生成分页的需求列表图片"""
         if not requirements:
             # 生成空内容的图片
-            empty_result = self.generate_requirements_list([], title)
+            empty_result = await self.generate_requirements_list([], title)
             return [empty_result] if empty_result else []
 
         # 使用配置参数
@@ -769,7 +691,7 @@ class SimpleHTMLImageGenerator:
 
         for i, page_requirements in enumerate(pages):
             page_title = f"{title} (第{i + 1}页/共{total_pages}页)"
-            page_result = self.generate_requirements_list(page_requirements, page_title, requirements)
+            page_result = await self.generate_requirements_list(page_requirements, page_title, requirements)
 
             if page_result:
                 image_paths.append(page_result)
@@ -780,7 +702,7 @@ class SimpleHTMLImageGenerator:
         logger.info(f"分页图片生成完成: 共生成{len(image_paths)}张图片")
         return image_paths
 
-    def generate_requirements_list(self, requirements: List[Dict], title: str = "需求列表",
+    async def generate_requirements_list(self, requirements: List[Dict], title: str = "需求列表",
                                    all_requirements: List[Dict] = None) -> Optional[str]:
         """生成需求列表图片"""
         try:
@@ -901,49 +823,22 @@ class SimpleHTMLImageGenerator:
             # 生成文件名
             timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
             filename = f"requirements_list_{timestamp}"
+            output_path = self.output_dir / f"{filename}.png"
 
-            if HTML2IMAGE_AVAILABLE:
-                try:
-                    # 动态计算图片高度
-                    dynamic_height = self._calculate_dynamic_height(requirements)
+            try:
+                logger.info("开始使用浏览器池生成PNG图片（高度随内容自适应）...")
+                png = await _browser_pool.render(html_content, width=1200)
+                output_path.write_bytes(png)
+                logger.info(f"需求列表图片生成成功: {output_path}")
+                # 保存到批量缓存
+                if requirements:  # 只有在有需求时才保存缓存
+                    self._save_batch_to_cache(output_path, requirements, 1)
+                return str(output_path)
 
-                    # 生成图片
-                    logger.info(f"开始使用html2image生成PNG图片，动态高度: {dynamic_height}px...")
-                    hti = Html2Image(output_path=str(self.output_dir.absolute()))
-                    output_path = self.output_dir / f"{filename}.png"
-
-                    logger.info(f"准备生成图片到: {output_path}")
-                    logger.info(f"输出目录是否存在: {self.output_dir.exists()}")
-
-                    hti.screenshot(
-                        html_str=html_content,
-                        save_as=f"{filename}.png",
-                        size=(1200, 4000)  # 使用固定高度4000px
-                    )
-
-                    # 检查文件是否真的生成了
-                    if output_path.exists():
-                        logger.info(f"需求列表图片生成成功: {output_path} (高度: 4000px)")
-                        # 保存到批量缓存
-                        if requirements:  # 只有在有需求时才保存缓存
-                            self._save_batch_to_cache(output_path, requirements, 1)
-                        return str(output_path)
-                    else:
-                        logger.error(f"图片文件未生成: {output_path}")
-                        raise Exception("图片文件未生成")
-
-                except Exception as e:
-                    logger.error(f"使用html2image生成图片失败: {e}")
-                    logger.info("回退到生成HTML文件...")
-                    # 回退到生成HTML文件
-                    html_path = self.output_dir / f"{filename}.html"
-                    with open(html_path, 'w', encoding='utf-8') as f:
-                        f.write(html_content)
-
-                    logger.info(f"需求列表HTML生成成功: {html_path}")
-                    return str(html_path)
-            else:
-                # 只生成HTML文件
+            except Exception as e:
+                logger.error(f"生成需求列表图片失败: {e}")
+                logger.info("回退到生成HTML文件...")
+                # 回退到生成HTML文件
                 html_path = self.output_dir / f"{filename}.html"
                 with open(html_path, 'w', encoding='utf-8') as f:
                     f.write(html_content)

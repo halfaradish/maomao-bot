@@ -345,7 +345,7 @@ async def handle_image_generation(bot: Bot, event: MessageEvent, to_do: list[dic
             # 检查是否启用分页功能
             if config.enable_pagination and len(unfinished_requirements) > config.max_requirements_per_page:
                 # 使用分页功能生成多张图片
-                result_paths = generator.generate_requirements_list_paginated(
+                result_paths = await generator.generate_requirements_list_paginated(
                     unfinished_requirements,
                     "未完成需求列表",
                     config.max_image_height,
@@ -360,7 +360,7 @@ async def handle_image_generation(bot: Bot, event: MessageEvent, to_do: list[dic
                     await prd.send("图片生成失败")
             else:
                 # 使用原来的单张图片生成
-                result_path = generator.generate_requirements_list(unfinished_requirements, "未完成需求列表")
+                result_path = await generator.generate_requirements_list(unfinished_requirements, "未完成需求列表")
                 if result_path:
                     await prd.send("未完成需求图片生成成功！")
                     # 使用合并转发消息发送单张图片
@@ -386,7 +386,7 @@ async def handle_image_generation(bot: Bot, event: MessageEvent, to_do: list[dic
             # 检查是否启用分页功能
             if config.enable_pagination and len(finished_requirements) > config.max_requirements_per_page:
                 # 使用分页功能生成多张图片
-                result_paths = generator.generate_requirements_list_paginated(
+                result_paths = await generator.generate_requirements_list_paginated(
                     finished_requirements,
                     "已完成需求列表",
                     config.max_image_height,
@@ -401,7 +401,7 @@ async def handle_image_generation(bot: Bot, event: MessageEvent, to_do: list[dic
                     await prd.send("图片生成失败")
             else:
                 # 使用原来的单张图片生成
-                result_path = generator.generate_requirements_list(finished_requirements, "已完成需求列表")
+                result_path = await generator.generate_requirements_list(finished_requirements, "已完成需求列表")
                 if result_path:
                     await prd.send("已完成需求图片生成成功！")
                     # 使用合并转发消息发送单张图片
@@ -424,7 +424,7 @@ async def handle_image_generation(bot: Bot, event: MessageEvent, to_do: list[dic
                 return
 
             await prd.send(f"正在生成需求 #{index} 的图片，请稍候...")
-            result_path = generator.generate_requirement_card(requirement)
+            result_path = await generator.generate_requirement_card(requirement)
             if result_path:
                 await prd.send(f"需求 #{index} 图片生成成功！")
                 await send_image_message(bot, event, result_path)

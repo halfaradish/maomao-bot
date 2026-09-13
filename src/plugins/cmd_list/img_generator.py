@@ -2,7 +2,7 @@
 
 - get_img / get_detail_img：磁盘缓存命中直接返回；未命中时经单飞锁渲染并落盘，
   并发请求在锁上等待、复用同一份渲染结果。
-- BrowserPool：懒启动 Chromium 常驻（参照 llm_scribe 的 HTMLRenderer），
+- BrowserPool 来自 src.common.rendering（懒启动 Chromium 常驻），
   每次渲染只开关 page/context，空闲超时后关闭整个浏览器进程。
 - 失败语义：渲染失败时若有旧缓存图则降级返回并告警，否则返回 None。
 """
@@ -11,9 +11,9 @@ import asyncio
 from typing import List, Optional
 
 from nonebot import get_plugin_config, logger
-from playwright.async_api import async_playwright, Browser, Playwright
 
 from src.common.model.model import PluginUsageInfo
+from src.common.rendering import BrowserPool
 
 from . import help_cache
 from .config import Config
@@ -21,78 +21,7 @@ from .config import Config
 plugin_config = get_plugin_config(Config)
 
 
-class BrowserPool:
-    """懒启动的常驻 Chromium；空闲超时（秒）后自动关闭，<=0 表示常驻不关闭"""
-
-    def __init__(self, idle_timeout: float):
-        self._idle_timeout = idle_timeout
-        self._playwright: Optional[Playwright] = None
-        self._browser: Optional[Browser] = None
-        self._lock = asyncio.Lock()
-        self._use_epoch = 0
-
-    async def _ensure_browser(self) -> Browser:
-        if self._browser is not None and self._browser.is_connected():
-            return self._browser
-
-        async with self._lock:
-            # 双重检查：等锁期间可能已被其他协程启动
-            if self._browser is None or not self._browser.is_connected():
-                logger.info("[cmd_list] 正在启动 Chromium...")
-                self._playwright = await async_playwright().start()
-                self._browser = await self._playwright.chromium.launch(
-                    headless=True,
-                    args=["--no-sandbox", "--disable-setuid-sandbox", "--disable-dev-shm-usage"],
-                )
-        return self._browser
-
-    async def render(self, html_content: str, width: int = 900) -> bytes:
-        self._use_epoch += 1
-        epoch = self._use_epoch
-        try:
-            browser = await self._ensure_browser()
-            context = await browser.new_context(viewport={"width": width, "height": 800})
-            page = await context.new_page()
-            try:
-                # 模板纯内联样式、无外部资源，等待 domcontentloaded 即可
-                await page.set_content(html_content, wait_until="domcontentloaded")
-                await page.wait_for_timeout(200)  # 字体/布局渲染缓冲
-                return await page.screenshot(type="png", full_page=True)
-            finally:
-                await context.close()
-        finally:
-            self._schedule_idle_close(epoch)
-
-    def _schedule_idle_close(self, epoch: int) -> None:
-        if self._idle_timeout <= 0:
-            return
-
-        async def _close_when_idle():
-            await asyncio.sleep(self._idle_timeout)
-            await self._close_if_idle(epoch)
-
-        asyncio.create_task(_close_when_idle())
-
-    async def _close_if_idle(self, epoch: int) -> None:
-        async with self._lock:
-            # epoch 变化说明期间有新渲染，放弃关闭
-            if epoch != self._use_epoch or self._browser is None:
-                return
-            browser, self._browser = self._browser, None
-            playwright, self._playwright = self._playwright, None
-        try:
-            await browser.close()
-            if playwright:
-                await playwright.stop()
-            logger.info("[cmd_list] Chromium 空闲超时，已关闭")
-        except Exception as e:
-            logger.debug(f"[cmd_list] 关闭 Chromium 失败: {e}")
-
-    async def close(self) -> None:
-        await self._close_if_idle(self._use_epoch)
-
-
-_pool = BrowserPool(idle_timeout=plugin_config.browser_idle_timeout)
+_pool = BrowserPool(idle_timeout=plugin_config.browser_idle_timeout, tag="cmd_list")
 # 单飞锁：总览/详情/刷新共用一把，渲染本身低频且共用同一个浏览器
 _generate_lock = asyncio.Lock()
 

@@ -8,122 +8,17 @@ from typing import List, Dict, Optional
 from PIL import Image, ImageDraw, ImageFont
 import logging
 
+from src.common.rendering.picgen import draw_gradient, get_font
+
 logger = logging.getLogger(__name__)
 
 
 class LeaderboardImageGenerator:
     """积分榜图片生成器 - 卡片式设计"""
-    
+
     def __init__(self, config):
         self.config = config
-        self._font_cache = {}  # 字体缓存
-        
-    def _get_font(self, size: int) -> Optional[ImageFont.ImageFont]:
-        """获取字体 - 跨平台支持中文，带缓存优化"""
-        import platform
-        import os
-        
-        # 检查缓存
-        cache_key = f"{size}"
-        if cache_key in self._font_cache:
-            return self._font_cache[cache_key]
-        
-        font_paths = []
-        
-        # 根据操作系统选择字体路径
-        system = platform.system().lower()
-        
-        if system == "windows":
-            font_paths = [
-                "C:/Windows/Fonts/msyh.ttc",  # 微软雅黑
-                "C:/Windows/Fonts/simhei.ttf",  # 黑体
-                "C:/Windows/Fonts/simsun.ttc",  # 宋体
-                "C:/Windows/Fonts/simkai.ttf",  # 楷体
-                "C:/Windows/Fonts/calibri.ttf",
-                "arial.ttf",
-                "arial.ttc",
-            ]
-        elif system == "linux":
-            font_paths = [
-                # 常见的中文字体路径
-                "/usr/share/fonts/truetype/noto/NotoSansCJK-Regular.ttc",
-                "/usr/share/fonts/truetype/noto/NotoSansCJK-Bold.ttc",
-                "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.otf",
-                "/usr/share/fonts/opentype/noto/NotoSansCJK-Bold.otf",
-                "/usr/share/fonts/truetype/wqy/wqy-microhei.ttc",
-                "/usr/share/fonts/truetype/wqy/wqy-zenhei.ttc",
-                "/usr/share/fonts/truetype/wqy/wqy-microhei.ttf",
-                "/usr/share/fonts/truetype/wqy/wqy-zenhei.ttf",
-                # 系统默认字体
-                "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
-                "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
-                "/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf",
-                "/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf",
-                # 尝试系统字体目录
-                "/usr/share/fonts/TTF/DejaVuSans.ttf",
-                "/usr/share/fonts/TTF/DejaVuSans-Bold.ttf",
-                # 回退到通用字体
-                "arial.ttf",
-                "DejaVuSans.ttf",
-            ]
-        elif system == "darwin":  # macOS
-            font_paths = [
-                "/System/Library/Fonts/PingFang.ttc",
-                "/System/Library/Fonts/STHeiti Light.ttc",
-                "/System/Library/Fonts/Arial.ttf",
-                "/Library/Fonts/Arial.ttf",
-                "arial.ttf",
-            ]
-        else:
-            # 未知系统，使用通用字体
-            font_paths = [
-                "arial.ttf",
-                "arial.ttc",
-                "DejaVuSans.ttf",
-            ]
-        
-        # 尝试加载字体
-        for font_path in font_paths:
-            try:
-                if os.path.exists(font_path):
-                    # 使用encoding参数确保正确加载中文字体
-                    font = ImageFont.truetype(font_path, size, encoding='utf-8')
-                    logger.info(f"成功加载字体: {font_path}")
-                    # 缓存字体
-                    self._font_cache[cache_key] = font
-                    return font
-            except Exception as e:
-                logger.debug(f"字体加载失败 {font_path}: {e}")
-                continue
-        
-        # 尝试使用PIL的默认字体查找
-        try:
-            # 尝试加载系统默认字体
-            font = ImageFont.truetype("arial", size, encoding='utf-8')
-            logger.info("使用系统默认arial字体")
-            self._font_cache[cache_key] = font
-            return font
-        except:
-            pass
-        
-        # 最后使用PIL默认字体
-        logger.warning("所有字体加载失败，使用PIL默认字体")
-        default_font = ImageFont.load_default()
-        self._font_cache[cache_key] = default_font
-        return default_font
-    
-    def _draw_gradient_background(self, draw: ImageDraw.Draw, width: int, height: int):
-        """绘制渐变背景"""
-        # 创建从深蓝到黑色的渐变背景
-        for y in range(height):
-            # 计算渐变颜色
-            ratio = y / height
-            r = int(26 + (0 - 26) * ratio)  # 从深蓝到黑色
-            g = int(26 + (0 - 26) * ratio)
-            b = int(46 + (0 - 46) * ratio)
-            color = (r, g, b)
-            draw.line([(0, y), (width, y)], fill=color)
-    
+
     def _draw_header(self, draw: ImageDraw.Draw, width: int, font_large: ImageFont.ImageFont, font_medium: ImageFont.ImageFont):
         """绘制标题头部"""
         # 主标题
@@ -350,13 +245,13 @@ class LeaderboardImageGenerator:
             img = Image.new('RGB', (width, height), '#1a1a2e')
             draw = ImageDraw.Draw(img)
             
-            # 绘制渐变背景
-            self._draw_gradient_background(draw, width, height)
+            # 绘制渐变背景（深蓝到黑）
+            draw_gradient(draw, width, height, top=(26, 26, 46), bottom=(0, 0, 0))
             
             # 获取字体
-            font_large = self._get_font(20)
-            font_medium = self._get_font(16)
-            font_small = self._get_font(14)
+            font_large = get_font(20)
+            font_medium = get_font(16)
+            font_small = get_font(14)
             
             # 绘制标题
             self._draw_header(draw, width, font_large, font_medium)

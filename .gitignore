@@ -12,6 +12,7 @@ logs
 logs-dev
 *.bak
 cache
+.vscode
 
 table_gen.so
 
