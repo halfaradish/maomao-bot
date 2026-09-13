@@ -23,10 +23,11 @@ from .config import Config
 from .html_gen import SimpleHTMLImageGenerator
 from . import dao
 from nonebot.exception import FinishedException
-from src.common.model.model import PluginGroupEnum, PluginBadgeColor
+from src.common.plugin_meta import PluginGroupEnum, PluginBadgeColor
 from src.common.permission import check_permission
 
 from . import permissions  # noqa: F401
+from src.common.send_forward_msg import send_forward_msg as send_forward_msg_api
 
 __plugin_meta__ = PluginMetadata(
     name="需求管理",
@@ -67,50 +68,11 @@ async def _create_tables():
     await ensure_tables(PrdTodo)
 
 
-async def send_forward_msg(bot: Bot, event: MessageEvent, messges: list[str]):
-    """发送合并转发消息"""
-
-    def to_node(name: str, uin: str, message: Message):
-        """构建统一的格式"""
-        return {
-            "type": "node",
-            "data": {"name": name, "uin": uin, "content": message},
-        }
-
-    info = await bot.get_login_info()
-    name = info['nickname']
-    uin = bot.self_id
-
-    # 构建消息节点
-    message_nodes = [to_node(name=name, uin=uin, message=Message(message)) for message in messges]
-
-    if isinstance(event, GroupMessageEvent):
-        await bot.call_api("send_group_forward_msg", group_id=event.group_id, messages=message_nodes)
-    else:
-        await bot.call_api("send_private_forward_msg", user_id=event.user_id, messages=message_nodes)
-
-
 async def send_image_forward_msg(bot: Bot, event: MessageEvent, image_paths: list[str], title: str = "图片列表"):
-    """发送图片合并转发消息"""
+    """发送图片合并转发消息（节点构造与发送委托 common；缓存路径映射为 prd 业务逻辑）"""
 
-    def to_node(name: str, uin: str, message: Message):
-        """构建统一的格式"""
-        return {
-            "type": "node",
-            "data": {"name": name, "uin": uin, "content": message},
-        }
+    contents: list[Message] = [Message(title)]  # 标题节点
 
-    info = await bot.get_login_info()
-    name = info['nickname']
-    uin = bot.self_id
-
-    # 构建消息节点
-    message_nodes = []
-
-    # 添加标题节点
-    message_nodes.append(to_node(name=name, uin=uin, message=Message(title)))
-
-    # 为每张图片添加节点
     for i, image_path in enumerate(image_paths):
         try:
             # 检查文件是否存在
@@ -140,23 +102,19 @@ async def send_image_forward_msg(bot: Bot, event: MessageEvent, image_paths: lis
                 qq_path = f"file:///app/data/prd_images/{filename}"
                 logger.info(f"发送普通图片: {filename} (本地路径: {image_path})")
 
-            # 创建图片消息
-            img_msg = MessageSegment.image(qq_path)
-            message_nodes.append(to_node(name=name, uin=uin, message=Message(f"第{i + 1}页:") + img_msg))
+            # 图文混排节点：页码文本 + 图片
+            contents.append(Message(f"第{i + 1}页:") + MessageSegment.image(qq_path))
 
         except Exception as e:
             logger.error(f"处理图片 {image_path} 时出错: {e}")
             continue
 
-    if len(message_nodes) <= 1:  # 只有标题，没有图片
+    if len(contents) <= 1:  # 只有标题，没有图片
         await prd.send("没有可发送的图片")
         return
 
-    # 发送合并转发消息
-    if isinstance(event, GroupMessageEvent):
-        await bot.call_api("send_group_forward_msg", group_id=event.group_id, messages=message_nodes)
-    else:
-        await bot.call_api("send_private_forward_msg", user_id=event.user_id, messages=message_nodes)
+    # 发送合并转发消息（目标与节点身份由 common 处理）
+    await send_forward_msg_api.by_onebot_api(bot, event, contents)
 
 
 def build_single_msg(requirement: dict):
@@ -513,12 +471,12 @@ async def _(bot: Bot, event: Union[PrivateMessageEvent, GroupMessageEvent], args
         elif operation in ["list", "ls"]:
             # 只显示未完成的需求
             finish_msg_list, unfinish_msg_list = handle_list(to_do=to_do, exist_groups=exist_groups)
-            await send_forward_msg(bot, event, unfinish_msg_list)
+            await send_forward_msg_api(bot, event, unfinish_msg_list)
             return
         elif operation in ["ok"]:
             # 只显示已完成的需求
             finish_msg_list, unfinish_msg_list = handle_list(to_do=to_do, exist_groups=exist_groups)
-            await send_forward_msg(bot, event, finish_msg_list)
+            await send_forward_msg_api(bot, event, finish_msg_list)
             return
         elif operation in ["add"]:
             res_msg = await handle_add(operation_params=operation_params, create_by=event.sender.nickname)

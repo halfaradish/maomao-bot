@@ -13,7 +13,7 @@ from . import utils
 from . import core
 from . import scheduler
 from . import permissions  # noqa: F401 - 注册权限点到权限系统
-from ...common.model.model import PluginGroupEnum, PluginBadgeColor
+from ...common.plugin_meta import PluginGroupEnum, PluginBadgeColor
 
 MESSAGE_SEPARATOR = config.fakemsg_user_split
 FAKEMSG_CMD = config.fakemsg_cmd

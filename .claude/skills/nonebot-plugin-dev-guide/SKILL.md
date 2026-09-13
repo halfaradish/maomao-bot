@@ -39,7 +39,7 @@ src/
 │   ├── database.py           # SQLAlchemy 异步引擎 + session 工厂
 │   ├── crud.py               # Django 风格 CRUD 包装器
 │   ├── models/               # SQLAlchemy ORM 模型 (botdb, icpc, like)
-│   ├── model/model.py        # PluginGroupEnum, PluginBadgeColor 枚举
+│   ├── plugin_meta.py        # PluginGroupEnum, PluginBadgeColor 枚举
 │   └── permission/           # 权限系统（8 级优先级检查）
 └── config/                   # 全局配置类
 ```
@@ -76,7 +76,7 @@ builtin_plugins = ["echo"]
 
 ### 1.4 插件分组与徽章
 
-定义在 [src/common/model/model.py](../../src/common/model/model.py)：
+定义在 [src/common/plugin_meta.py](../../src/common/plugin_meta.py)：
 
 | 枚举成员 | `.value` | 分类 | 典型插件 |
 |---------|----------|------|---------|
@@ -109,7 +109,7 @@ touch src/plugins/<plugin_name>/__init__.py
 
 ```python
 from nonebot.plugin import PluginMetadata
-from src.common.model.model import PluginGroupEnum, PluginBadgeColor
+from src.common.plugin_meta import PluginGroupEnum, PluginBadgeColor
 
 __plugin_meta__ = PluginMetadata(
     name="插件显示名",
@@ -814,7 +814,7 @@ from ...common.database import async_session_factory
 from ...common.models.botdb_models import MonitoredGroup
 
 # 风格 B：绝对导入（核心类型建议使用）
-from src.common.model.model import PluginGroupEnum, PluginBadgeColor
+from src.common.plugin_meta import PluginGroupEnum, PluginBadgeColor
 from src.common.permission import check_permission, register_perm_point
 ```
 
@@ -846,7 +846,7 @@ from nonebot.adapters.onebot.v11.exception import ActionFailed
 
 # ── 插件元数据 ──
 from nonebot.plugin import PluginMetadata
-from src.common.model.model import PluginGroupEnum, PluginBadgeColor
+from src.common.plugin_meta import PluginGroupEnum, PluginBadgeColor
 
 # ── 配置 ──
 from pydantic import BaseModel, Field

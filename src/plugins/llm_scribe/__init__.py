@@ -2,7 +2,7 @@ import os
 
 from nonebot import logger
 from nonebot.plugin import PluginMetadata
-from src.common.model.model import PluginGroupEnum, PluginBadgeColor
+from src.common.plugin_meta import PluginGroupEnum, PluginBadgeColor
 
 # ── 插件启停开关 ──
 LLM_SCRIBE_ENABLED = os.getenv("LLM_SCRIBE_ENABLED", "true").lower() == "true"

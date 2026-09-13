@@ -10,7 +10,7 @@ from typing import Optional
 from .config import Config
 from .get_plugin_usage import get_help_usage, get_plugin_detail
 from .img_generator import get_img, get_detail_img, refresh_img, preheat, shutdown_browser
-from src.common.model.model import PluginGroupEnum, PluginBadgeColor
+from src.common.plugin_meta import PluginGroupEnum, PluginBadgeColor
 
 config = get_plugin_config(Config)
 driver = get_driver()

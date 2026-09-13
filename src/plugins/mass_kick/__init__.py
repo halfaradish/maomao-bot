@@ -21,7 +21,7 @@ from .config import Config
 from . import dao
 from src.common.database import ensure_tables
 from src.common.models.mass_kick_models import MassKickManagedGroup
-from src.common.model.model import PluginGroupEnum, PluginBadgeColor
+from src.common.plugin_meta import PluginGroupEnum, PluginBadgeColor
 from src.common.permission import check_permission
 from . import permissions  # noqa: F401 - 注册权限点到权限系统
 

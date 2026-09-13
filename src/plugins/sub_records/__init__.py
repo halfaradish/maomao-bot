@@ -20,7 +20,7 @@ import time
 from .config import Config
 from .sub_condition import Submission
 from ...common.timer import timer, timed_section
-from src.common.model.model import PluginGroupEnum, PluginBadgeColor
+from src.common.plugin_meta import PluginGroupEnum, PluginBadgeColor
 from src.common.permission import check_permission, get_bound_group_ids
 
 from . import permissions  # noqa: F401

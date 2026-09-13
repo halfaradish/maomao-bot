@@ -13,7 +13,7 @@ from typing import Union
 
 from .message_dao import message_dao
 from .config import Config
-from src.common.model.model import PluginGroupEnum, PluginBadgeColor
+from src.common.plugin_meta import PluginGroupEnum, PluginBadgeColor
 
 __plugin_meta__ = PluginMetadata(
     name="聊天记录持久化",

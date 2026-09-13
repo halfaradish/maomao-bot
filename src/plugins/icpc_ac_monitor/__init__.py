@@ -2,7 +2,7 @@ import os
 
 from nonebot import get_plugin_config
 from nonebot.plugin import PluginMetadata
-from src.common.model.model import PluginGroupEnum, PluginBadgeColor
+from src.common.plugin_meta import PluginGroupEnum, PluginBadgeColor
 
 ICPC_AC_MONITOR_ENABLED = os.getenv("ICPC_AC_MONITOR_ENABLED", "true").lower() == "true"
 
@@ -19,7 +19,9 @@ if not ICPC_AC_MONITOR_ENABLED:
     )
 else:
     from .config import Config
-    from .icpc_ac_monitor import start_monitor, stop_monitor
+    # handlers 注册全部命令 matcher；monitor_service 注册 on_startup 恢复钩子
+    from . import handlers, monitor_service  # noqa: F401
+    from .handlers import start_monitor, stop_monitor
 
     __plugin_meta__ = PluginMetadata(
         name="AC监控",

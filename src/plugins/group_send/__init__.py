@@ -9,7 +9,7 @@ import json
 
 from .config import Config
 from ...config.local_config import QQControlConfig
-from src.common.model.model import PluginGroupEnum, PluginBadgeColor
+from src.common.plugin_meta import PluginGroupEnum, PluginBadgeColor
 from src.common.permission import check_permission
 
 __plugin_meta__ = PluginMetadata(

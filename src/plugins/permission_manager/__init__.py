@@ -34,7 +34,7 @@ from src.common.permission.models import (
 from src.common.permission.cache import perm_cache
 from src.common.permission import check_permission
 from src.common.permission.supervisor import is_superuser
-from src.common.model.model import PluginGroupEnum, PluginBadgeColor
+from src.common.plugin_meta import PluginGroupEnum, PluginBadgeColor
 from .config import Config
 from . import permissions  # noqa: F401
 

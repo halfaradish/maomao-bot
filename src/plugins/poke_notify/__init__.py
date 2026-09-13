@@ -13,7 +13,7 @@ from nonebot.exception import FinishedException
 
 from .config import Config
 from ...common import get_redis_connection
-from src.common.model.model import PluginGroupEnum, PluginBadgeColor
+from src.common.plugin_meta import PluginGroupEnum, PluginBadgeColor
 
 __plugin_meta__ = PluginMetadata(
     name="戳一戳回应",

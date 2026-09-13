@@ -25,7 +25,7 @@ from datetime import datetime, timedelta
 from .config import Config
 from .contest_fetcher import contest_fetcher, ContestInfo
 from ...common.send_forward_msg import send_forward_msg
-from src.common.model.model import PluginGroupEnum, PluginBadgeColor
+from src.common.plugin_meta import PluginGroupEnum, PluginBadgeColor
 from src.common.permission import get_bound_group_ids
 
 from . import permissions  # noqa: F401

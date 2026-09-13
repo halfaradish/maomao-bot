@@ -10,7 +10,7 @@ from .config import Config
 from . import permissions  # noqa: F401 — 注册权限点到权限系统
 from .auditor import audit_join_request
 from ..auto_manage_group.group_checker import is_group_feature_enabled
-from src.common.model.model import PluginGroupEnum, PluginBadgeColor
+from src.common.plugin_meta import PluginGroupEnum, PluginBadgeColor
 from src.common.database import async_session_factory
 from src.common.permission.models import (
     PermissionGroup,

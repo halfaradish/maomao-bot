@@ -22,7 +22,7 @@ from sqlalchemy import delete as sa_delete
 from sqlalchemy import select
 
 from src.common.database import async_session_factory
-from src.common.model.model import PluginBadgeColor, PluginGroupEnum
+from src.common.plugin_meta import PluginBadgeColor, PluginGroupEnum
 from src.common.models.vv_models import VvGroupBlacklist
 from src.common.permission import perm_cache
 

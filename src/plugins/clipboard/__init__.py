@@ -21,7 +21,7 @@ import aiohttp
 from typing import Tuple, Union, BinaryIO, List
 
 from .config import Config
-from src.common.model.model import PluginGroupEnum, PluginBadgeColor
+from src.common.plugin_meta import PluginGroupEnum, PluginBadgeColor
 
 __plugin_meta__ = PluginMetadata(
     name="剪切板",

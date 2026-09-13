@@ -17,7 +17,7 @@ from nonebot.typing import T_State
 
 from src.common.database import ensure_tables
 from src.common.models.plugin_usage_models import PluginUsageRecord
-from src.common.model.model import PluginBadgeColor, PluginGroupEnum
+from src.common.plugin_meta import PluginBadgeColor, PluginGroupEnum
 
 from . import dao
 from .config import Config, excluded_plugins, plugin_config

@@ -2,7 +2,7 @@ from nonebot import get_loaded_plugins, logger
 from nonebot.plugin.model import Plugin
 from typing import Optional, List
 
-from src.common.model.model import PluginUsageInfo
+from src.common.plugin_meta import PluginUsageInfo
 
 help_usages: Optional[List[PluginUsageInfo]] = None
 

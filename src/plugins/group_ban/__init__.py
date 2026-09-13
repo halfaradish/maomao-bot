@@ -21,7 +21,7 @@ from nonebot.rule import Rule
 from ...common.permission import check_permission
 from .config import Config
 from . import permissions  # noqa: F401 - 注册权限点到权限系统
-from src.common.model.model import PluginGroupEnum, PluginBadgeColor
+from src.common.plugin_meta import PluginGroupEnum, PluginBadgeColor
 
 __plugin_meta__ = PluginMetadata(
     name="群聊禁言",

@@ -15,7 +15,7 @@ from typing import Optional
 from nonebot import logger
 
 from src.common.database import current_env_tag
-from src.common.model.model import PluginUsageInfo
+from src.common.plugin_meta import PluginUsageInfo
 from src.config.local_config import DiTingData
 
 TEMPLATE_DIR = Path(__file__).parent / "template"

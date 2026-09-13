@@ -8,7 +8,7 @@ import re
 from .config import Config
 from . import dao
 from .get_problem import get_one_problem_by_random, get_problem_id_by_rating_tags, get_daily_problem
-from src.common.model.model import PluginGroupEnum, PluginBadgeColor
+from src.common.plugin_meta import PluginGroupEnum, PluginBadgeColor
 
 plugin_config = get_plugin_config(Config)
 

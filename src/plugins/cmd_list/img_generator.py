@@ -12,7 +12,7 @@ from typing import List, Optional
 
 from nonebot import get_plugin_config, logger
 
-from src.common.model.model import PluginUsageInfo
+from src.common.plugin_meta import PluginUsageInfo
 from src.common.rendering import BrowserPool
 
 from . import help_cache

@@ -24,7 +24,7 @@ from .image_generator import BsCountImageGenerator
 from . import dao
 from . import permissions  # noqa: F401
 from ...config import QQControlConfig
-from src.common.model.model import PluginGroupEnum, PluginBadgeColor
+from src.common.plugin_meta import PluginGroupEnum, PluginBadgeColor
 from src.common.permission import check_permission, get_bound_group_ids
 from src.common.permission.cache import perm_cache
 from src.common.database import async_session_factory, ensure_tables
