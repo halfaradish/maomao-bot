@@ -84,7 +84,7 @@ else:
                 f"⚠️ 入群申请【挂起待人工审查】\n"
                 f"申请人：{user_id}\n"
                 f"初审标记原因：{reason}\n"
-                f"申请信息：{comment or '(空)'}\n"
+                f"申请信息：{comment or '(空)'}"
             )
             try:
                 await bot.send_group_msg(group_id=group_id, message=notify_msg)
