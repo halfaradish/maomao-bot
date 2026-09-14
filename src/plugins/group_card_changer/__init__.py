@@ -7,7 +7,7 @@ from nonebot.exception import FinishedException
 from datetime import date
 import asyncio
 
-from src.common.model.model import PluginGroupEnum, PluginBadgeColor
+from src.common.plugin_meta import PluginGroupEnum, PluginBadgeColor
 from src.common.permission import get_bound_group_ids
 from .config import Config
 from .holidays import get_holidays

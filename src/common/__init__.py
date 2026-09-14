@@ -5,20 +5,22 @@ from .send_forward_msg import SendForwardMsg
 from . import utils
 from .oj_redis_pool import get_redis_connection
 from .rate_limiter import TokenBucketLimiter, GroupRateLimiter
-from .siqi_auth_client import siqi_auth
 from .siqi_client import AuthCheckResult, SiqiAuthRequestError, siqi_client
+from .database import current_env_tag, ensure_tables, get_session
 
 __all__ = [
-    'get_icpc_db_connection', 
-    'JsonUtils', 
-    'CompressPic', 
+    'get_icpc_db_connection',
+    'JsonUtils',
+    'CompressPic',
     'SendForwardMsg',
     'utils',
     'get_redis_connection',
     'TokenBucketLimiter',
     'GroupRateLimiter',
-    'siqi_auth',
     'AuthCheckResult',
     'SiqiAuthRequestError',
-    'siqi_client'
+    'siqi_client',
+    'current_env_tag',
+    'ensure_tables',
+    'get_session',
 ]

@@ -7,6 +7,4 @@ class Config(BaseModel):
 
     spv_day_start_hour: int = 4
 
-    data_filename: str = 'shadow_problem_view.json'
-
     GET_DAILY_SUB_RECORDS: str = 'read/get_daily_sub_records.sql'

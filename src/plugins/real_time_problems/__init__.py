@@ -15,7 +15,7 @@ from .config import Config
 # 导入HourSubCondition类
 from .get_hour_problems import HourSubCondition
 from ...common import utils
-from src.common.model.model import PluginGroupEnum, PluginBadgeColor
+from src.common.plugin_meta import PluginGroupEnum, PluginBadgeColor
 from src.common.permission import get_bound_group_ids
 
 from . import permissions  # noqa: F401

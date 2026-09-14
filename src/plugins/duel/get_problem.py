@@ -1,9 +1,10 @@
 import random
 from typing import List, Dict
-from datetime import datetime, date
+from datetime import date
 from nonebot import logger, get_plugin_config
 
 from .config import Config
+from . import dao
 from ...common import get_icpc_db_connection
 from ...common.utils import (
     GetSQL,
@@ -73,31 +74,12 @@ async def get_daily_problem():
     """
     获取每日题目 - 同一天内所有人返回同一题，且不重复
     """
-    from ...common.json_utils import JsonUtils
+    today = date.today()
 
-    # 读取存储的数据
-    data, _ = JsonUtils.read(config.filename, {
-        "map": {},
-        "quick_map": {},
-        "daily_problems": {
-            "history": [],  # 历史使用过的题目ID
-            "current_date": None,  # 当前日期
-            "current_problem": None  # 当前题目
-        }
-    })
-
-    daily_data = data.get("daily_problems", {
-        "history": [],
-        "current_date": None,
-        "current_problem": None
-    })
-
-    today = date.today().isoformat()
-
-    # 如果今天已经有题目了，直接返回
-    if daily_data.get("current_date") == today and daily_data.get("current_problem"):
-        problem_url = GenerateProblemUrl.generate_cf_url(problem_id=daily_data["current_problem"])
-        return problem_url
+    # 今天已经有题目了，直接返回
+    state = await dao.get_daily_state()
+    if state and state.current_date == today and state.current_problem:
+        return GenerateProblemUrl.generate_cf_url(problem_id=state.current_problem)
 
     # 获取所有题目
     all_problems = await _get_all_problem_id()
@@ -105,7 +87,7 @@ async def get_daily_problem():
         return "无法从题库中找到题目"
 
     # 获取未使用过的题目
-    history = daily_data.get("history", [])
+    history = list(state.history) if state and state.history else []
     available_problems = [p for p in all_problems if p['problem_id'] not in history]
 
     # 如果没有可用题目，重置历史记录
@@ -117,16 +99,14 @@ async def get_daily_problem():
     selected_problem = random.choice(available_problems)
     problem_id = selected_problem['problem_id']
 
-    # 更新数据
-    daily_data["current_date"] = today
-    daily_data["current_problem"] = problem_id
-    daily_data["history"] = history + [problem_id]
+    # 保存状态（history 为 JSON 列，写频 ≤1 次/天，整行覆盖可接受）
+    await dao.save_daily_state(
+        current_date=today,
+        current_problem=problem_id,
+        history=history + [problem_id],
+    )
 
-    data["daily_problems"] = daily_data
-    JsonUtils.update(config.filename, data)
-
-    problem_url = GenerateProblemUrl.generate_cf_url(problem_id=problem_id)
-    return problem_url
+    return GenerateProblemUrl.generate_cf_url(problem_id=problem_id)
 
 
 async def get_problem_id_by_rating_tags(rating: int, tags: List[str]):

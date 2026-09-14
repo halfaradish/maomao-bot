@@ -4,7 +4,8 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-environment: str = os.getenv('ENVIRONMENT') or 'prod'
+# 未设 ENVIRONMENT 时回退 dev（fail-safe）：独立脚本/临时进程不应误用 prod 配置与 prod 数据空间
+environment: str = os.getenv('ENVIRONMENT') or 'dev'
 
 _env_file = f".env.{environment}"
 
@@ -13,6 +14,14 @@ if os.path.exists(_env_file):
     logger.info(f"successful load {_env_file}")
 else:
     logger.error(f"{_env_file} not found. Falling back to default or system env.")
+
+def _env_bool(name: str, default: bool) -> bool:
+    """解析布尔环境变量：0/false/no/off（不区分大小写）为 False，
+    其余非空值为 True，未设置或空值时取 default。"""
+    val = os.getenv(name)
+    if val is None or val.strip() == '':
+        return default
+    return val.strip().lower() not in ('0', 'false', 'no', 'off')
 
 class Config:
     HOST: str = os.getenv('HOST') or "0.0.0.0"
@@ -36,7 +45,7 @@ class DiTingBotDBConfig:
 
 class CheckUpDay:
     # check_up_enable
-    CHECK_UP_ENABLE: bool = bool(os.getenv('CHECK_UP_ENABLE') or False)
+    CHECK_UP_ENABLE: bool = _env_bool('CHECK_UP_ENABLE', False)
     # 表示第一天的八点
     DAY_START: int = int(os.getenv('DAY_START') or 8)
     # 表示第二天的两点
@@ -47,9 +56,8 @@ class CheckUpDay:
     TIMING_SECOND: str = str(os.getenv('TIMING_SECOND', 00))
 
 class SleepConfig:
-    # 是否启动延迟回复（处理布尔值：环境变量设为"False"或"0"时为False，否则用默认值True）
-    delay_env = os.getenv('DELAY_ENABLED')
-    DELAY_ENABLED: bool = False if delay_env in ("False", "0") else (True if delay_env else True)
+    # 是否启动延迟回复
+    DELAY_ENABLED: bool = _env_bool('DELAY_ENABLED', True)
     # 最短睡眠时间（转换为float，默认0.3）
     MIN_SLEEP_TIME: float = float(os.getenv('MIN_SLEEP_TIME', 0.3))
     # 最长睡眠时间（转换为float，默认1.0）
@@ -79,10 +87,10 @@ class RedisConfig:
     PASSWORD: str = os.getenv('NEW_OJ_REDIS_PASSWORD') or '123456'
     DB: int = int(os.getenv('NEW_OJ_REDIS_DB') or 0)
     MAX_CONNECTIONS: int = int(os.getenv('NEW_OJ_REDIS_MAX_CONNECTIONS') or 20)
-    SOCKET_TIMEOUT: int = int(os.getenv('NEW_OJ_REDIS_SOCKET_timeout') or 5)
+    SOCKET_TIMEOUT: int = int(os.getenv('NEW_OJ_REDIS_SOCKET_TIMEOUT') or os.getenv('NEW_OJ_REDIS_SOCKET_timeout') or 5)
     SOCKET_CONNECT_TIMEOUT: int = int(os.getenv('NEW_OJ_REDIS_SOCKET_CONNECT_TIMEOUT') or 5)
-    DECODE_RESPONSES: bool = bool(os.getenv('NEW_OJ_REDIS_DECODE_RESPONSES') or True)
-    RETRY_ON_TIME: bool = bool(os.getenv('NEW_OJ_REDIS_RETRY_ON_TIME') or True)
+    DECODE_RESPONSES: bool = _env_bool('NEW_OJ_REDIS_DECODE_RESPONSES', True)
+    RETRY_ON_TIME: bool = _env_bool('NEW_OJ_REDIS_RETRY_ON_TIME', True)
     HEALTH_CHECK_INTERVAL: int = int(os.getenv('NEW_OJ_REDIS_HEALTH_CHECK_INTERVAL') or 30)
 
 class NoneBotToken:
@@ -95,8 +103,7 @@ class SiqiAuthConfig:
     PORT: int = int(os.getenv('SIQI_AUTH_PORT') or 8001)
     APP_CODE: str = os.getenv('SIQI_AUTH_APP_CODE') or 'qq_bot'
     TIMEOUT: int = int(os.getenv('SIQI_AUTH_TIMEOUT') or 2)
-    _enabled_env = os.getenv('SIQI_AUTH_ENABLED')
-    ENABLED: bool = False if _enabled_env in ("False", "false", "0") else (True if _enabled_env else True)
+    ENABLED: bool = _env_bool('SIQI_AUTH_ENABLED', True)
 
 class LogConfig:
     """文件日志记录配置（用于 logger.add()）"""
@@ -105,8 +112,7 @@ class LogConfig:
     LOG_FILE_RETENTION: str = os.getenv('LOG_FILE_RETENTION') or "7 days"
     LOG_FILE_LEVEL: str = os.getenv('LOG_FILE_LEVEL') or "DEBUG"
     LOG_FILE_ENCODING: str = os.getenv('LOG_FILE_ENCODING') or "utf-8"
-    _enqueue_env = os.getenv('LOG_FILE_ENQUEUE')
-    LOG_FILE_ENQUEUE: bool = False if _enqueue_env in ("False", "false", "0") else (True if _enqueue_env else True)
+    LOG_FILE_ENQUEUE: bool = _env_bool('LOG_FILE_ENQUEUE', True)
     LOG_FILE_COMPRESSION: str = os.getenv('LOG_FILE_COMPRESSION') or "zip"
 
 class WebUIConfig:

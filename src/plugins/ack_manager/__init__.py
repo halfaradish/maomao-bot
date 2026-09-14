@@ -10,7 +10,7 @@ from .reminder_scheduler import get_scheduler
 from nonebot import get_driver
 from nonebot.log import logger
 from nonebot.plugin import PluginMetadata
-from src.common.model.model import PluginGroupEnum, PluginBadgeColor
+from src.common.plugin_meta import PluginGroupEnum, PluginBadgeColor
 
 __plugin_meta__ = PluginMetadata(
     name="全员确认",

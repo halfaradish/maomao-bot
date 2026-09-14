@@ -1197,27 +1197,6 @@ files = [
 tests = ["pytest"]
 
 [[package]]
-name = "html2image"
-version = "2.0.7"
-description = "Package acting as a wrapper around the headless mode of existing web browsers to generate images from URLs and from HTML+CSS strings or files."
-optional = false
-python-versions = ">=3.6"
-groups = ["main"]
-files = [
-    {file = "html2image-2.0.7-py3-none-any.whl", hash = "sha256:1806df797e8320ba3246f45149e7034314911be6a285787cbff3edf5bbe9de40"},
-    {file = "html2image-2.0.7.tar.gz", hash = "sha256:8644fd424cff2805977f4583f965b0235733f9eb08569e4c02f6befe6e7fafcc"},
-]
-
-[package.dependencies]
-requests = "*"
-websocket-client = ">=1.0,<2.0"
-
-[package.extras]
-dev = ["build", "flake8", "pillow (>=8.2.0)", "pytest", "twine"]
-lint = ["flake8"]
-test = ["pillow (>=8.2.0)", "pytest"]
-
-[[package]]
 name = "httpcore"
 version = "1.0.9"
 description = "A minimal low-level HTTP client."
@@ -5053,23 +5032,6 @@ files = [
 anyio = ">=3.0.0"
 
 [[package]]
-name = "websocket-client"
-version = "1.9.0"
-description = "WebSocket client for Python with low level API options"
-optional = false
-python-versions = ">=3.9"
-groups = ["main"]
-files = [
-    {file = "websocket_client-1.9.0-py3-none-any.whl", hash = "sha256:af248a825037ef591efbf6ed20cc5faa03d3b47b9e5a2230a529eeee1c1fc3ef"},
-    {file = "websocket_client-1.9.0.tar.gz", hash = "sha256:9e813624b6eb619999a97dc7958469217c3176312b3a16a4bd1bc7e08a46ec98"},
-]
-
-[package.extras]
-docs = ["Sphinx (>=6.0)", "myst-parser (>=2.0.0)", "sphinx_rtd_theme (>=1.1.0)"]
-optional = ["python-socks", "wsaccel"]
-test = ["pytest", "websockets"]
-
-[[package]]
 name = "websockets"
 version = "15.0.1"
 description = "An implementation of the WebSocket Protocol (RFC 6455 & 7692)"
@@ -5594,4 +5556,4 @@ cffi = ["cffi (>=1.17,<2.0) ; platform_python_implementation != \"PyPy\" and pyt
 [metadata]
 lock-version = "2.1"
 python-versions = ">=3.10, <3.13"
-content-hash = "3faed82458ab01b4801f7ee60c11e8014bca6b1dff7873c33d32ab9e1febf59b"
+content-hash = "76e959ac9cf4e01d8cdc1b65ac4afc782cda51ffb4d2f34ac6eeeb3c0abbdacd"

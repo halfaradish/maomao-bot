@@ -2,12 +2,13 @@
 启动钩子：建表 + 同步权限点
 
 在 NoneBot 启动时自动执行：
-1. 确保 8 张权限表存在（CREATE TABLE IF NOT EXISTS）
+1. 全库 schema 引导：创建 Base 上全部已注册模型的缺失表（含 9 个权限模型，
+   也覆盖尚未有自己的建表钩子的模型）
 2. 将内存 Registry 中的权限点同步到 permission_points 表
 """
 from nonebot import get_driver, logger
 
-from src.common.database import Base, engine, async_session_factory
+from src.common.database import get_session, ensure_tables
 from src.common.permission.registry import perm_registry
 from src.common.permission.models import PermissionPoint
 
@@ -17,9 +18,8 @@ from sqlalchemy import select
 @get_driver().on_startup
 async def sync_permission_points():
     """启动时建表并同步权限点到数据库"""
-    # 1. 建表（幂等，仅创建不存在的表）
-    async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
+    # 1. 全量建表（幂等，仅创建不存在的表）
+    await ensure_tables()
 
     # 2. 同步权限点
     points = perm_registry.get_all()
@@ -28,8 +28,8 @@ async def sync_permission_points():
         return
 
     logger.info(f"[permission] 正在同步 {len(points)} 个权限点到数据库...")
-    async with async_session_factory() as session:
-        new_count = 0
+    new_count = 0
+    async with get_session() as session:
         for point in points:
             # 检查是否已存在
             stmt = select(PermissionPoint.id).where(
@@ -47,8 +47,5 @@ async def sync_permission_points():
             ))
             new_count += 1
             logger.debug(f"[permission] 注册权限点: {point.key}")
-
-        if new_count > 0:
-            await session.commit()
 
     logger.info(f"[permission] 权限点同步完成 (新增 {new_count} 个)")

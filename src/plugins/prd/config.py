@@ -6,7 +6,8 @@ class Config(BaseModel):
     block: bool = True
     priority: int = 15
 
-    data_filename: str = "prd.json"
+    # 可分类组别（原 prd.json 的 exist_groups，静态配置，无运行时写路径）
+    prd_exist_groups: list[str] = []
 
     # 图片生成相关配置
     enable_image_output: bool = True  # 是否启用图片输出功能

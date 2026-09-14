@@ -33,7 +33,7 @@ from .config import Config
 from ...common.send_forward_msg import send_forward_msg
 from ..logging_info.message_dao import message_dao
 from ...common.utils import QQAvatarLoader
-from src.common.model.model import PluginGroupEnum, PluginBadgeColor
+from src.common.plugin_meta import PluginGroupEnum, PluginBadgeColor
 from src.common.database import async_session_factory
 from src.common.permission.models import (
     PermissionGroup,
@@ -352,7 +352,7 @@ async def _(bot: Bot, event: GroupMessageEvent):
         # 发送告警日志到所有绑定了告警日志权限的群
         ban_words_remind_groups = await get_ban_word_log_targets()
         for remind_group in ban_words_remind_groups:
-            await send_forward_msg.by_onebot_api(bot=bot, event=event, messges=remind_msgs, group_id=str(remind_group))
+            await send_forward_msg.by_onebot_api(bot=bot, event=event, messages=remind_msgs, group_id=str(remind_group))
 
     except ActionFailed as e:
         logger.error(f"操作失败: {e}")

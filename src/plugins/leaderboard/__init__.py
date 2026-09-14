@@ -15,7 +15,7 @@ import asyncio
 import io
 
 from .config import Config
-from src.common.model.model import PluginGroupEnum, PluginBadgeColor
+from src.common.plugin_meta import PluginGroupEnum, PluginBadgeColor
 
 config = get_plugin_config(Config)
 

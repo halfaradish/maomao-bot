@@ -11,7 +11,7 @@ from typing import Union
 from .working_time import get_working_time
 from .config import Config
 from ...config.local_config import CheckUpDay
-from src.common.model.model import PluginGroupEnum, PluginBadgeColor
+from src.common.plugin_meta import PluginGroupEnum, PluginBadgeColor
 from src.common.permission import check_permission, get_bound_group_ids
 
 from . import permissions  # noqa: F401

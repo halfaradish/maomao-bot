@@ -15,7 +15,7 @@ from sqlalchemy.orm import selectinload
 from ...common.database import async_session_factory
 from ...common.models.botdb_models import Group, GroupMember
 from .config import Config
-from src.common.model.model import PluginGroupEnum, PluginBadgeColor
+from src.common.plugin_meta import PluginGroupEnum, PluginBadgeColor
 
 __plugin_meta__ = PluginMetadata(
     name="分组管理",

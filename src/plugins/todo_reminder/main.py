@@ -11,6 +11,7 @@ from nonebot.params import CommandArg
 from nonebot.adapters.onebot.v11.message import Message
 from nonebot.exception import FinishedException
 from nonebot.log import logger
+from src.common.send_forward_msg import send_forward_msg
 import re
 import time
 from typing import Optional, Dict, List
@@ -48,26 +49,9 @@ def is_scheduler_ready():
     return scheduler_started and scheduler.running
 
 async def create_forward_message(bot: Bot, event: Event, text: str, bot_name: str = "谛听"):
-    """发送转发消息格式"""
-    def to_node(name: str, uin: str, message: Message):
-        """构建统一的格式"""
-        return {
-            "type": "node",
-            "data": {"name": name, "uin": uin, "content": message},
-        }
-    
+    """发送转发消息格式（节点构造与发送委托 common；失败降级为普通消息）"""
     try:
-        info = await bot.get_login_info()
-        name = info['nickname']
-        uin = bot.self_id
-        
-        # 构建消息节点
-        message_nodes = [to_node(name=bot_name, uin=uin, message=Message(text))]
-        
-        if isinstance(event, GroupMessageEvent):
-            await bot.call_api("send_group_forward_msg", group_id=event.group_id, messages=message_nodes)
-        else:
-            await bot.call_api("send_private_forward_msg", user_id=event.user_id, messages=message_nodes)
+        await send_forward_msg.by_onebot_api(bot, event, [text], name=bot_name)
     except Exception as e:
         logger.error(f"发送转发消息失败: {e}")
         # 如果转发失败，发送普通消息

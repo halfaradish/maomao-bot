@@ -3,7 +3,7 @@
 """
 from nonebot.plugin import PluginMetadata
 from . import middleware
-from src.common.model.model import PluginGroupEnum, PluginBadgeColor
+from src.common.plugin_meta import PluginGroupEnum, PluginBadgeColor
 
 __plugin_meta__ = PluginMetadata(
     name="消息发送限速中间件",

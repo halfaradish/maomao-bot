@@ -27,7 +27,10 @@ src/common/database.py
        ▼
 src/common/models/
   ├─ botdb_models.py        ← 12 个 Bot DB 表模型
-  └─ like_plugin_models.py  ← 2 个 like 插件表模型
+  ├─ like_plugin_models.py  ← 2 个 like 插件表模型
+  ├─ plugin_usage_models.py / vv_models.py  ← 插件专属模型文件
+  └─ duel/fakemsg/mass_kick/prd/shit_transport_models.py
+                            ← 原 JSON 存储插件迁移后的模型（均含 env_tag 隔离列）
        │
        ▼
 src/common/crud.py           ← 5 个异步 CRUD 包装函数（可选，封装了 session 管理）
@@ -46,33 +49,49 @@ src/common/crud.py           ← 5 个异步 CRUD 包装函数（可选，封装
 
 ## 1. 获取会话
 
-所有数据库操作的入口是 `async_session_factory()`：
+**推荐入口是 `get_session()`**（自动 commit/rollback/关闭）：
 
 ```python
-from src.common.database import async_session_factory
+from src.common.database import get_session
 from sqlalchemy import select
 
 async def example():
-    async with async_session_factory() as session:
+    async with get_session() as session:        # 退出时自动 commit，异常时 rollback 并抛出
         result = await session.execute(select(SomeModel).where(...))
         data = result.scalars().all()
-        # with 块正常结束时自动 commit
-        # 发生异常时自动 rollback
+
+async def read_only_example():
+    async with get_session(commit=False) as session:   # 纯读取：不提交
+        ...
 ```
+
+仍可直接使用 `async_session_factory()`（自管 commit/rollback），但新代码建议统一走 `get_session()`。
 
 **绝对不要**在模块顶层（插件导入时）创建会话：
 
 ```python
 # ❌ 错误：插件 import 时就执行数据库查询
-async with async_session_factory() as session:  # 报错！
+async with get_session() as session:  # 报错！
     ...
 
 # ✅ 正确：放在 async 函数/命令处理器内部
 @cmd.handle()
 async def handler():
-    async with async_session_factory() as session:
+    async with get_session() as session:
         ...
 ```
+
+**建表**：用 `ensure_tables(*models)`（幂等，只建传入模型对应的表）：
+
+```python
+from src.common.database import ensure_tables
+
+@get_driver().on_startup
+async def _create_tables():
+    await ensure_tables(MyModelA, MyModelB)
+```
+
+`permission/auto_register.py` 启动时会额外做一次全量建表（创建 Base 上全部已注册模型的缺失表）。
 
 ---
 
@@ -161,7 +180,18 @@ deleted = await async_delete_records(TodoReminder, id=42, user_id=123456)
 # 返回删除的行数 (int)
 ```
 
-**注意**：每个 CRUD 函数都独立打开/关闭 session。多个 CRUD 调用之间**不是同一个事务**——如果需要在同一个事务中执行多个操作，请使用直接 SQLAlchemy（第 4 节）。
+**注意**：每个 CRUD 函数默认独立提交，且**数据库错误会原样抛出**（不会转换为 None/[]/0）——需要降级语义时自行 try/except。所有函数都接受关键字参数 `session=`：传入一个会话即可把多个 CRUD 调用组成同一事务（此时不提交，由外层 `get_session()` 统一提交）：
+
+```python
+from src.common.database import get_session
+from src.common.crud import async_create_record, async_update_records
+
+async def composed():
+    async with get_session() as session:
+        obj = await async_create_record(SomeModel, session=session, name="x")
+        await async_update_records(OtherModel, {"id": 1}, {"ref": obj.id}, session=session)
+    # with 退出时统一提交；任一步抛异常则整体回滚
+```
 
 ---
 
@@ -365,7 +395,25 @@ async with async_session_factory() as session:
 | 13 | `LikeRecord` | `like_plugin_likerecord` | 点赞记录 | `user_id` String UNIQUE | `user_id` 即主键 |
 | 14 | `PluginConfig` | `like_plugin_pluginconfig` | 插件 KV 配置 | `key` String UNIQUE | 键值存储模式 |
 
-### 6.3 导入方式
+### 6.3 原 JSON 存储插件模型（2026-09 由 data/*.json 迁入，均含 `env_tag` 隔离列）
+
+这些表来自 5 个原使用 `JsonUtils` JSON 文件存储的插件，数据由
+`scripts/migrate_json_to_db.py`（幂等，`--archive` 归档源文件）一次性迁入。
+env_tag 的取值来源、DAO 过滤模式与按 id 校验规范，见第 7 节「env_tag 环境隔离约定」。
+
+| 模型类（文件） | MySQL 表名 | 来源 JSON | 说明 |
+|---|---|---|---|
+| `DuelStandardTag`（duel_models.py） | `duel_tags` | duel.json `map` 键 | CF 标准标签词表，`UNIQUE(env_tag, tag)` |
+| `DuelTagAlias`（duel_models.py） | `duel_tag_aliases` | duel.json `map`/`quick_map` | 标签别名，`UNIQUE(env_tag, alias)`（原双向冗余消失） |
+| `DuelDailyProblemState`（duel_models.py） | `duel_daily_problem_state` | duel.json `daily_problems` | 每环境单行，`history` 为 JSON 列（字符串题号） |
+| `FakemsgDailyUsage`（fakemsg_models.py） | `fakemsg_daily_usage` | fakemsg.json `daily_times_log` | 按 `(env_tag, user_id, usage_date)` 唯一，旧 `last_refresh_date` 键由 usage_date 取代 |
+| `MassKickManagedGroup`（mass_kick_models.py） | `mass_kick_managed_groups` | mass_kick.json `managed_groups` | `UNIQUE(env_tag, group_id)` |
+| `PrdTodo`（prd_models.py） | `prd_todos` | prd.json `to_do` | 编号即自增主键（迁移保留原编号）；`group` 为 MySQL 保留字，属性名 `group_name`；`prd_exist_groups` 改为插件配置 |
+| `ShitTransportStats`（shit_transport_models.py） | `shit_transport_stats` | shit_transport.json 两个统计 dict | `kind` = banshi/postshi，`UNIQUE(env_tag, user_id, kind)` |
+
+对应 DAO 层在各插件目录 `dao.py`（模块级异步函数），参考 `plugin_usage_stats/dao.py` 的分层模式。
+
+### 6.4 导入方式
 
 模型通过 `src/common/models/__init__.py` 统一 re-export，推荐直接从 `__init__` 导入：
 
@@ -380,7 +428,92 @@ from src.common.models import TodoReminder, LikeRecord
 
 ---
 
-## 7. 添加新表
+## 7. env_tag 环境隔离约定
+
+同一 MySQL 库（`diting_qq_bot`）会被多个环境实例共用（prod/dev/local/docker，由 `.env` 的 `ENVIRONMENT` 决定）。`env_tag` 列标记每行数据的归属环境，防止 dev 测试数据混入 prod、或 dev 环境误改 prod 数据。
+
+> 列宽口径：`String(20)`（现有 7 张表一致）。早期设计文档写的 `VARCHAR(32)` 已废弃，以本节为准。
+
+### 7.1 取值来源 — 只用 `current_env_tag()`
+
+```python
+from src.common.database import current_env_tag
+```
+
+- **bot 运行时**：读 nonebot 配置 `config.environment`（即 `.env` 的 `ENVIRONMENT`）
+- **独立脚本**（未 `nonebot.init()`）：回退读 `ENVIRONMENT` 环境变量，缺省 `dev`
+
+**禁止**在插件/DAO 中自行读环境（`get_driver().config.environment`、`os.getenv("ENVIRONMENT")` 等）——统一走 `current_env_tag()`，保证打标与过滤口径一致。
+
+### 7.2 标准列定义
+
+`env_tag` 紧跟 `id` 之后，`String(20)`；复合 UNIQUE / INDEX 一律以 env_tag 为首位：
+
+```python
+from sqlalchemy import BigInteger, Index, String, UniqueConstraint
+from sqlalchemy.orm import Mapped, mapped_column
+from src.common.database import Base
+
+class YourNewModel(Base):
+    __tablename__ = "your_mysql_table_name"
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    env_tag: Mapped[str] = mapped_column(String(20))
+    # ... 业务字段 ...
+
+    __table_args__ = (
+        UniqueConstraint("env_tag", "user_id", name="uq_your_table_env_user"),
+        # 或 Index("idx_your_table_env_xxx", "env_tag", "..."),
+    )
+```
+
+### 7.3 DAO 读写模式
+
+**写入**：插入时显式打标（参考 `plugin_usage_stats/dao.py`）：
+
+```python
+session.add(PluginUsageRecord(
+    module_name=module_name,
+    env_tag=current_env_tag(),   # ← 显式打标
+    ...
+))
+```
+
+**查询/更新/删除**：每条 where 都带环境过滤：
+
+```python
+stmt = stmt.where(PluginUsageRecord.env_tag == current_env_tag())
+```
+
+**按自增 id 读写必须校验 env_tag**（自增主键跨环境共享序列，防止 dev 误改 prod），参考 `prd/dao.py`：
+
+```python
+async with async_session_factory() as session:
+    row = await session.get(PrdTodo, todo_id)
+    if row is None or row.env_tag != current_env_tag():
+        return None              # 不是本环境的数据，视同不存在
+    # ... 修改并 commit ...
+```
+
+### 7.4 适用边界 — 默认必加 + 豁免清单
+
+**所有 Bot DB 新表默认必加 `env_tag`。** 拿不准就加——忘加的代价（dev/prod 数据串）远大于多一列。
+
+| 判定 | 数据类别 | 例子 |
+|---|---|---|
+| ✅ 必加 | 每个环境有独立语义的插件私有数据 | 每日额度、标签词表、需求待办、管理名单、使用统计 |
+| ⛔ 可豁免 | 纯全局共享数据（跨环境本就应共享同一份） | 用户分组、平台级只读配置 |
+
+豁免时删掉 env_tag 列，并在模型 docstring 中写明豁免理由。
+
+**现有豁免清单**（历史表，维持现状，不回溯加列）：
+
+- `botdb_models.py` 全部 12 张、`like_plugin_models.py` 2 张、`vv_models.py`
+- ICPC 库整体不适用（独立数据库，不存在同库多环境问题）
+
+---
+
+## 8. 添加新表
 
 ### 步骤
 
@@ -396,11 +529,14 @@ class YourNewModel(Base):
     __tablename__ = "your_mysql_table_name"  # 必须与 MySQL 表名一致
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    env_tag: Mapped[str] = mapped_column(String(20))  # 默认必加，见第 7 节
     name: Mapped[str] = mapped_column(String(100))
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.now)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.now, onupdate=datetime.now)
 ```
+
+> **env_tag 豁免确认**：新表默认必加 `env_tag`（模板已含）。只有纯全局共享数据才可豁免——删掉该列并在模型 docstring 写明理由。判定标准、列定义与 DAO 过滤模式见第 7 节「env_tag 环境隔离约定」。
 
 **（2）在 MySQL 中建表** — 直接执行 DDL 或通过代码：
 
@@ -426,7 +562,7 @@ rows = await async_get_many(YourNewModel, filters={"name__icontains": "es"})
 
 ---
 
-## 8. DateTime 处理
+## 9. DateTime 处理
 
 项目使用 **naive datetime**（无时区信息），时区约定为北京时间（Asia/Shanghai）：
 
@@ -455,7 +591,7 @@ def _ensure_naive_local(dt):
 
 ---
 
-## 9. 插件实战参考
+## 10. 插件实战参考
 
 以下是项目中每个插件使用的 DB 模式和技巧，可作为写新代码时的参考：
 
@@ -469,12 +605,14 @@ def _ensure_naive_local(dt):
 | `group_manager` | 直接 SQLAlchemy | Group, GroupMember | `func.count` + `outerjoin` + `group_by`；`selectinload` 预加载；`sa_delete`；存在性检查 |
 | `group_file_manager` | 直接 SQLAlchemy | MonitoredGroup, GroupFile | 原始 DDL (`ALTER TABLE`)；FK 约束检测；session 作为函数参数传递；文件去重；`ENABLED` 条件导入 |
 | `group_statistics` | 直接 SQLAlchemy | GroupStatistic | `session.delete()` 删除；独立 DAO 类；异常静默返回 False |
+| `plugin_usage_stats` | 直接 SQLAlchemy | PluginUsageRecord | DAO 模块级异步函数分层；`env_tag` 环境隔离；热路径异常吞掉不阻断消息 |
+| `mass_kick` / `shit_transport` / `fakemsg` / `duel` / `prd` | 直接 SQLAlchemy | 各自 `*_models.py`（见 6.3） | 由 JSON 存储迁移而来；MySQL upsert（`mysql_insert.on_duplicate_key_update`）做原子计数；DAO 返回 legacy dict 保持旧字段形状 |
 
 ---
 
-## 10. 常见陷阱
+## 11. 常见陷阱
 
-### 10.1 `metadata` 字段名冲突
+### 11.1 `metadata` 字段名冲突
 
 SQLAlchemy 的 `Base` 保留了 `metadata` 属性名。如果表中正好有名为 `metadata` 的列，定义模型时需要重命名 Python 属性：
 
@@ -485,7 +623,7 @@ metadata_: Mapped[dict] = mapped_column("metadata", JSON, default=dict)
 
 访问时用 `obj.metadata_`，写入 DB 的列名仍是 `metadata`。
 
-### 10.2 UUID 主键用 hex 字符串
+### 11.2 UUID 主键用 hex 字符串
 
 项目使用 **32 位 hex 字符串**（无横杠），对应 Django `UUIDField` 默认格式：
 
@@ -499,7 +637,7 @@ id: Mapped[str] = mapped_column(
 # 不是: "a1b2c3d4-e5f6-...-..." (不要用 str(uuid.uuid4()))
 ```
 
-### 10.3 外键指向非主键列
+### 11.3 外键指向非主键列
 
 `GroupMember.group_name` 的外键指向 `group.name`（不是 `group.id`），这是历史遗留设计：
 
@@ -511,7 +649,7 @@ group_name: Mapped[str] = mapped_column(
 
 新表不应模仿此模式——FK 应该指向目标表的主键。
 
-### 10.4 不要在 session 外使用 ORM 对象的懒加载关系
+### 11.4 不要在 session 外使用 ORM 对象的懒加载关系
 
 ```python
 # ❌ 错误：在 async with 外访问关系属性可能失败（MissingGreenlet）
@@ -532,7 +670,7 @@ async with async_session_factory() as session:
 # 现在可以在会话外安全使用 members
 ```
 
-### 10.5 查询返回类型对照
+### 11.5 查询返回类型对照
 
 ```python
 result = await session.execute(stmt)
@@ -546,7 +684,7 @@ rows = result.mappings().all()      # → List[dict-like], 每行可 row["col_na
 row  = result.mappings().first()    # → Optional[dict-like]
 ```
 
-### 10.6 CRUD 调用之间不是同一事务
+### 11.6 CRUD 调用之间不是同一事务
 
 ```python
 # ⚠️ 这两步不在同一事务中！
@@ -558,13 +696,13 @@ await async_create_record(QQMessageReceiptSummary, ...)  # 独立 session
 
 这种情况应改用直接 SQLAlchemy，在同一个 `async with` 块中完成，保证原子性。
 
-### 10.7 `pymysql` 仅限 `llm_scribe`
+### 11.7 `pymysql` 仅限 `llm_scribe`
 
 整个代码库中，**只有** `llm_scribe` 插件还在使用 `pymysql`（独立的数据库连接，非 Bot DB）。所有 Bot DB 操作都已迁移到 SQLAlchemy async。不要在 Bot DB 相关代码中引入 `pymysql`。
 
 ---
 
-## 11. 与 ICPC DB 的区别
+## 12. 与 ICPC DB 的区别
 
 这个项目有 **两套独立的数据库**，不要混淆：
 
