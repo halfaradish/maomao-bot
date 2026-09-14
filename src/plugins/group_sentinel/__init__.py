@@ -73,18 +73,18 @@ else:
                 f"comment={comment}"
             )
         else:
-            await event.reject(bot, reason="学号前6位错误或虚假。有异议可上报群主1950482412")
+            # await event.reject(bot, reason="学号前6位错误或虚假。有异议可上报群主1950482412")
             logger.info(
-                f"[group_sentinel] 拒绝入群: user={user_id} group={group_id} "
+                f"[group_sentinel] 入群申请挂起待人工复核: user={user_id} group={group_id} "
                 f"reason={reason}"
             )
 
             # 发送群通知，供群主/群友人工复核
             notify_msg = (
-                f"⚠️ 入群审核拒绝通知\n"
+                f"⚠️ 入群申请【挂起待人工审查】\n"
                 f"申请人：{user_id}\n"
-                f"拒绝原因：{reason}\n"
-                f"申请信息：{comment or '(空)'}"
+                f"初审标记原因：{reason}\n"
+                f"申请信息：{comment or '(空)'}\n"
             )
             try:
                 await bot.send_group_msg(group_id=group_id, message=notify_msg)
