@@ -13,7 +13,7 @@ from sqlalchemy import select, update as sa_update
 from ...common.database import async_session_factory
 from ...common.models.like_plugin_models import LikeRecord
 from .config import Config
-from src.common.model.model import PluginGroupEnum, PluginBadgeColor
+from src.common.plugin_meta import PluginGroupEnum, PluginBadgeColor
 from src.common.permission import check_permission, get_bound_group_ids
 
 from . import permissions  # noqa: F401

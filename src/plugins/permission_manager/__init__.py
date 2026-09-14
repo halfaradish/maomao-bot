@@ -34,7 +34,7 @@ from src.common.permission.models import (
 from src.common.permission.cache import perm_cache
 from src.common.permission import check_permission
 from src.common.permission.supervisor import is_superuser
-from src.common.model.model import PluginGroupEnum, PluginBadgeColor
+from src.common.plugin_meta import PluginGroupEnum, PluginBadgeColor
 from .config import Config
 from . import permissions  # noqa: F401
 
@@ -194,6 +194,7 @@ def _build_help_text() -> str:
 perm_cmd = on_command(
     config.perm_mgr_command,
     aliases={'perm'},
+    force_whitespace=True,
     priority=config.perm_mgr_priority,
     block=config.perm_mgr_block,
 )
@@ -313,6 +314,10 @@ async def handle_permission_command(
     # ---- help ----
     elif subcmd in ("help", "帮助", "-h", "--help"):
         await perm_cmd.finish(_build_help_text())
+
+    else:
+        # 未知子命令：静默结束，避免落入 login_confirm 的 got 提示
+        await perm_cmd.finish()
 
 @perm_cmd.got("login_confirm", prompt="是否通过私聊发送验证码？(是/否)")
 async def handle_login_confirm(bot: Bot, event: MessageEvent, state: T_State):

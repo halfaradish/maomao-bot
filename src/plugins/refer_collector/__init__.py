@@ -16,7 +16,7 @@ from nonebot.exception import FinishedException
 from nonebot.params import CommandArg
 from nonebot.plugin import PluginMetadata
 
-from src.common.model.model import PluginBadgeColor, PluginGroupEnum
+from src.common.plugin_meta import PluginBadgeColor, PluginGroupEnum
 
 __plugin_meta__ = PluginMetadata(
     name="内推码收集器",

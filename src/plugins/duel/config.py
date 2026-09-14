@@ -8,8 +8,6 @@ class Config(BaseModel):
     # 是否阻塞
     block: bool = True
 
-    filename: str = 'duel.json'
-
     # 没有参数时的默认消息, 
     DEFAULT_MSG: str = (
         "[duel/cf推题] 命令使用方法\n"

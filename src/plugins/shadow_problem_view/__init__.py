@@ -18,7 +18,7 @@ import asyncio
 from ...common import utils
 from .config import Config
 from .get_range_sub import DailySubCondition
-from src.common.model.model import PluginGroupEnum, PluginBadgeColor
+from src.common.plugin_meta import PluginGroupEnum, PluginBadgeColor
 from src.common.permission import get_bound_group_ids
 
 from . import permissions  # noqa: F401

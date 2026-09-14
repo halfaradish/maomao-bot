@@ -8,7 +8,7 @@ from ...common.siqi_client import (
     SiqiClient,
     siqi_client as shared_siqi_client,
 )
-from src.common.model.model import PluginGroupEnum, PluginBadgeColor
+from src.common.plugin_meta import PluginGroupEnum, PluginBadgeColor
 
 # 插件元信息
 __plugin_meta__ = PluginMetadata(

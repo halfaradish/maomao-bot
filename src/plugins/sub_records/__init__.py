@@ -17,11 +17,10 @@ import platform
 import time
 
 
-from ...common import JsonUtils
 from .config import Config
 from .sub_condition import Submission
 from ...common.timer import timer, timed_section
-from src.common.model.model import PluginGroupEnum, PluginBadgeColor
+from src.common.plugin_meta import PluginGroupEnum, PluginBadgeColor
 from src.common.permission import check_permission, get_bound_group_ids
 
 from . import permissions  # noqa: F401
@@ -120,10 +119,6 @@ async def _(bot: Bot, event: Union[GroupMessageEvent, PrivateMessageEvent], args
                 "  可组合条件，支持身份+学校+用户混查"
             )
 
-        data, _ = JsonUtils.read(config.DATA_FILENAME, {
-            "roles_name": ["管理员", "现役", "退役", "预备役"],
-            "school": ["广西大学", "广西师范大学", "江西农业大学"]
-        })
         # 权限验证
         with timer("权限验证"):
             if not await check_permission(event, "sub_records:use"):
@@ -131,8 +126,8 @@ async def _(bot: Bot, event: Union[GroupMessageEvent, PrivateMessageEvent], args
                 await cf_sub_command.finish("你没有权限使用 '过题' 功能")
 
         # 解析筛选参数
-        roles = data["roles_name"]
-        schools = data["school"]
+        roles = config.sub_record_roles_name
+        schools = config.sub_record_schools
 
         with timer("消息文本二次处理"):
             upstream_days = None

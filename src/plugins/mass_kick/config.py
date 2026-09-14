@@ -3,7 +3,6 @@ from pydantic import BaseModel
 
 class Config(BaseModel):
     """一键退群插件配置"""
-    data_filename: str = "mass_kick.json"
     # 操作延迟（秒），避免触发频率限制
     operation_delay: float = 1.0
     # 日志群组ID列表（可选），用于记录操作日志

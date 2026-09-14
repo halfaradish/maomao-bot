@@ -10,7 +10,7 @@ from nonebot.plugin import PluginMetadata
 from nonebot.adapters.onebot.v11 import MessageSegment, Message, MessageEvent
 from nonebot.log import logger
 import re
-from src.common.model.model import PluginGroupEnum, PluginBadgeColor
+from src.common.plugin_meta import PluginGroupEnum, PluginBadgeColor
 
 __plugin_meta__ = PluginMetadata(
     name="猪猪图片",

@@ -1,4 +1,5 @@
 from nonebot import (
+    get_driver,
     get_plugin_config,
     on_command,
     logger,
@@ -17,8 +18,10 @@ from datetime import datetime
 import asyncio
 
 from .config import Config
-from ...common import JsonUtils
-from src.common.model.model import PluginGroupEnum, PluginBadgeColor
+from . import dao
+from src.common.database import ensure_tables
+from src.common.models.mass_kick_models import MassKickManagedGroup
+from src.common.plugin_meta import PluginGroupEnum, PluginBadgeColor
 from src.common.permission import check_permission
 from . import permissions  # noqa: F401 - 注册权限点到权限系统
 
@@ -39,15 +42,20 @@ config = get_plugin_config(Config)
 # 创建命令处理器
 mass_kick_cmd = on_command("一键退群", priority=5, block=True)
 
-def get_managed_groups():
-    """获取管理的群组列表"""
-    data, _ = JsonUtils.read(
-        filename=config.data_filename,
-        default={
-            "managed_groups": []
-        }
-    )
-    return data.get('managed_groups', [])
+
+@get_driver().on_startup
+async def _create_tables() -> None:
+    """建表（幂等，仅创建缺失表）"""
+    await ensure_tables(MassKickManagedGroup)
+
+
+async def get_managed_groups() -> list[int]:
+    """获取管理的群组列表（读取失败时返回空列表并告警，避免误踢）"""
+    try:
+        return await dao.list_groups()
+    except Exception as e:
+        logger.error(f"[一键退群] 读取管理群组列表失败: {e}")
+        return []
 
 async def get_group_member_role(bot: Bot, group_id: str, user_id: str) -> str:
     """获取群成员角色
@@ -195,7 +203,7 @@ async def handle_mass_kick(bot: Bot, event: GroupMessageEvent, args: Message = C
     # 处理子命令
     if len(parts) >= 1 and parts[0] == 'ls':
         # 查看群组列表 - ls命令不需要额外参数
-        managed_groups = get_managed_groups()
+        managed_groups = await get_managed_groups()
         if not managed_groups:
             await mass_kick_cmd.finish("当前没有配置管理的群组")
         
@@ -218,9 +226,9 @@ async def handle_mass_kick(bot: Bot, event: GroupMessageEvent, args: Message = C
         # 批量添加
         added_groups = []
         existing_groups = []
-        
+
         for group_id in group_ids:
-            if add_managed_group(group_id):
+            if await add_managed_group(int(group_id)):
                 added_groups.append(group_id)
             else:
                 existing_groups.append(group_id)
@@ -246,9 +254,9 @@ async def handle_mass_kick(bot: Bot, event: GroupMessageEvent, args: Message = C
         # 批量删除
         removed_groups = []
         not_found_groups = []
-        
+
         for group_id in group_ids:
-            if remove_managed_group(group_id):
+            if await remove_managed_group(int(group_id)):
                 removed_groups.append(group_id)
             else:
                 not_found_groups.append(group_id)
@@ -273,7 +281,7 @@ async def handle_mass_kick(bot: Bot, event: GroupMessageEvent, args: Message = C
             await mass_kick_cmd.finish("QQ号格式错误，请输入纯数字")
         
         # 获取管理的群组列表
-        managed_groups = get_managed_groups()
+        managed_groups = await get_managed_groups()
         if not managed_groups:
             await mass_kick_cmd.finish("当前没有配置管理的群组，请联系管理员配置")
         
@@ -360,35 +368,22 @@ async def handle_mass_kick(bot: Bot, event: GroupMessageEvent, args: Message = C
         await mass_kick_cmd.finish(result_msg)
 
 
-def update_managed_groups(group_ids: list):
-    """更新管理的群组列表"""
-    data, _ = JsonUtils.read(
-        filename=config.data_filename,
-        default={
-            "managed_groups": [],
-            "log_group_ids": config.log_group_ids
-        }
-    )
-    data['managed_groups'] = group_ids
-    return JsonUtils.write(config.data_filename, data)
-
-
-def add_managed_group(group_id: str) -> bool:
-    """添加群组到管理列表"""
-    managed_groups = get_managed_groups()
-    if group_id in managed_groups:
+async def add_managed_group(group_id: int) -> bool:
+    """添加群组到管理列表，失败（含数据库异常）返回 False"""
+    try:
+        return await dao.add_group(group_id)
+    except Exception as e:
+        logger.error(f"[一键退群] 添加管理群组 {group_id} 失败: {e}")
         return False
-    managed_groups.append(group_id)
-    return update_managed_groups(managed_groups)
 
 
-def remove_managed_group(group_id: str) -> bool:
-    """从管理列表删除群组"""
-    managed_groups = get_managed_groups()
-    if group_id not in managed_groups:
+async def remove_managed_group(group_id: int) -> bool:
+    """从管理列表删除群组，失败（含数据库异常）返回 False"""
+    try:
+        return await dao.remove_group(group_id)
+    except Exception as e:
+        logger.error(f"[一键退群] 删除管理群组 {group_id} 失败: {e}")
         return False
-    managed_groups.remove(group_id)
-    return update_managed_groups(managed_groups)
 
 
 

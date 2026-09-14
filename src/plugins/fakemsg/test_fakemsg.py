@@ -1,215 +1,62 @@
-import unittest
+"""伪消息每日额度逻辑测试（独立脚本式，需在仓库根目录运行）：
+
+    .venv/Scripts/python src/plugins/fakemsg/test_fakemsg.py
+
+插件包在导入期依赖 nonebot driver（siqi_auth_client / get_plugin_config），
+因此必须先 nonebot.init() 再导入插件模块 —— 这也是本文件不能用
+`python -m unittest` 直接加载的原因（unittest 会先导入父包）。
+
+通过 mock dao 层隔离数据库（遵循 CLAUDE.md：测试不连真实数据库），
+覆盖点：当日计数读取、计数递增、历史计数清理。
+"""
 import datetime
-import os
-import json
-import threading
+import sys
+import unittest
+from pathlib import Path
+from unittest.mock import patch
+
+REPO_ROOT = Path(__file__).resolve().parents[3]
+if str(REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT))
+
+import nonebot  # noqa: E402
+
+nonebot.init()
+
+from src.plugins.fakemsg import dao, scheduler, utils  # noqa: E402
 
 
-class MockJsonUtils:
-    """Mock JsonUtils for testing"""
-    _file_locks = {}
-    _global_lock = threading.RLock()
+class TestFakemsgDailyUsage(unittest.IsolatedAsyncioTestCase):
+    """每日额度逻辑 — dao 层全部 mock"""
 
-    @classmethod
-    def _get_file_lock(cls, file_path):
-        with cls._global_lock:
-            if file_path not in cls._file_locks:
-                cls._file_locks[file_path] = threading.RLock()
-            return cls._file_locks[file_path]
+    async def test_get_daily_usage_returns_count(self):
+        with patch.object(dao, "get_count", return_value=3) as mocked:
+            usage = await utils.get_daily_usage("2091842518")
+        self.assertEqual(usage, 3)
+        mocked.assert_awaited_once_with(2091842518, datetime.date.today())
 
-    @classmethod
-    def __pre_built_file(cls, file, default=None):
-        default = default or {}
-        is_new = False
-        if not os.path.exists(file):
-            is_new = True
-            dir_path = os.path.dirname(file)
-            if dir_path and not os.path.exists(dir_path):
-                os.makedirs(dir_path, exist_ok=True)
-        if is_new:
-            with open(file, "w", encoding="utf-8") as f:
-                json.dump(default, f, indent=4, ensure_ascii=False)
-        else:
-            with open(file, "r", encoding="utf-8") as f:
-                content = json.load(f)
-            change = False
-            for key, value in default.items():
-                if key not in content:
-                    content[key] = value
-                    change = True
-            if change:
-                with open(file, "w", encoding="utf-8") as f:
-                    json.dump(content, f, indent=4, ensure_ascii=False)
-        return is_new
+    async def test_get_daily_usage_zero_means_no_row(self):
+        with patch.object(dao, "get_count", return_value=0) as mocked:
+            usage = await utils.get_daily_usage("2091842518")
+        self.assertEqual(usage, 0)
+        mocked.assert_awaited_once_with(2091842518, datetime.date.today())
 
-    @classmethod
-    def read(cls, filename, default=None):
-        file_url = os.path.join(os.environ.get('DI_TING_DATA_DIR', '.'), filename)
-        with cls._get_file_lock(file_url):
-            is_new = cls.__pre_built_file(file_url, default or {})
-            try:
-                with open(file_url, "r", encoding="utf-8") as f:
-                    content = json.load(f)
-                return (content, is_new)
-            except Exception:
-                return (default, is_new)
+    async def test_daily_times_addone(self):
+        with patch.object(dao, "incr") as mocked:
+            await utils.daily_times_addone("123456789")
+        mocked.assert_awaited_once_with(123456789, datetime.date.today())
 
-    @classmethod
-    def update(cls, filename, updates):
-        file_url = os.path.join(os.environ.get('DI_TING_DATA_DIR', '.'), filename)
-        with cls._get_file_lock(file_url):
-            content, _ = cls.read(filename)
-            if not isinstance(content, dict):
-                return False
-            content.update(updates)
-            with open(file_url, "w", encoding="utf-8") as f:
-                json.dump(content, f, indent=4, ensure_ascii=False)
-            return True
+    async def test_cleanup_expired_usage_deletes_before_today(self):
+        with patch.object(dao, "delete_before", return_value=2) as mocked:
+            deleted = await scheduler.cleanup_expired_usage()
+        self.assertEqual(deleted, 2)
+        mocked.assert_awaited_once_with(datetime.date.today())
+
+    async def test_cleanup_expired_usage_swallows_exception(self):
+        with patch.object(dao, "delete_before", side_effect=RuntimeError("db down")):
+            deleted = await scheduler.cleanup_expired_usage()
+        self.assertEqual(deleted, 0)
 
 
-def get_plugin_config(json_utils):
-    data, _ = json_utils.read("fakemsg.json", {
-        "daily_times_log": {}
-    })
-    if not isinstance(data, dict):
-        return {}
-    return data.get('daily_times_log', {})
-
-
-def get_last_refresh_date(json_utils):
-    data, _ = json_utils.read("fakemsg.json", {})
-    return data.get("last_refresh_date", "")
-
-
-def set_last_refresh_date(json_utils, date_str):
-    return json_utils.update("fakemsg.json", updates={"last_refresh_date": date_str})
-
-
-def refresh_daily_times_log(json_utils):
-    try:
-        print("[fakemsg] 开始执行每日额度刷新任务")
-        today = datetime.date.today().strftime("%Y-%m-%d")
-        success = json_utils.update("fakemsg.json", updates={"daily_times_log": {}, "last_refresh_date": today})
-        if success:
-            print(f"[fakemsg] 每日额度刷新成功，日期: {today}")
-        else:
-            print("[fakemsg] 每日额度刷新失败")
-        return success
-    except Exception as e:
-        print(f"[fakemsg] 每日额度刷新发生异常: {e}")
-        return False
-
-
-def check_and_refresh_on_demand(json_utils):
-    try:
-        today = datetime.date.today().strftime("%Y-%m-%d")
-        last_refresh = get_last_refresh_date(json_utils)
-        if last_refresh != today:
-            print(f"[fakemsg] 检测到日期变更，上次刷新日期: {last_refresh}，当前日期: {today}，需要执行刷新")
-            return refresh_daily_times_log(json_utils)
-        return True
-    except Exception as e:
-        print(f"[fakemsg] 按需检查刷新发生异常: {e}")
-        return False
-
-
-class TestFakemsgRefresh(unittest.TestCase):
-    """测试伪消息每日刷新功能"""
-
-    def setUp(self):
-        self.test_data_dir = os.path.join(os.path.dirname(__file__), 'test_data')
-        os.makedirs(self.test_data_dir, exist_ok=True)
-        os.environ['DI_TING_DATA_DIR'] = self.test_data_dir
-        self.test_file = os.path.join(self.test_data_dir, 'fakemsg.json')
-        self.original_data = {
-            "person_users": ["123456789"],
-            "group_users": ["987654321"],
-            "daily_times_log": {"2091842518": 5, "123456789": 3},
-            "last_refresh_date": "2026-04-27"
-        }
-        with open(self.test_file, 'w', encoding='utf-8') as f:
-            json.dump(self.original_data, f, indent=4)
-
-    def tearDown(self):
-        if os.path.exists(self.test_file):
-            os.remove(self.test_file)
-
-    def test_get_last_refresh_date(self):
-        date = get_last_refresh_date(MockJsonUtils)
-        self.assertEqual(date, "2026-04-27")
-
-    def test_set_last_refresh_date(self):
-        result = set_last_refresh_date(MockJsonUtils, "2026-04-28")
-        self.assertTrue(result)
-        with open(self.test_file, 'r', encoding='utf-8') as f:
-            data = json.load(f)
-        self.assertEqual(data["last_refresh_date"], "2026-04-28")
-
-    def test_refresh_daily_times_log(self):
-        result = refresh_daily_times_log(MockJsonUtils)
-        self.assertTrue(result)
-        with open(self.test_file, 'r', encoding='utf-8') as f:
-            data = json.load(f)
-        self.assertEqual(data["daily_times_log"], {})
-        today = datetime.date.today().strftime("%Y-%m-%d")
-        self.assertEqual(data["last_refresh_date"], today)
-        self.assertEqual(data["person_users"], ["123456789"])
-        self.assertEqual(data["group_users"], ["987654321"])
-
-    def test_check_and_refresh_on_demand_needs_refresh(self):
-        yesterday = (datetime.date.today() - datetime.timedelta(days=1)).strftime("%Y-%m-%d")
-        with open(self.test_file, 'w', encoding='utf-8') as f:
-            json.dump({
-                "person_users": [],
-                "group_users": [],
-                "daily_times_log": {"test_user": 5},
-                "last_refresh_date": yesterday
-            }, f)
-        result = check_and_refresh_on_demand(MockJsonUtils)
-        self.assertTrue(result)
-        with open(self.test_file, 'r', encoding='utf-8') as f:
-            data = json.load(f)
-        self.assertEqual(data["daily_times_log"], {})
-        today = datetime.date.today().strftime("%Y-%m-%d")
-        self.assertEqual(data["last_refresh_date"], today)
-
-    def test_check_and_refresh_on_demand_no_refresh(self):
-        today = datetime.date.today().strftime("%Y-%m-%d")
-        with open(self.test_file, 'w', encoding='utf-8') as f:
-            json.dump({
-                "person_users": [],
-                "group_users": [],
-                "daily_times_log": {"test_user": 3},
-                "last_refresh_date": today
-            }, f)
-        result = check_and_refresh_on_demand(MockJsonUtils)
-        self.assertTrue(result)
-        with open(self.test_file, 'r', encoding='utf-8') as f:
-            data = json.load(f)
-        self.assertEqual(data["daily_times_log"], {"test_user": 3})
-        self.assertEqual(data["last_refresh_date"], today)
-
-    def test_check_and_refresh_no_last_refresh_date(self):
-        with open(self.test_file, 'w', encoding='utf-8') as f:
-            json.dump({
-                "person_users": [],
-                "group_users": [],
-                "daily_times_log": {"test_user": 5}
-            }, f)
-        result = check_and_refresh_on_demand(MockJsonUtils)
-        self.assertTrue(result)
-        with open(self.test_file, 'r', encoding='utf-8') as f:
-            data = json.load(f)
-        self.assertEqual(data["daily_times_log"], {})
-        today = datetime.date.today().strftime("%Y-%m-%d")
-        self.assertEqual(data["last_refresh_date"], today)
-
-    def test_get_plugin_config_default(self):
-        if os.path.exists(self.test_file):
-            os.remove(self.test_file)
-        daily_times_log = get_plugin_config(MockJsonUtils)
-        self.assertEqual(daily_times_log, {})
-
-
-if __name__ == '__main__':
+if __name__ == "__main__":
     unittest.main()

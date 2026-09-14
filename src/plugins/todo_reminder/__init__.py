@@ -20,7 +20,7 @@ from .database import TodoDatabase
 from .time_parser import TimeParser
 from .reminder_scheduler import ReminderScheduler
 from .commands import TodoCommands
-from src.common.model.model import PluginGroupEnum, PluginBadgeColor
+from src.common.plugin_meta import PluginGroupEnum, PluginBadgeColor
 
 __plugin_meta__ = PluginMetadata(
     name="Todo提醒插件",

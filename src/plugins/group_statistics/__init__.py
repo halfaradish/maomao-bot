@@ -6,7 +6,7 @@ from nonebot.plugin import PluginMetadata
 
 from .database import db_manager
 from .config import Config
-from src.common.model.model import PluginGroupEnum, PluginBadgeColor
+from src.common.plugin_meta import PluginGroupEnum, PluginBadgeColor
 
 # 导入commands模块以确保命令被注册
 from . import commands
