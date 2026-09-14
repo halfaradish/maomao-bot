@@ -467,6 +467,7 @@ from src.common.permission import (
     check_permission,        # 命令式检查
     permission_checker,      # Matcher 级适配器
     is_superuser,            # 超级管理员判断
+    is_blacklisted,          # 黑名单查询（区分「被拒绝」与「无权限」）
     perm_cache,              # 缓存操作
 )
 

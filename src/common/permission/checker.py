@@ -132,3 +132,23 @@ permission_checker = PermissionChecker()
 async def check_permission(event: Event, perm_key: str) -> bool:
     """便捷函数：检查事件发送者是否拥有指定权限"""
     return await permission_checker.check(event, perm_key)
+
+
+async def is_blacklisted(user_id: int, group_id: Optional[int] = None) -> bool:
+    """检查用户或其所在群是否命中黑名单
+
+    黑名单在优先级链中高于白名单与权限组，因此 check_permission 对黑名单用户
+    同样返回 False。需要把「被拒绝」与「无权限」区分开的场景（例如按群等级
+    放行的业务兜底）用本函数单独判断。
+    """
+    async with async_session_factory() as session:
+        stmt = select(UserBlacklist.id).where(UserBlacklist.user_id == user_id).limit(1)
+        if (await session.execute(stmt)).first() is not None:
+            return True
+
+        if group_id is not None:
+            stmt = select(GroupBlacklist.id).where(GroupBlacklist.group_id == group_id).limit(1)
+            if (await session.execute(stmt)).first() is not None:
+                return True
+
+    return False

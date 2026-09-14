@@ -24,6 +24,7 @@ from src.common.permission.registry import (
 from src.common.permission.checker import (
     PermissionChecker,
     check_permission,
+    is_blacklisted,
 )
 from src.common.permission.cache import perm_cache, TTLCache
 from src.common.permission.supervisor import is_superuser
@@ -50,4 +51,5 @@ __all__ = [
     "TTLCache",
     # 查询
     "get_bound_group_ids",
+    "is_blacklisted",
 ]

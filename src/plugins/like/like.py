@@ -13,8 +13,13 @@ from sqlalchemy import select, update as sa_update
 from ...common.database import async_session_factory
 from ...common.models.like_plugin_models import LikeRecord
 from .config import Config
+from .subscription import (
+    ACTION_KEEP_PERMANENT,
+    ACTION_TRIAL_ACTIVE,
+    resolve_subscribe_action,
+)
 from src.common.plugin_meta import PluginGroupEnum, PluginBadgeColor
-from src.common.permission import check_permission, get_bound_group_ids
+from src.common.permission import check_permission, get_bound_group_ids, is_blacklisted
 
 from . import permissions  # noqa: F401
 
@@ -102,6 +107,18 @@ async def follow_or_not(
                 defaults["group_number"] = str(group_id)
 
             if obj:
+                action = resolve_subscribe_action(
+                    is_trial=follow and is_trial,
+                    exists=True,
+                    is_following=obj.is_following,
+                    trial_expires_at=obj.trial_expires_at,
+                    now=datetime.now(),
+                )
+                if action == ACTION_KEEP_PERMANENT:
+                    return "您已是永久订阅用户，永久订阅优先于试用订阅"
+                if action == ACTION_TRIAL_ACTIVE:
+                    return f"您已在试用中，有效期至 {obj.trial_expires_at.strftime('%Y-%m-%d')}"
+
                 was_following = obj.is_following
                 for key, value in defaults.items():
                     setattr(obj, key, value)
@@ -278,6 +295,10 @@ async def _(bot: Bot, event: GroupMessageEvent):
         logger.info(msg)
         await bot.send(event, message=msg)
         return
+
+    # 无权限 -> 黑名单用户不得走试用分支（check_permission 命中黑名单时同样返回 False）
+    if await is_blacklisted(user_id, group_id):
+        await like_follow.finish("❌ 订阅失败：你已被限制使用该功能")
 
     # 无权限 -> 检查群荣誉等级
     user_group_level = None
