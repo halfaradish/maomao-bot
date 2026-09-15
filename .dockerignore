@@ -23,3 +23,6 @@ scripts/
 !scripts/entrypoint.sh
 data/
 webui/dist/
+
+# 排除本地编译的 C++ 产物（镜像里由 Dockerfile 重新编译，避免混入宿主 ABI 的库）
+libs/

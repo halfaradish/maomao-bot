@@ -9,7 +9,6 @@ from nonebot.adapters.onebot.v11 import(
     GroupMessageEvent,
     MessageSegment
 )
-from nonebot_plugin_apscheduler import scheduler
 
 from datetime import datetime
 from typing import Union
@@ -26,6 +25,7 @@ from src.common.permission import check_permission, get_bound_group_ids
 from . import permissions  # noqa: F401
 
 require("nonebot_plugin_apscheduler")
+from nonebot_plugin_apscheduler import scheduler  # noqa: E402
 
 # ========= Linux/DLL 适配 =========
 # Windows -> 使用 DLL

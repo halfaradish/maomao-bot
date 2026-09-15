@@ -90,6 +90,7 @@ if __name__ == "__main__":
         # ── Watcher 进程 ──
         # 监视 src/、bot.py 和所有 .env* 文件的变更，发现变更后重启 worker 子进程
         import subprocess
+        import time
         from pathlib import Path
         from watchfiles import watch
         from watchfiles.filters import DefaultFilter
@@ -120,6 +121,28 @@ if __name__ == "__main__":
                     return False
             return True
 
+        # ── 部署哨兵 ────────────────────────────────────────────────
+        # 宿主机部署执行器（scripts/diting-agent.sh）在改写工作区期间会写
+        # data/deploy/pull.lock。此时若重启 worker，可能加载到「git 逐个落盘」的
+        # 半同步代码而启动失败；而 watcher 只在文件变更时重启，服务会一直停到
+        # 下一次变更。因此哨兵在位时先等它释放，再重启一次。
+        _sentinel_path = Path(os.getenv("DITING_DEPLOY_SENTINEL") or "data/deploy/pull.lock")
+        _sentinel_max_wait = int(os.getenv("DITING_DEPLOY_SENTINEL_MAX_WAIT") or 600)
+        _sentinel_stale_after = int(os.getenv("DITING_DEPLOY_SENTINEL_STALE") or 600)
+
+        def _deploy_sentinel_active() -> bool:
+            """哨兵是否存在且未超龄（超龄视为执行器崩溃留下的残留，不再阻塞热重载）"""
+            try:
+                age = time.time() - _sentinel_path.stat().st_mtime
+            except OSError:
+                return False
+            if age > _sentinel_stale_after:
+                logger.warning(
+                    f"[reload] 部署哨兵已存在 {int(age)}s，视为残留并忽略: {_sentinel_path}"
+                )
+                return False
+            return True
+
         proc = subprocess.Popen([sys.executable, __file__], env=env)
 
         try:
@@ -129,6 +152,19 @@ if __name__ == "__main__":
             ):
                 for change, path in changes:
                     logger.info(f"[reload] {change.name}: {path}")
+
+                if _deploy_sentinel_active():
+                    logger.info(
+                        f"[reload] 检测到部署哨兵，等待部署写入完成后再重启 worker: {_sentinel_path}"
+                    )
+                    _deadline = time.time() + _sentinel_max_wait
+                    while _deploy_sentinel_active() and time.time() < _deadline:
+                        time.sleep(0.5)
+                    if _deploy_sentinel_active():
+                        logger.warning("[reload] 等待部署哨兵超时，仍按变更重启 worker")
+                    else:
+                        logger.info("[reload] 部署哨兵已释放，重启 worker")
+
                 proc.terminate()
                 proc.wait()
                 proc = subprocess.Popen([sys.executable, __file__], env=env)

@@ -13,8 +13,10 @@ logs-dev
 *.bak
 cache
 .vscode
+src/plugins/refer_collector/data
 
-table_gen.so
+# C++ 插件编译产物（由 Dockerfile / scripts/entrypoint.sh 生成，不要提交）
+libs/
 
 # ai agent
 CLAUDE.md
@@ -41,7 +43,7 @@ __pycache__/
 *$py.class
 
 # C extensions
-#*.so
+*.so
 
 # Distribution / packaging
 .Python
