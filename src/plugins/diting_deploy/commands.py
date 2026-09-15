@@ -319,6 +319,8 @@ def _render_status() -> str:
             f"代码：{state.get('branch') or branch} @ {state.get('local_sha') or '—'}"
             f"（远端 {state.get('remote_sha') or '—'}{drift}）"
         )
+        if state.get("git_ok") is False:
+            lines.append("⚠️ 执行器读不到 git（分支/SHA 为空）：检查仓库属主与宿主机 PATH")
         lines.append(f"工作区：{'有未提交改动' if state.get('dirty') else '干净'}")
         container = state.get("container") or {}
         lines.append(f"容器：{container.get('name') or '—'} {container.get('state') or '未知'}")

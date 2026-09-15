@@ -211,14 +211,21 @@ DITING_DEPLOY_BRANCH=master      # 唯一的分支来源，命令不接受分支
 
 必须确认的几点：
 
+- **`DITING_DEPLOY_BRANCH` 写 `.env` 或 `.env.<ENVIRONMENT>` 都行**，执行器与插件都按同一套级联去读。
+  唯一要记住的是：`local_config.py` 先 `load_dotenv(".env")` 再 `load_dotenv(".env.<ENV>")`，
+  而 python-dotenv 默认**不覆盖已存在的环境变量**，compose 的 `env_file` 又只注入 `.env` ——
+  所以同名键**以 `.env` 为准**，`.env.<ENV>` 只补前者没有的键。想避免踩这个坑就统一写在 `.env` 里。
 - `.env` 与 `.env.prod` 必须是**普通文件**。若存在同名**目录**（compose 短语法挂载在源文件缺失时会创建目录），
   `local_config.py` 用 `os.path.exists` 判断（目录也为真）会打印 `successful load`，但 dotenv 实际读到空 ——
   配置整体静默丢失。执行器的预检会直接拒绝并提示。
-- `ENVIRONMENT` 只能是 `prod` 或 `dev`。**不要用 `local`**：`docker-manager.sh` 会把 `local` 映射成生产档位
+- **`ENVIRONMENT` 只能是 `prod` 或 `dev`。** 不要用 `local`：`docker-manager.sh` 会把 `local` 映射成生产档位
   （容器 `diting-nonebot`、端口 6090）却挂载 `.env.local`，档位与配置错配。执行器会拒绝这种作业。
 - `NEW_OJ_REDIS_HOST` 不能是 `localhost`/`127.0.0.1`：bridge 网络里那指向容器自身，应填 compose 服务名
   `diting-redis`。执行器心跳会把这一条作为 warning 报给 `/diting status`。
 - 开发目录的 `.env` 用 `ENVIRONMENT=dev`、`DITING_DEPLOY_BRANCH=dev/1.0`。
+- **仓库目录的属主与执行器运行身份（root）不一致是可以的**，执行器对每次 git 调用都带
+  `-c safe.directory=<仓库>`，不会因 git 的 dubious ownership 拒绝工作，也不会去改宿主的全局 git 配置。
+  但如果你手工在其他脚本里用 root 跑 git，仍会遇到这个问题。
 
 ### 4.2 安装执行器
 
@@ -342,6 +349,8 @@ sudo DITING_DEPLOY_DRY_RUN=1 bash scripts/diting-agent.sh drain   # 只走预检
 | pull 成功但消息末尾说「本次变更未触及 src/ 与 bot.py，服务无需重启」 | 正常：watcher 只盯 `src/`、`bot.py`、`.env*`，只有文档之类的提交不会触发重启，也不会白等 120 秒 |
 | 装第二个环境时 install.sh 直接报错退出 | 它在保护你：检测到已有单元指向同一个目录。两个环境必须各有一份独立 clone（见 4.3），换目录后用 `--name` 再装 |
 | pull 成功但代码没变 | 看 `state.json` 的 `behind`；可能是分支配错（`DITING_DEPLOY_BRANCH`）或远端确实没新提交 |
+| `state.json` 里 `branch`/`local_sha`/`remote_sha` 全是空、`dirty` 却是 `false` | 执行器读不到 git。`git_ok: false` + `warnings` 里会写明原因（2026-09-15 之后的版本才有这两个字段）。最常见是**执行器以 root 运行而仓库属主是别的用户**（git 的 dubious ownership）—— 新版本已用逐命令 `safe.directory` 解决；老版本会表现为 `/diting pull` 能用但状态全是空、**脏工作区保护静默失效**。手工确认：`sudo git -C <仓库> rev-parse --short HEAD`，若报 `detected dubious ownership` 就是这个原因 |
+| `state.json` 报「宿主机 PATH 里找不到 git」 | systemd 服务的 PATH 比登录 shell 窄。确认 `command -v git`（root 身份）能找到，必要时给单元加 `Environment=PATH=/usr/local/bin:/usr/bin:/bin` |
 | build 报「跳过重建」 | `BUILD_MODE=auto` 且构建指纹未变（依赖/Dockerfile/webui 都没动）。改 `always` 可强制 |
 | 服务起不来，QQ 里没有任何消息 | 已知限制，见下节 |
 

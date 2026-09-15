@@ -134,6 +134,13 @@ with_timeout() { # $1=秒数，其余为命令
     fi
 }
 
+# git 包装。执行器以 root 运行（systemd 系统单元）而仓库属主可能是别的用户时，
+# git 会以 dubious ownership 直接拒绝工作，症状是 rev-parse / status 全部返回空、
+# 而 stderr 被 2>/dev/null 吞掉 —— 极难排查，且会让「脏工作区」保护静默失效。
+# 用逐命令的 -c safe.directory 而不是写全局 git config：不改宿主状态、幂等、可重复。
+GIT_SAFE=(-c "safe.directory=$ROOT")
+gitr() { git "${GIT_SAFE[@]}" -C "$ROOT" "$@"; }
+
 _mtime_of() { stat -c %Y "$1" 2>/dev/null || stat -f %m "$1" 2>/dev/null || echo 0; }
 
 json_escape() {
@@ -160,6 +167,18 @@ read_env_file() { # $1=文件 $2=键
     [ -f "$1" ] || return 0
     sed -n "s/^[[:space:]]*$2[[:space:]]*=[[:space:]]*//p" "$1" | tail -1 \
         | tr -d '\r' | sed "s/^['\"]//; s/['\"]$//" | tr -d ' '
+}
+
+# 读取一个「插件侧」配置项，文件顺序与容器内 local_config.py 的加载顺序一致：
+# .env 先加载、.env.<ENV> 后加载，而 python-dotenv 默认不覆盖已存在的环境变量，
+# 所以同名键以 .env 为准，.env.<ENV> 只补前者没有的键。
+read_app_config() { # $1=键
+    local value
+    value="$(read_env_file "$ROOT/.env" "$1")"
+    if [ -z "$value" ]; then
+        value="$(read_env_file "$ROOT/.env.$ENVIRONMENT" "$1")"
+    fi
+    printf '%s' "$value"
 }
 
 SHA_TOOL=""
@@ -190,7 +209,7 @@ case "$ENVIRONMENT" in
 esac
 CONTAINER="diting-nonebot${SUFFIX}"
 IMAGE="diting-nonebot${SUFFIX}:latest"
-HOT_RELOAD="$(read_env_file "$ROOT/.env" HOT_RELOAD)"
+HOT_RELOAD="$(read_app_config HOT_RELOAD)"
 [ -z "$HOT_RELOAD" ] && HOT_RELOAD="false"
 
 # ── 部署哨兵：容器内 bot.py 的 watcher 看到它就推迟重启 worker ─────────────────
@@ -349,12 +368,21 @@ check_worktree_clean() {
         log "DITING_DEPLOY_ALLOW_DIRTY=1，跳过工作区干净检查"
         return 0
     fi
-    local dirty
-    dirty="$(git -C "$ROOT" status --porcelain 2>/dev/null | head -20)"
+    # 必须 fail-closed：git 读不出来时如果不报错就当作「干净」，
+    # 后面的 checkout -f 会静默丢掉服务器上的手工改动
+    local dirty rc
+    dirty="$(gitr status --porcelain 2>&1)"
+    rc=$?
+    if [ "$rc" != "0" ]; then
+        echo "无法读取工作区状态（git status 失败），拒绝执行，以免误丢服务器上的改动："
+        printf '%s\n' "$dirty" | head -5
+        echo "常见原因：执行器以 root 运行而仓库属主不是 root，或宿主机 PATH 里没有 git"
+        return 1
+    fi
     if [ -n "$dirty" ]; then
         echo "工作区有未提交改动，拒绝执行（git checkout -f 会摧毁服务器上的手工改动）："
-        printf '%s\n' "$dirty"
-        echo "确认可以丢弃时，在 /etc/default/diting-agent 里设 DITING_DEPLOY_ALLOW_DIRTY=1"
+        printf '%s\n' "$dirty" | head -20
+        echo "确认可以丢弃时，在对应实例的 /etc/default/diting-agent* 里设 DITING_DEPLOY_ALLOW_DIRTY=1"
         return 1
     fi
     return 0
@@ -369,17 +397,15 @@ do_checkout() {
         sleep 1
         return 0
     fi
-    # agent 以 root 运行而目录属主是 bot 时，git 会因 dubious ownership 直接失败
-    git -C "$ROOT" config --global --add safe.directory "$ROOT" >/dev/null 2>&1 || true
-
-    OLD_SHA="$(git -C "$ROOT" rev-parse --short HEAD 2>/dev/null)"
+    # 注：repo 的 safe.directory 由 gitr() 逐命令带上，这里不再改全局 git config
+    OLD_SHA="$(gitr rev-parse --short HEAD 2>/dev/null)"
     write_status running git-fetch "拉取远端 origin"
-    run_cmd with_timeout "$GIT_TIMEOUT" git -C "$ROOT" fetch --prune origin || return 3
+    run_cmd with_timeout "$GIT_TIMEOUT" git "${GIT_SAFE[@]}" -C "$ROOT" fetch --prune origin || return 3
 
     write_status running git-checkout "切换到 $JOB_BRANCH"
-    run_cmd with_timeout "$GIT_TIMEOUT" git -C "$ROOT" checkout -f -B "$JOB_BRANCH" "origin/$JOB_BRANCH" || return 3
+    run_cmd with_timeout "$GIT_TIMEOUT" git "${GIT_SAFE[@]}" -C "$ROOT" checkout -f -B "$JOB_BRANCH" "origin/$JOB_BRANCH" || return 3
 
-    NEW_SHA="$(git -C "$ROOT" rev-parse --short HEAD 2>/dev/null)"
+    NEW_SHA="$(gitr rev-parse --short HEAD 2>/dev/null)"
     if [ -n "$OLD_SHA" ] && [ "$OLD_SHA" = "$NEW_SHA" ]; then
         CHANGED_JSON=false
     else
@@ -399,7 +425,7 @@ compute_fingerprint() {
             out+="$f:$(sha256_file "$ROOT/$f")"$'\n'
         fi
     done
-    out+="webui:$(git -C "$ROOT" rev-parse HEAD:webui 2>/dev/null || echo none)"
+    out+="webui:$(gitr rev-parse HEAD:webui 2>/dev/null || echo none)"
     printf '%s' "$out" | sha256_stdin
 }
 
@@ -495,7 +521,7 @@ watched_paths_changed() {
     [ -z "$OLD_SHA" ] && return 0
     [ -z "$NEW_SHA" ] && return 0
     local out
-    out="$(git -C "$ROOT" diff --name-only "$OLD_SHA" "$NEW_SHA" -- src bot.py 2>/dev/null | head -1)"
+    out="$(gitr diff --name-only "$OLD_SHA" "$NEW_SHA" -- src bot.py 2>/dev/null | head -1)"
     [ -n "$out" ]
 }
 
@@ -746,26 +772,45 @@ cmd_heartbeat() {
     ensure_dirs
     cleanup_stale_running 2>/dev/null || true
 
-    local now_iso now_ts branch local_sha local_full remote_full="" remote_sha behind
+    # 全部给初值：`local x` 不赋值在 set -u 下等于「未绑定」，一旦某条分支没走到就会
+    # 让整个心跳崩掉（而不是给出空值）
+    local now_iso now_ts branch="" local_sha="" local_full="" remote_full="" remote_sha="" behind=0
     local dirty=false dirs_ok=true container_state="" hot_reload="$HOT_RELOAD"
+    local git_ok=true git_err=""
     now_iso="$(date '+%Y-%m-%dT%H:%M:%S')"
     now_ts="$(date +%s)"
 
-    branch="$(git -C "$ROOT" rev-parse --abbrev-ref HEAD 2>/dev/null)"
-    [ -z "$branch" ] && branch="$(read_env_file "$ROOT/.env" DITING_DEPLOY_BRANCH)"
-    local_sha="$(git -C "$ROOT" rev-parse --short HEAD 2>/dev/null)"
-    local_full="$(git -C "$ROOT" rev-parse HEAD 2>/dev/null)"
-    if [ -n "$(git -C "$ROOT" status --porcelain 2>/dev/null | head -1)" ]; then
-        dirty=true
+    # git 读不出来时必须显式说出来。否则 state.json 里 branch/sha 全是空字符串、
+    # dirty 还会假报 false，光看文件根本查不出问题（on-call 噩梦）。
+    if ! command -v git >/dev/null 2>&1; then
+        git_ok=false
+        git_err="宿主机 PATH 里找不到 git（systemd 服务的 PATH 比登录 shell 窄，必要时给单元加 Environment=PATH=...）"
+    elif [ ! -d "$ROOT/.git" ]; then
+        git_ok=false
+        git_err="$ROOT 不是 git 仓库（缺少 .git），无法拉取代码"
     fi
+
+    if [ "$git_ok" = "true" ]; then
+        branch="$(gitr rev-parse --abbrev-ref HEAD 2>/dev/null)"
+        local_sha="$(gitr rev-parse --short HEAD 2>/dev/null)"
+        local_full="$(gitr rev-parse HEAD 2>/dev/null)"
+        if [ -z "$local_full" ]; then
+            git_ok=false
+            git_err="$(gitr rev-parse HEAD 2>&1 | head -1)"
+            [ -z "$git_err" ] && git_err="git 无法读取 $ROOT 的 HEAD（原因未知）"
+        elif [ -n "$(gitr status --porcelain 2>/dev/null | head -1)" ]; then
+            dirty=true
+        fi
+    fi
+    [ -z "$branch" ] && branch="$(read_app_config DITING_DEPLOY_BRANCH)"
 
     remote_sha=""
     if [ "$HEARTBEAT_REMOTE" = "1" ] && [ -n "$branch" ]; then
-        remote_full="$(with_timeout 15 git -C "$ROOT" ls-remote origin "refs/heads/$branch" 2>/dev/null | awk '{print $1}' | head -1)"
+        remote_full="$(with_timeout 15 git "${GIT_SAFE[@]}" -C "$ROOT" ls-remote origin "refs/heads/$branch" 2>/dev/null | awk '{print $1}' | head -1)"
         [ -n "$remote_full" ] && remote_sha="${remote_full:0:7}"
     fi
     if [ -n "$local_full" ] && [ -n "$remote_full" ] && [ "$remote_full" != "$local_full" ]; then
-        behind="$(git -C "$ROOT" rev-list --count "$local_full..$remote_full" 2>/dev/null || echo 0)"
+        behind="$(gitr rev-list --count "$local_full..$remote_full" 2>/dev/null || echo 0)"
     else
         behind=0
     fi
@@ -792,12 +837,13 @@ cmd_heartbeat() {
 
     # 诊断信息：这些是部署最容易踩的坑，直接摆到 /diting status 的第一屏
     local warnings=() w redis_host
-    redis_host="$(read_env_file "$ROOT/.env.$ENVIRONMENT" NEW_OJ_REDIS_HOST)"
+    redis_host="$(read_app_config NEW_OJ_REDIS_HOST)"
     case "$redis_host" in
         localhost|127.0.0.1) warnings+=("NEW_OJ_REDIS_HOST=$redis_host 在容器内指向自身，Redis 不可达，应改为 compose 服务名 diting-redis") ;;
     esac
     [ "$ENVIRONMENT_INVALID" = "1" ] && warnings+=("ENVIRONMENT=$ENVIRONMENT 不受支持（只允许 prod/dev），执行器会拒绝作业")
-    [ -z "$(read_env_file "$ROOT/.env" DITING_DEPLOY_BRANCH)" ] && warnings+=("未在 .env 配置 DITING_DEPLOY_BRANCH，/diting pull 与 build 会被拒绝")
+    [ -z "$(read_app_config DITING_DEPLOY_BRANCH)" ] && warnings+=("未在 .env 或 .env.$ENVIRONMENT 配置 DITING_DEPLOY_BRANCH，/diting pull 与 build 会被拒绝")
+    [ "$git_ok" = "false" ] && warnings+=("$git_err")
     [ "$hot_reload" != "true" ] && warnings+=("HOT_RELOAD!=true：pull 拉完不会自动生效，需要 /diting restart")
     [ "$dirs_ok" = "false" ] && warnings+=("部署目录不可写，执行器需以 root 运行（或把 data/deploy/* 改为 0777）")
 
@@ -838,6 +884,7 @@ cmd_heartbeat() {
   "remote_sha": "$(json_escape "$remote_sha")",
   "behind": $behind,
   "dirty": $dirty,
+  "git_ok": $git_ok,
   "hot_reload": $hot_reload,
   "build_mode": "$BUILD_MODE",
   "container": {
