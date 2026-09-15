@@ -103,7 +103,7 @@ HOT_RELOAD=true python bot.py
   ```
 - **运行时数据目录**：`llm_scribe` 头像缓存等运行时生成文件不会触发热重载。忽略规则在 `.watchignore` 中维护（关键字匹配，一行一个），修改后需重启容器生效。
 - **前端变更**：WebUI（`webui/`）的改动需 `npm run build` 后 rebuild 容器，不在热加载范围内。
-- **C++ 插件**：`table_gen.cpp` 的变更会在容器下次重启时由 `entrypoint.sh` 自动增量编译（`-nt` 守卫，仅在源码更新时编译）。
+- **C++ 插件（过题表格）**：`table_gen.cpp` 编译成 `libs/libtablegen.so`——镜像构建时由 Dockerfile 预编译，容器启动时由 `entrypoint.sh` 校验：源码更新、产物缺失、或产物依赖在当前镜像里解析不了（换 Debian 大版本会让 `libjsoncpp` 的 soname 变化）都会触发重编译。`libs/` 不在源码挂载范围内，镜像里始终有一份可用产物；插件目录下的同名文件（Windows 的 `libtablegen.dll`）优先，加载失败的候选会被跳过，全部失败时只影响出图不影响插件导入。**改动动态库布局或 Dockerfile 后需要 `/diting build` 才生效**，只 `/diting pull` 时镜像里仍是旧产物（过渡期会回退用旧名字 `table_gen.so`）。
 - **部署哨兵**：`/diting pull` 由宿主机执行器改写工作区期间会写 `data/deploy/pull.lock`，watcher 看到它就推迟重启 worker，直到部署写完再重启一次。这样不会加载到「git 逐个落盘」的半同步代码。哨兵存在超过 10 分钟会被视为残留并忽略，watcher 行为与无哨兵时一致。
 
 ### QQ 部署命令（/diting）

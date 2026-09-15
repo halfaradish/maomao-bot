@@ -352,7 +352,9 @@ sudo DITING_DEPLOY_DRY_RUN=1 bash scripts/diting-agent.sh drain   # 只走预检
 | 命令发出去**机器人完全没反应**（不是回「没有权限」，而是什么都不回） | 命令没匹配上任何 matcher。最常见是 `DITING_DEPLOY_CMD` 自己又加了一次前缀：`.env.dev` 的 `COMMAND_START=["dev-"]` 已经把命令拼成 `dev-diting`，命令名再填 `dev-diting` 就变成 `dev-dev-diting`。**命令名保持默认 `diting`**。排查：发一次 `dev-dev-diting`（不带子命令），会回帮助文本，而帮助里的命令形态是按真实前缀算的，会直接告诉你正确写法；启动日志里也会有一条 `[diting_deploy] DITING_DEPLOY_CMD=... 已经带了 COMMAND_START 前缀` 的 warning |
 | `state.json` 里 `branch`/`local_sha`/`remote_sha` 全是空、`dirty` 却是 `false` | 执行器读不到 git。`git_ok: false` + `warnings` 里会写明原因（2026-09-15 之后的版本才有这两个字段）。最常见是**执行器以 root 运行而仓库属主是别的用户**（git 的 dubious ownership）—— 新版本已用逐命令 `safe.directory` 解决；老版本会表现为 `/diting pull` 能用但状态全是空、**脏工作区保护静默失效**。手工确认：`sudo git -C <仓库> rev-parse --short HEAD`，若报 `detected dubious ownership` 就是这个原因 |
 | `state.json` 报「宿主机 PATH 里找不到 git」 | systemd 服务的 PATH 比登录 shell 窄。确认 `command -v git`（root 身份）能找到，必要时给单元加 `Environment=PATH=/usr/local/bin:/usr/bin:/bin` |
-| build 报「跳过重建」 | `BUILD_MODE=auto` 且构建指纹未变（依赖/Dockerfile/webui 都没动）。改 `always` 可强制 |
+| build 报「跳过重建」 | `BUILD_MODE=auto` 且构建指纹未变（依赖/Dockerfile/`.cpp`/webui 都没动）。改 `always` 可强制 |
+| build 卡在 apt 下载很久（`#N <秒数>` 一直涨但 `Get:` 号几乎不动） | apt 源慢。`Dockerfile` 的换源是按实测选的（2026-09-15 服务器上 ustc 13.4 MB/s，原先的 aliyun 只有 327 KB/s）。换机器/换网络后用 `bash scripts/mirror-speedtest.sh` 重测再改域名 —— 该脚本会同时检查候选站有没有 `debian-security`（Dockerfile 把安全源也指到同一个站，缺了会 404） |
+| 改了 `table_gen.cpp`（或 `src/` 下任何 `.c/.cc/.cpp/.h/.hpp`）但 `/diting pull` 后行为没变 | 原生扩展的产物是**在镜像里**编译的（`libs/libtablegen.so`，故意放在 `src/` 挂载范围之外，避免被宿主目录覆盖），热重载只重启 Python worker，不会重编译。用 `/diting build` 重建镜像；`/diting restart` 也可以（`entrypoint.sh` 发现源码比产物新会就地重编译）。构建指纹已包含这些原生源码，所以 `build` 不会误判「无需重建」 |
 | 服务起不来，QQ 里没有任何消息 | 已知限制，见下节 |
 
 日志位置：
