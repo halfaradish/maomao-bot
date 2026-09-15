@@ -50,7 +50,7 @@ QQ 回报进度与结果
 | `/diting build` | `diting_deploy:build` | **是** | 拉取 → 按需重建镜像 → 重启容器 → 探活 |
 | `/diting restart` | `diting_deploy:restart` | **是** | 不拉代码，直接重启并探活 |
 | `/diting status` | `diting_deploy:view` | 否 | agent 心跳、代码版本、工作区、容器、待执行与上次任务 |
-| `/diting log [job_id]` | `diting_deploy:view` | 否 | 执行日志尾部，默认最近一次作业 |
+| `/diting log [job_id]` | `diting_deploy:view` | 否 | 执行日志尾部（默认 200 行），默认最近一次作业。内容长时用**合并转发消息**发送，展开可见全文，不再被单条消息长度截断 |
 | `/diting confirm <令牌>` | 同该动作 | — | 执行待确认的 build / restart（60 秒内有效，一次性） |
 | `/diting cancel` | — | — | 取消本会话内待确认的操作 |
 | `/diting` / `/diting help` | — | — | 帮助 |
@@ -256,6 +256,11 @@ sudo bash deploy/systemd/install.sh --name dev --uninstall
 | `diting-agent.service` | `drain`：排空队列 | `diting-agent.path` 监听 `data/deploy/queue` 变更 |
 | `diting-agent-tick.service` | `tick`：心跳 + 兜底排空 | `diting-agent.timer` 每 5 分钟（`OnBootSec=2min`） |
 
+两个单元都是 `Type=oneshot`，所以 `TimeoutStartSec` 是**整条作业的预算**，不是心跳的量级：
+到点 systemd 会给整个 cgroup 发 SIGTERM，执行器来不及写终态（详见排障表里那条「跑到半小时
+忽然无声无息结束」）。模板给的是 `7200`（2 小时），依据是一次全量重建实测约 28 分钟。
+`tick` 也会兜底排空队列，所以它的超时不能比 `drain` 小。
+
 `.timer` **不能省**：它既是 `/diting status` 的心跳来源，也是 `.path` 漏事件时的兜底。
 只装 `.path` 的话插件会因为「心跳过期」拒绝派发（可用 `DITING_DEPLOY_REQUIRE_AGENT_FRESH=0` 关掉这个前置要求）。
 
@@ -353,6 +358,7 @@ sudo DITING_DEPLOY_DRY_RUN=1 bash scripts/diting-agent.sh drain   # 只走预检
 | `state.json` 里 `branch`/`local_sha`/`remote_sha` 全是空、`dirty` 却是 `false` | 执行器读不到 git。`git_ok: false` + `warnings` 里会写明原因（2026-09-15 之后的版本才有这两个字段）。最常见是**执行器以 root 运行而仓库属主是别的用户**（git 的 dubious ownership）—— 新版本已用逐命令 `safe.directory` 解决；老版本会表现为 `/diting pull` 能用但状态全是空、**脏工作区保护静默失效**。手工确认：`sudo git -C <仓库> rev-parse --short HEAD`，若报 `detected dubious ownership` 就是这个原因 |
 | `state.json` 报「宿主机 PATH 里找不到 git」 | systemd 服务的 PATH 比登录 shell 窄。确认 `command -v git`（root 身份）能找到，必要时给单元加 `Environment=PATH=/usr/local/bin:/usr/bin:/bin` |
 | build 报「跳过重建」 | `BUILD_MODE=auto` 且构建指纹未变（依赖/Dockerfile/`.cpp`/webui 都没动）。改 `always` 可强制 |
+| build 跑了大约半小时忽然无声无息结束，`status/<job_id>.json` 停在 `"state": "running"` / `"step": "rebuild"`，QQ 里既没 ❌ 也没 ✅ | systemd 的 `TimeoutStartSec` 到点了，整个 cgroup 被 SIGTERM 掉，执行器来不及写终态。单元模板的早期版本误设成 `1800`（30 分钟），而一次全量重建实测约 28 分钟，正好被砍在 export 阶段。修法：确认 `systemctl cat diting-agent.service` 里是 `TimeoutStartSec=7200`（重装一次单元即可刷新），再清掉僵尸作业 `rm -f data/deploy/status/<job_id>.json data/deploy/running/<job_id>.json`。注意僵尸作业是「非终态 + 没打回报标记」，所以**每次容器重启都会被重新播报一条 🔄**，而它的 `running/` 残留会让后续作业被判「已有任务在执行」（残留超 30 分钟后由 `cleanup_stale_running` 自动清掉） |
 | build 卡在 apt 下载很久（`#N <秒数>` 一直涨但 `Get:` 号几乎不动） | apt 源慢。`Dockerfile` 的换源是按实测选的（2026-09-15 服务器上 ustc 13.4 MB/s，原先的 aliyun 只有 327 KB/s）。换机器/换网络后用 `bash scripts/mirror-speedtest.sh` 重测再改域名 —— 该脚本会同时检查候选站有没有 `debian-security`（Dockerfile 把安全源也指到同一个站，缺了会 404） |
 | 改了 `table_gen.cpp`（或 `src/` 下任何 `.c/.cc/.cpp/.h/.hpp`）但 `/diting pull` 后行为没变 | 原生扩展的产物是**在镜像里**编译的（`libs/libtablegen.so`，故意放在 `src/` 挂载范围之外，避免被宿主目录覆盖），热重载只重启 Python worker，不会重编译。用 `/diting build` 重建镜像；`/diting restart` 也可以（`entrypoint.sh` 发现源码比产物新会就地重编译）。构建指纹已包含这些原生源码，所以 `build` 不会误判「无需重建」 |
 | 服务起不来，QQ 里没有任何消息 | 已知限制，见下节 |
