@@ -680,10 +680,25 @@ async def _settle_pending_jobs() -> None:
         logger.opt(exception=True).error(f"[diting_deploy] 启动补报失败: {exc}")
 
 
+def _warn_about_command_name() -> None:
+    """命令名与 COMMAND_START 重复加前缀是很容易踩的坑，且症状是「机器人完全静默」"""
+    starts = {s for s in (get_driver().config.command_start or set()) if s}
+    cmd = plugin_config.diting_deploy_cmd
+    for start in sorted(starts):
+        if cmd.startswith(start) and cmd != start:
+            logger.warning(
+                f"[diting_deploy] DITING_DEPLOY_CMD={cmd!r} 已经带了 COMMAND_START 前缀 "
+                f"{start!r}，实际注册的命令是 {start}{cmd} —— 输入 {cmd} 不会有任何反应。"
+                f"命令名保持默认 diting 即可，前缀由 COMMAND_START 自动补。"
+            )
+            break
+
+
 @get_driver().on_startup
 async def _diting_deploy_startup() -> None:
     PATHS.ensure()
     pt.write_boot_record(PATHS, ENVIRONMENT)
+    _warn_about_command_name()
     try:
         await _ensure_default_perm_group()
     except Exception as exc:

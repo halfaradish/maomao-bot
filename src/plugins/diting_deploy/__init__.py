@@ -45,7 +45,8 @@ else:
             "/diting restart —— 不拉代码，直接重启并探活（需确认）\n"
             "/diting status —— 查看 agent 心跳、代码版本、容器与任务状态\n"
             "/diting log [job_id] —— 查看执行日志尾部\n"
-            "注：COMMAND_START 为 dev- 的环境（ENVIRONMENT=dev）需输入 dev-diting <子命令>"
+            "注：命令名不用自己加前缀，COMMAND_START 会自动补 —— dev 环境（COMMAND_START=[\"dev-\"]）"
+            "直接输入 dev-diting <子命令>，prod 环境是 /diting <子命令>"
         ),
         config=Config,
         supported_adapters={"~onebot.v11"},

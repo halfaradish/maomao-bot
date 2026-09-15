@@ -349,6 +349,7 @@ sudo DITING_DEPLOY_DRY_RUN=1 bash scripts/diting-agent.sh drain   # 只走预检
 | pull 成功但消息末尾说「本次变更未触及 src/ 与 bot.py，服务无需重启」 | 正常：watcher 只盯 `src/`、`bot.py`、`.env*`，只有文档之类的提交不会触发重启，也不会白等 120 秒 |
 | 装第二个环境时 install.sh 直接报错退出 | 它在保护你：检测到已有单元指向同一个目录。两个环境必须各有一份独立 clone（见 4.3），换目录后用 `--name` 再装 |
 | pull 成功但代码没变 | 看 `state.json` 的 `behind`；可能是分支配错（`DITING_DEPLOY_BRANCH`）或远端确实没新提交 |
+| 命令发出去**机器人完全没反应**（不是回「没有权限」，而是什么都不回） | 命令没匹配上任何 matcher。最常见是 `DITING_DEPLOY_CMD` 自己又加了一次前缀：`.env.dev` 的 `COMMAND_START=["dev-"]` 已经把命令拼成 `dev-diting`，命令名再填 `dev-diting` 就变成 `dev-dev-diting`。**命令名保持默认 `diting`**。排查：发一次 `dev-dev-diting`（不带子命令），会回帮助文本，而帮助里的命令形态是按真实前缀算的，会直接告诉你正确写法；启动日志里也会有一条 `[diting_deploy] DITING_DEPLOY_CMD=... 已经带了 COMMAND_START 前缀` 的 warning |
 | `state.json` 里 `branch`/`local_sha`/`remote_sha` 全是空、`dirty` 却是 `false` | 执行器读不到 git。`git_ok: false` + `warnings` 里会写明原因（2026-09-15 之后的版本才有这两个字段）。最常见是**执行器以 root 运行而仓库属主是别的用户**（git 的 dubious ownership）—— 新版本已用逐命令 `safe.directory` 解决；老版本会表现为 `/diting pull` 能用但状态全是空、**脏工作区保护静默失效**。手工确认：`sudo git -C <仓库> rev-parse --short HEAD`，若报 `detected dubious ownership` 就是这个原因 |
 | `state.json` 报「宿主机 PATH 里找不到 git」 | systemd 服务的 PATH 比登录 shell 窄。确认 `command -v git`（root 身份）能找到，必要时给单元加 `Environment=PATH=/usr/local/bin:/usr/bin:/bin` |
 | build 报「跳过重建」 | `BUILD_MODE=auto` 且构建指纹未变（依赖/Dockerfile/webui 都没动）。改 `always` 可强制 |

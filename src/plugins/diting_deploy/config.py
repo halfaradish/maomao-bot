@@ -12,8 +12,10 @@ class Config(BaseModel):
     # 这条是刻意的 fail-safe：宁可命令不生效，也不要拉错分支。
     diting_deploy_branch: str = ""
 
-    # 命令名。注意 COMMAND_START 由 .env 决定（prod 为 ["/", ""]，dev 为 ["dev-"]），
-    # dev 环境需输入 `dev-<cmd>`，这是 NoneBot 的全局行为。
+    # 命令名。**保持默认 diting，不要自己加前缀** —— COMMAND_START 会自动补：
+    # prod（["/", ""]）得到 /diting 与 diting，dev（["dev-"]）得到 dev-diting。
+    # 若这里填 "dev-diting"，实际注册的命令会变成 "dev-dev-diting"（前缀被拼两次），
+    # 而且命令不匹配时机器人完全静默，很难查。启动时会检查并打 warning。
     diting_deploy_cmd: str = "diting"
 
     diting_deploy_priority: int = 5
