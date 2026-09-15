@@ -32,8 +32,13 @@ class Config(BaseModel):
     diting_deploy_accept_timeout: int = 90
     # 要求 state.json 心跳不早于该秒数；0 表示不要求
     diting_deploy_require_agent_fresh: int = 600
-    # /diting log 默认返回的日志尾部行数
-    diting_deploy_log_tail_lines: int = 40
+    # /diting log 返回的日志尾部行数。内容较长时会用「合并转发消息」发送，
+    # 所以这里可以给得比单条消息能承载的量多得多（QQ 单条消息上限约 4500 字节）
+    diting_deploy_log_tail_lines: int = 200
+    # 合并转发里每个节点承载的字符数
+    diting_deploy_forward_chars_per_node: int = 1500
+    # 合并转发最多几个节点；超出时从**最旧**的日志开始丢（尾部才是有用的报错信息）
+    diting_deploy_forward_max_nodes: int = 15
     # 非 0 时把全部部署事件额外镜像到该群
     diting_deploy_notify_group: int = 0
     # 启动时自动创建的权限组名（超管用 perm 绑定 群 <群号> <该名> 即可授权）

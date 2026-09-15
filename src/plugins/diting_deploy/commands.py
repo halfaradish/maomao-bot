@@ -23,13 +23,19 @@ from typing import Optional
 
 from nonebot import get_bots, get_driver, get_plugin_config, logger, on_command
 from nonebot.adapters import Message
-from nonebot.adapters.onebot.v11 import Bot, GroupMessageEvent, MessageEvent
+from nonebot.adapters.onebot.v11 import (
+    Bot,
+    GroupMessageEvent,
+    MessageEvent,
+    Message as OneBotMessage,
+)
 from nonebot.params import CommandArg
 from sqlalchemy import select
 
 from src.common.database import async_session_factory
 from src.common.permission import check_permission
 from src.common.permission.models import PermissionGroup, PermissionGroupPerm
+from src.common.send_forward_msg import SendForwardMsg
 
 from . import protocol as pt
 from .config import Config
@@ -97,6 +103,13 @@ def _truncate(text: str, limit: int = _MESSAGE_LIMIT) -> str:
     if len(text) <= limit:
         return text
     return text[: limit - 20] + "\n…（内容过长已截断）"
+
+
+def _truncate_tail(text: str, limit: int = _MESSAGE_LIMIT) -> str:
+    """保尾部截断。日志的关键信息（报错、退出码）都在最后几行，丢头比丢尾好"""
+    if len(text) <= limit:
+        return text
+    return "…（更早的内容已截断）\n" + text[-(limit - 20):]
 
 
 def _cmd_text(*parts: str) -> str:
@@ -347,7 +360,8 @@ def _render_status() -> str:
     return _truncate("\n".join(lines))
 
 
-def _render_log(job_id: str) -> str:
+def _log_payload(job_id: str) -> str | tuple[str, str, str]:
+    """读取日志。返回错误提示字符串，或 (job_id, 头部摘要, 日志正文)"""
     job_id = job_id.strip()
     if not job_id:
         last = pt.latest_status(PATHS)
@@ -363,7 +377,99 @@ def _render_log(job_id: str) -> str:
     body = pt.tail_lines(path, limit)
     if not body:
         return f"任务 {job_id} 的日志文件是空的"
-    return _truncate(f"📄 {job_id} 日志尾部（{limit} 行）:\n{body}")
+
+    status = pt.read_status(PATHS, job_id)
+    if status is None:
+        header = f"📄 {job_id} 日志尾部（{limit} 行）"
+    else:
+        when = pt.format_ts(status.finished_ts) if status.finished_ts else "进行中"
+        header = (
+            f"{status.state_mark} {status.action_label}{status.state_label}｜{job_id}\n"
+            f"分支 {status.branch or '—'}｜耗时 {pt.human_duration(status.duration_sec)}｜{when}"
+        )
+    return job_id, header, body
+
+
+def _log_nodes(job_id: str, header: str, body: str) -> list[OneBotMessage]:
+    """把日志切成若干节点，供合并转发使用。
+
+    节点数超过上限时从**最旧**的日志开始丢弃 —— 部署失败的关键信息（报错、退出码）
+    都在尾部，留尾部比留开头有用。
+    """
+    per_node = max(200, int(plugin_config.diting_deploy_forward_chars_per_node))
+    max_nodes = max(2, int(plugin_config.diting_deploy_forward_max_nodes))
+
+    chunks: list[str] = []
+    current = ""
+    for line in body.splitlines():
+        if current and len(current) + len(line) + 1 > per_node:
+            chunks.append(current)
+            current = ""
+        current = f"{current}\n{line}" if current else line
+    if current:
+        chunks.append(current)
+
+    keep = max_nodes - 1  # 头部摘要占一个节点
+    dropped = max(0, len(chunks) - keep)
+    if dropped:
+        keep = max_nodes - 2  # 「已略去」说明节点也要占一个位置
+        dropped = len(chunks) - keep
+        chunks = chunks[dropped:]
+
+    nodes = [OneBotMessage(header)]
+    if dropped:
+        nodes.append(OneBotMessage(f"……（更早的 {dropped} 段已略去；完整日志在宿主机 data/deploy/logs/{job_id}.log）"))
+    nodes.extend(OneBotMessage(chunk) for chunk in chunks)
+    return nodes
+
+
+async def _send_forward_log(bot: Bot, session: dict, nodes: list[OneBotMessage]) -> bool:
+    """合并转发；失败时返回 False，由调用方回退成纯文本"""
+    try:
+        info = await bot.get_login_info()
+        name = info.get("nickname") or "谛听"
+    except Exception:
+        name = "谛听"
+    uin = str(session.get("bot_self_id") or bot.self_id)
+    payload = [SendForwardMsg.to_node(name=name, uin=uin, message=node) for node in nodes]
+
+    try:
+        if session.get("type") == "group" and session.get("group_id"):
+            await bot.call_api(
+                "send_group_forward_msg",
+                group_id=str(session["group_id"]),
+                messages=payload,
+            )
+        else:
+            await bot.call_api(
+                "send_private_forward_msg",
+                user_id=str(session["user_id"]),
+                messages=payload,
+            )
+        return True
+    except Exception as exc:
+        logger.warning(f"[diting_deploy] 合并转发日志失败，回退纯文本: {exc}")
+        return False
+
+
+async def _handle_log(bot: Bot, event: MessageEvent, arg: str) -> None:
+    payload = _log_payload(arg)
+    if isinstance(payload, str):
+        await diting_cmd.finish(payload)
+        return
+
+    job_id, header, body = payload
+    plain = f"{header}\n{body}"
+    if len(plain) <= _MESSAGE_LIMIT:
+        # 短日志没必要套一层转发卡片
+        await diting_cmd.finish(plain)
+        return
+
+    if await _send_forward_log(bot, _session_of(event), _log_nodes(job_id, header, body)):
+        await diting_cmd.finish()
+        return
+
+    await diting_cmd.finish(_truncate_tail(plain))
 
 
 # ── 派发 ────────────────────────────────────────────────────────
@@ -585,7 +691,7 @@ async def _handle_diting(bot: Bot, event: MessageEvent, args: Message = CommandA
         await diting_cmd.finish(_render_status())
         return
     if sub_name == "log":
-        await diting_cmd.finish(_render_log(extra))
+        await _handle_log(bot, event, extra)
         return
 
     # 以下都是会改动工作区/服务的动作
