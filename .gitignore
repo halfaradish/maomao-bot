@@ -13,6 +13,7 @@ logs-dev
 *.bak
 cache
 .vscode
+src/plugins/refer_collector/data
 
 table_gen.so
 
