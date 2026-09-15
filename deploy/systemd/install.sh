@@ -85,12 +85,17 @@ fi
 [ -f "$ROOT/scripts/diting-agent.sh" ] || die "缺少 $ROOT/scripts/diting-agent.sh"
 [ -f "$ROOT/scripts/docker-manager.sh" ] || die "缺少 $ROOT/scripts/docker-manager.sh（执行器靠它复用环境映射与构建/重启逻辑）"
 
-# 同一个目录装第二个实例 = 两个环境共用 data/deploy 队列，直接拒绝
+# 同一个目录装第二个实例 = 两个环境共用 data/deploy 队列，直接拒绝。
+# 本实例自己的两个 service（drain 与 tick）都必须放行：只放行 drain 会把「重装/升级
+# 单元」这条完全正常的路径堵死 —— tick 单元的 ExecStart 同样匹配下面的 grep，
+# 于是同一个实例重装必然报「已有单元指向同一个目录」。
 for unit in "$UNIT_DIR"/diting-agent*.service; do
     [ -f "$unit" ] || continue
-    [ "$(basename "$unit")" = "$PREFIX.service" ] && continue
+    base="$(basename "$unit")"
+    [ "$base" = "$PREFIX.service" ] && continue
+    [ "$base" = "$TICK_PREFIX.service" ] && continue
     if grep -qF "ExecStart=/bin/bash $ROOT/scripts/diting-agent.sh" "$unit" 2>/dev/null; then
-        die "已有单元 $(basename "$unit") 指向同一个目录 $ROOT。
+        die "已有单元 $base 指向同一个目录 $ROOT。
 两个环境必须各自一份独立目录（两份 clone）：compose 把 ./data 挂到 /app/data 且不随 SUFFIX 变化，
 同目录下两个环境会共享 data/deploy 队列，执行器会认领到另一个环境的作业。
 请先 clone 出第二个目录，再用 --name <名字> --root <新目录> 安装。"

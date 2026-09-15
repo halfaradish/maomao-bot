@@ -238,11 +238,13 @@ acquire_lock() {
         flock -n 200 || return 1
         return 0
     fi
-    # 退路：mkdir 的原子性 + 30 分钟超龄回收（脚本被 kill -9 时会留下目录）
+    # 退路：mkdir 的原子性 + 超龄回收（脚本被 kill -9 时会留下目录）。
+    # 回收阈值必须高于一次作业的最长耗时（单元超时 7200），否则长构建跑到一半
+    # 会被第二个实例把锁抢走，变成两个 docker build 同时跑。
     if mkdir "$LOCK_FILE.d" 2>/dev/null; then return 0; fi
     local age
     age=$(( $(date +%s) - $(_mtime_of "$LOCK_FILE.d") ))
-    if [ "$age" -gt 1800 ]; then
+    if [ "$age" -gt 7200 ]; then
         log "回收超龄执行锁（${age}s）"
         rmdir "$LOCK_FILE.d" 2>/dev/null || true
         mkdir "$LOCK_FILE.d" 2>/dev/null && return 0
@@ -760,8 +762,28 @@ cmd_drain() {
 }
 
 # ── 心跳 ──────────────────────────────────────────────────────────────────────
+_agent_busy() {
+    # 有人在跑作业（执行锁被持有）时返回 0。
+    #
+    # 心跳每 5 分钟跑一次，而一次冷构建实测约 28 分钟、单元超时放宽到 2 小时 ——
+    # 光看 running/ 文件的 mtime 分不清「残留」与「正在干活的作业」。
+    # 这里用另一个 fd 非阻塞试锁：子 shell 拿到了说明没人持有（超龄文件确实是残留），
+    # 退出时锁自动释放，不会误伤正在执行的 drain。
+    command -v flock >/dev/null 2>&1 || return 1
+    [ -f "$LOCK_FILE" ] || return 1
+    if ( exec 9>"$LOCK_FILE" && flock -n 9 ) 2>/dev/null; then
+        return 1
+    fi
+    return 0
+}
+
 cleanup_stale_running() {
-    # 执行器被 kill -9 时 running/ 会残留，超过 30 分钟且状态非 running 的清掉
+    # 执行器被 kill -9 时 running/ 会残留（状态停在进行中），超过 30 分钟的清掉。
+    # 但「超龄」不等于「残留」：锁在位说明确实有作业在跑，此时一个都不能删 ——
+    # 删了会让插件的「已有任务在执行」预检放行，平白多出一次排队。
+    if _agent_busy; then
+        return 0
+    fi
     local f age
     for f in "$RUNNING_DIR"/*.json; do
         [ -f "$f" ] || continue
