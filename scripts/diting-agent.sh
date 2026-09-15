@@ -425,6 +425,14 @@ compute_fingerprint() {
             out+="$f:$(sha256_file "$ROOT/$f")"$'\n'
         fi
     done
+    # 原生扩展源码也要进指纹：C++ 产物是在镜像里编译的（libs/，不在 src/ 挂载范围内，
+    # 见 Dockerfile 与 .dockerignore），所以改了 table_gen.cpp 必须重建镜像。
+    # 漏掉这一项会让 build 误判「无需重建」而继续跑旧产物，且没有任何报错。
+    while IFS= read -r f; do
+        [ -n "$f" ] && out+="native:${f#"$ROOT"/}:$(sha256_file "$f")"$'\n'
+    done < <(find "$ROOT/src" -type f \
+        \( -name '*.cpp' -o -name '*.cc' -o -name '*.c' -o -name '*.h' -o -name '*.hpp' \) \
+        2>/dev/null | sort)
     out+="webui:$(gitr rev-parse HEAD:webui 2>/dev/null || echo none)"
     printf '%s' "$out" | sha256_stdin
 }
