@@ -64,6 +64,10 @@ RUN python -m pip install -r requirements.txt -i https://pypi.tuna.tsinghua.edu.
     python -m playwright install chromium --with-deps && \
     rm -rf /root/.cache/pip /tmp/*
 
+# 修复: 磁盘空间不足时 pip 可能留下 0 字节的 typing_extensions.py
+# (dist-info 完好, pip 误判已安装而不会修复, 导致 pydantic_core ImportError)
+RUN python -m pip install --force-reinstall --no-deps typing-extensions -i https://pypi.tuna.tsinghua.edu.cn/simple
+
 # 阶段 4: 代码层
 FROM deps AS final
 

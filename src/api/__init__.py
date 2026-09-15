@@ -14,9 +14,12 @@ from fastapi.responses import FileResponse, JSONResponse
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from ..config.response import success
-from .bot import router as bot_router
+from .bot import router as bot_router, v1_router as bot_v1_router
 from .auth import router as auth_router
 from .permissions import router as perm_router
+from .plugins import router as plugins_router
+from .groups import router as groups_router
+from .logs import router as logs_router
 
 # ---------------------------------------------------------------------------
 # SPA static files — exception handler approach (compatible with WebSocket)
@@ -65,6 +68,10 @@ api_router = APIRouter()
 api_router.include_router(bot_router, tags=["bot信息"])
 api_router.include_router(auth_router, prefix="/v1/auth")
 api_router.include_router(perm_router)
+api_router.include_router(bot_v1_router, prefix="/v1", tags=["bot信息"])
+api_router.include_router(plugins_router, prefix="/v1", tags=["插件管理"])
+api_router.include_router(groups_router, prefix="/v1", tags=["群管理"])
+api_router.include_router(logs_router, prefix="/v1", tags=["消息日志"])
 
 app: FastAPI = get_app()
 app.include_router(api_router, prefix="/api")

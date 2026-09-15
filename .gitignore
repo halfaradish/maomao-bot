@@ -25,6 +25,10 @@ CLAUDE.md
 docs/superpowers
 .zcode/
 
+# 本地开发附加服务与临时配置 (含凭据, 禁止入库)
+docker-compose.override.yml
+.tmp_openclaw_cfg.json
+
 # webui (Vite + Vue)
 node_modules/
 .vite/

@@ -3,6 +3,7 @@ import toast from "react-hot-toast";
 
 import { apiGet, apiPost, apiDelete } from "./client";
 import { API } from "./endpoints";
+import { PAGE_SIZE } from "@/constants";
 import type {
   PermissionGroup,
   PermissionGroupDetail,
@@ -16,13 +17,20 @@ import type {
   PermissionPoint,
   UserStatus,
   PaginatedData,
+  BotInfo,
+  PluginInfo,
+  QQGroupInfo,
+  QQGroupStats,
+  GroupFeatures,
+  MessageLog,
+  MessageLogFilters,
 } from "@/types/api";
 
 // ---------------------------------------------------------------------------
 // Permission Groups
 // ---------------------------------------------------------------------------
 
-export function useGroups(page = 1, size = 20) {
+export function useGroups(page = 1, size = PAGE_SIZE) {
   return useQuery({
     queryKey: ["groups", page, size],
     queryFn: () => apiGet<PaginatedData<PermissionGroup>>(API.groups.list(page, size)),
@@ -196,7 +204,7 @@ export function useDeleteBinding() {
 // Blacklist
 // ---------------------------------------------------------------------------
 
-export function useBlacklistUsers(page = 1, size = 20) {
+export function useBlacklistUsers(page = 1, size = PAGE_SIZE) {
   return useQuery({
     queryKey: ["blacklist-users", page, size],
     queryFn: () =>
@@ -228,7 +236,7 @@ export function useRemoveBlacklistUser() {
   });
 }
 
-export function useBlacklistGroups(page = 1, size = 20) {
+export function useBlacklistGroups(page = 1, size = PAGE_SIZE) {
   return useQuery({
     queryKey: ["blacklist-groups", page, size],
     queryFn: () =>
@@ -264,7 +272,7 @@ export function useRemoveBlacklistGroup() {
 // Whitelist
 // ---------------------------------------------------------------------------
 
-export function useWhitelistUsers(page = 1, size = 20) {
+export function useWhitelistUsers(page = 1, size = PAGE_SIZE) {
   return useQuery({
     queryKey: ["whitelist-users", page, size],
     queryFn: () =>
@@ -296,7 +304,7 @@ export function useRemoveWhitelistUser() {
   });
 }
 
-export function useWhitelistGroups(page = 1, size = 20) {
+export function useWhitelistGroups(page = 1, size = PAGE_SIZE) {
   return useQuery({
     queryKey: ["whitelist-groups", page, size],
     queryFn: () =>
@@ -332,7 +340,7 @@ export function useRemoveWhitelistGroup() {
 // Permission Points
 // ---------------------------------------------------------------------------
 
-export function usePermissionPoints(page = 1, size = 20, plugin?: string) {
+export function usePermissionPoints(page = 1, size = PAGE_SIZE, plugin?: string) {
   return useQuery({
     queryKey: ["permission-points", page, size, plugin],
     queryFn: () =>
@@ -356,5 +364,95 @@ export function useUserStatus(userId: number) {
     queryKey: ["user-status", userId],
     queryFn: () => apiGet<UserStatus>(API.userStatus.get(userId)),
     enabled: !!userId,
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Bot 基础信息
+// ---------------------------------------------------------------------------
+
+export function useBotInfo() {
+  return useQuery({
+    queryKey: ["bot-info"],
+    queryFn: () => apiGet<BotInfo>(API.bot.info),
+    refetchInterval: 30000, // 30s 轮询，保持运行时长/连接状态新鲜
+  });
+}
+
+// ---------------------------------------------------------------------------
+// 插件管理（只读）
+// ---------------------------------------------------------------------------
+
+export function usePlugins() {
+  return useQuery({
+    queryKey: ["plugins"],
+    queryFn: () => apiGet<{ items: PluginInfo[]; total: number }>(API.plugins.list),
+  });
+}
+
+// ---------------------------------------------------------------------------
+// QQ 群管理
+// ---------------------------------------------------------------------------
+
+export function useQQGroups(page = 1, size = PAGE_SIZE) {
+  return useQuery({
+    queryKey: ["qq-groups", page, size],
+    queryFn: () => apiGet<PaginatedData<QQGroupInfo>>(API.qqGroups.list(page, size)),
+  });
+}
+
+export function useQQGroupStats(groupId: number | null) {
+  return useQuery({
+    queryKey: ["qq-group-stats", groupId],
+    queryFn: () => apiGet<QQGroupStats>(API.qqGroups.stats(groupId!)),
+    enabled: !!groupId,
+  });
+}
+
+export function useGroupFeatures(groupId: number | null) {
+  return useQuery({
+    queryKey: ["group-features", groupId],
+    queryFn: () => apiGet<GroupFeatures>(API.qqGroups.features(groupId!)),
+    enabled: !!groupId,
+  });
+}
+
+export function useToggleGroupFeature(groupId: number | null) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (data: { perm_key: string; enabled: boolean }) =>
+      apiPost(API.qqGroups.toggleFeature(groupId!), data),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["group-features", groupId] });
+      toast.success("功能状态已更新");
+    },
+    onError: (err) => toast.error(err.message),
+  });
+}
+
+// ---------------------------------------------------------------------------
+// 消息日志
+// ---------------------------------------------------------------------------
+
+export function useMessageLogs(
+  filters: MessageLogFilters,
+  page = 1,
+  size = PAGE_SIZE
+) {
+  return useQuery({
+    queryKey: ["message-logs", filters, page, size],
+    queryFn: () =>
+      apiGet<PaginatedData<MessageLog>>(
+        API.logs.messages({
+          page,
+          size,
+          group_id: filters.group_id ?? undefined,
+          user_id: filters.user_id ?? undefined,
+          keyword: filters.keyword ?? undefined,
+          message_type: filters.message_type ?? undefined,
+          start_time: filters.start_time ?? undefined,
+          end_time: filters.end_time ?? undefined,
+        })
+      ),
   });
 }

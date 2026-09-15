@@ -108,3 +108,109 @@ export interface PaginatedData<T> {
   page: number;
   page_size: number;
 }
+
+// ---------------------------------------------------------------------------
+// Bot 基础信息
+// ---------------------------------------------------------------------------
+
+export interface BotConnections {
+  bot_db: boolean;
+  icpc_db: boolean;
+  redis: boolean;
+}
+
+export interface BotInfo {
+  status: "online" | "offline";
+  bot_count: number;
+  bot_id: string | null;
+  nickname: string | null;
+  adapter: string | null;
+  group_count: number | null;
+  uptime_seconds: number;
+  connections: BotConnections;
+}
+
+// ---------------------------------------------------------------------------
+// 插件管理
+// ---------------------------------------------------------------------------
+
+export interface PluginInfo {
+  name: string;
+  module_name: string;
+  description: string;
+  usage: string;
+  group: string | null;
+  badge_color: string | null;
+  perm_point_count: number;
+}
+
+// ---------------------------------------------------------------------------
+// 群管理
+// ---------------------------------------------------------------------------
+
+export interface QQGroupInfo {
+  group_id: number;
+  group_name: string;
+  member_count: number | null;
+  max_member_count: number | null;
+  group_function: string;
+  monitored: boolean | null;
+  last_crawled_at: string | null;
+  message_count: number;
+  active_member_count: number;
+  last7d_message_count: number;
+  last_message_time: number | null;
+}
+
+export interface QQGroupStats {
+  group_id: number;
+  group_name: string;
+  member_count: number | null;
+  max_member_count: number | null;
+  group_function: string;
+  monitored: boolean | null;
+  last_crawled_at: string | null;
+  message_count: number;
+  active_member_count: number;
+  last7d_message_count: number;
+  last_message_time: number | null;
+}
+
+export interface GroupFeature {
+  name: string;
+  perm_key: string;
+  enabled: boolean;
+}
+
+export interface GroupFeatures {
+  group_id: number;
+  features: GroupFeature[];
+}
+
+// ---------------------------------------------------------------------------
+// 消息日志
+// ---------------------------------------------------------------------------
+
+export interface MessageLog {
+  id: number;
+  message_id: number;
+  time: number;
+  group_id: number | null;
+  user_id: number;
+  sender_nickname: string;
+  sender_card: string | null;
+  sender_role: string;
+  message_type: string;
+  sub_type: string;
+  to_me: boolean;
+  raw_message: string;
+}
+
+export interface MessageLogFilters {
+  group_id?: number | null;
+  user_id?: number | null;
+  keyword?: string;
+  message_type?: string | null;
+  start_time?: number | null;
+  end_time?: number | null;
+}

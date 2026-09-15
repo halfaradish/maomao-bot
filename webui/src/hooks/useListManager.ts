@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useConfirm } from "./useConfirm";
 import type { UseMutationResult } from "@tanstack/react-query";
+import { PAGE_SIZE } from "@/constants";
 
 interface ListManagerOptions<T, TAdd = unknown, TRemove = unknown> {
   useList: (page: number, size: number) => {
@@ -30,19 +31,20 @@ export function useListManager<T, TAdd = unknown, TRemove = unknown>(
     handleCancel,
   } = useConfirm();
 
-  const { data, isLoading } = options.useList(page, 20);
+  const { data, isLoading } = options.useList(page, PAGE_SIZE);
   const addMutation = options.useAdd();
   const removeMutation = options.useRemove();
 
   const items = data?.data?.items ?? [];
   const total = data?.data?.total ?? 0;
-  const totalPages = Math.ceil(total / 20);
+  const totalPages = Math.ceil(total / PAGE_SIZE);
 
   const handleDelete = (item: T) => {
     confirm({
       title: "确认删除",
       message: options.confirmDeleteMessage(item),
       confirmText: "删除",
+      color: "danger",
       onConfirm: () => removeMutation.mutateAsync(options.getId(item) as TRemove),
     });
   };
