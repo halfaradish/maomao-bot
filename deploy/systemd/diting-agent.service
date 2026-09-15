@@ -1,0 +1,14 @@
+[Unit]
+Description=DiTing 部署执行器（处理 QQ 下发的 pull / build / restart 作业）
+Documentation=file://@DITING_DEPLOY_ROOT@/docs/diting-deploy.md
+After=docker.service network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+EnvironmentFile=-@DITING_AGENT_ENV_FILE@
+# 以 root 运行是刻意的：容器内也是 root，跨 uid 会写不动对方创建的 data/deploy/* 目录
+# （部署目录已由 install.sh 置为 0777 兜底，但 root 是这里最省事也最一致的边界）
+ExecStart=/bin/bash @DITING_DEPLOY_ROOT@/scripts/diting-agent.sh drain
+TimeoutStartSec=1800
+Nice=5

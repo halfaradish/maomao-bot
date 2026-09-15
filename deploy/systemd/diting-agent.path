@@ -1,0 +1,12 @@
+[Unit]
+Description=监听 DiTing 部署作业队列（data/deploy/queue）
+Documentation=file://@DITING_DEPLOY_ROOT@/docs/diting-deploy.md
+
+[Path]
+# systemd 的 [Path] 段不支持环境变量展开，因此这里的路径由 install.sh 在安装时替换。
+# 作业由容器内的插件写入（bind mount 到 data/），文件一落地就触发执行器。
+PathChanged=@DITING_DEPLOY_ROOT@/data/deploy/queue
+Unit=@DITING_AGENT_NAME@.service
+
+[Install]
+WantedBy=paths.target

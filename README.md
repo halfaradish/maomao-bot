@@ -104,6 +104,27 @@ HOT_RELOAD=true python bot.py
 - **运行时数据目录**：`llm_scribe` 头像缓存等运行时生成文件不会触发热重载。忽略规则在 `.watchignore` 中维护（关键字匹配，一行一个），修改后需重启容器生效。
 - **前端变更**：WebUI（`webui/`）的改动需 `npm run build` 后 rebuild 容器，不在热加载范围内。
 - **C++ 插件**：`table_gen.cpp` 的变更会在容器下次重启时由 `entrypoint.sh` 自动增量编译（`-nt` 守卫，仅在源码更新时编译）。
+- **部署哨兵**：`/diting pull` 由宿主机执行器改写工作区期间会写 `data/deploy/pull.lock`，watcher 看到它就推迟重启 worker，直到部署写完再重启一次。这样不会加载到「git 逐个落盘」的半同步代码。哨兵存在超过 10 分钟会被视为残留并忽略，watcher 行为与无哨兵时一致。
+
+### QQ 部署命令（/diting）
+
+在 QQ 里直接拉代码、重建服务，不用 SSH 上服务器：
+
+```
+/diting pull        拉取 DITING_DEPLOY_BRANCH 配置的分支，靠热加载生效
+/diting build       拉取 → 按需重建镜像 → 重启容器 → 探活（二次确认）
+/diting restart     不拉代码，直接重启并探活（二次确认）
+/diting status      查看宿主机 agent 心跳、代码版本、容器与任务状态
+/diting log [id]    查看某次作业的执行日志尾部
+```
+
+架构上分两半：**插件只做鉴权、受理与回报**，真正的 git / docker 操作由宿主机上的
+`scripts/diting-agent.sh`（systemd 的 `diting-agent.path` + `.timer` 驱动）执行，两边通过
+已挂载的 `data/deploy/` 目录交换 JSON。这是因为容器里没有 git、没有 docker CLI、
+没有 `.git`、也没有 docker.sock，容器内无法自己拉代码或重建镜像。
+
+安装、权限配置、协议契约与排障手册见 [docs/diting-deploy.md](docs/diting-deploy.md)。
+
 
 ### Docker管理脚本使用指南<a id="docker脚本使用指南"></a>
 我们提供了一个便捷的Docker管理脚本，可以简化Docker操作：

@@ -1,0 +1,13 @@
+[Unit]
+Description=DiTing 部署执行器定时心跳（每 5 分钟刷新 state.json 并兜底排空队列）
+Documentation=file://@DITING_DEPLOY_ROOT@/docs/diting-deploy.md
+
+[Timer]
+OnBootSec=2min
+OnUnitActiveSec=5min
+AccuracySec=30s
+Persistent=true
+Unit=@DITING_AGENT_TICK_NAME@.service
+
+[Install]
+WantedBy=timers.target

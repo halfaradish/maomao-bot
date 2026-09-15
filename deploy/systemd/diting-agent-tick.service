@@ -1,0 +1,12 @@
+[Unit]
+Description=DiTing 部署执行器心跳与兜底排空
+Documentation=file://@DITING_DEPLOY_ROOT@/docs/diting-deploy.md
+After=docker.service network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+EnvironmentFile=-@DITING_AGENT_ENV_FILE@
+ExecStart=/bin/bash @DITING_DEPLOY_ROOT@/scripts/diting-agent.sh tick
+TimeoutStartSec=1800
+Nice=5
