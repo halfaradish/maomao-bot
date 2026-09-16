@@ -45,7 +45,12 @@ src/common/permission/
 src/plugins/permission_manager/          src/api/
   QQ 聊天管理面板                           REST API (WebUI 后端)
   └─ 权限/perm 命令                         ├─ auth.py       认证 (JWT)
-                                             └─ permissions.py  CRUD (30+端点)
+                                             └─ permissions/   CRUD (30 端点)
+                                                  ├─ __init__.py  父router + 鉴权
+                                                  ├─ helpers.py   分页/序列化
+                                                  ├─ schemas.py   请求模型
+                                                  └─ blacklist/whitelist/groups/
+                                                     bindings/points/status/cache.py
                                                   │
                                                   ▼
                                             webui/
