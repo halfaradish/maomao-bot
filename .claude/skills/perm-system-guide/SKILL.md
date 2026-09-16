@@ -48,12 +48,13 @@ src/common/permission/
 src/plugins/permission_manager/          ← QQ 聊天管理面板（包，12 模块）
   ├─ __init__.py   装配：__plugin_meta__ + 导入触发注册
   ├─ runtime.py    配置 + 唯一的 perm_cmd 匹配器（其余模块都从这里取）
-  ├─ dispatch.py   `权限` 子命令分发（@perm_cmd.handle()）
+  ├─ dispatch.py   `权限` 子命令分发（@perm_cmd.handle()）+ 帮助文本
   ├─ login.py      登录验证码 + 二次确认（@perm_cmd.got()）
-  ├─ helpers.py    ArgToken / _tokenize_arguments / _try_parse_qq / _build_help_text
-  ├─ guard.py      _ensure_superuser / _invalidate_related_cache
+  ├─ guard.py      _invalidate_related_cache（权限缓存失效）
   ├─ blacklist.py / whitelist.py / groups.py / bindings.py / view.py
   └─ config.py / permissions.py（配置模型与权限点注册）
+
+（参数分词与 QQ 解析已抽到 src/common/arg_parser.py，与 group_manager 共用）
 
 src/api/
   ├─ auth.py                认证 (JWT)
@@ -440,7 +441,9 @@ perm 登录/login
 
 ### 5.8 参数解析说明
 
-命令参数支持 `@提及` 和纯文本两种形式。解析函数 `_tokenize_arguments()`（在 `src/plugins/permission_manager/helpers.py`）将消息段拆分为 `ArgToken` 列表：`at` 类型的 token 取其 `qq` 属性，`text` 类型的 token 按空格分词。
+命令参数支持 `@提及` 和纯文本两种形式。解析函数 `tokenize_arguments()`（在 `src/common/arg_parser.py`，与 `group_manager` 共用同一份）将消息段拆分为 `ArgToken` 列表：`at` 类型的 token 取其 `qq` 属性，`text` 类型的 token 按空格分词；`try_parse_qq()` 再把 token 解析成 QQ 号（`text` 形式允许带前缀 `@`）。
+
+注意 `at` 段的 `qq` 会被原样存入 token，因此**只对 str 安全**——适配器的 `MessageSegment.at()` 自身会 `str()` 归一，手工塞 int 会抛 `AttributeError`（既有缺陷，未修）。
 
 ### 5.9 缓存失效策略
 

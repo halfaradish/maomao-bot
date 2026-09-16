@@ -7,9 +7,11 @@
 命令格式: 权限 <子命令> [参数...]
 
 实现按职责拆分到同目录下的模块：`runtime` 持有配置与唯一的 `perm_cmd` 定义，
-`helpers` / `guard` 提供参数解析与放行、缓存失效，`dispatch` 分发子命令，其余模块
+`guard` 提供放行与缓存失效，`dispatch` 分发子命令并持有帮助文本，其余模块
 按数据域承载各子命令实现。本文件只做装配：定义 `__plugin_meta__` 并导入上述模块
 以触发匹配器与权限点注册。
+
+命令参数的分词与 QQ 解析由 `src.common.arg_parser` 提供（与 `group_manager` 共用）。
 """
 from nonebot.plugin import PluginMetadata
 

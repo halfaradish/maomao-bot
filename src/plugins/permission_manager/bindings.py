@@ -6,18 +6,18 @@ from nonebot.adapters.onebot.v11 import MessageEvent
 from nonebot.exception import FinishedException
 from sqlalchemy import select, delete as sa_delete
 
+from src.common.arg_parser import ArgToken, try_parse_qq
 from src.common.database import async_session_factory
 from src.common.permission.models import PermissionGroup, GroupPermBinding
 
 from .guard import _invalidate_related_cache
-from .helpers import ArgToken, _try_parse_qq
 from .runtime import perm_cmd
 
 
 async def _binding_add(event: MessageEvent, tokens: List[ArgToken]):
     if len(tokens) < 2:
         await perm_cmd.finish("用法: 权限 绑定 群 <群号> <权限组名>")
-    qq = _try_parse_qq(tokens[0])
+    qq = try_parse_qq(tokens[0])
     if qq is None:
         await perm_cmd.finish("请提供有效的群号")
     pg_name = tokens[1].value
@@ -56,7 +56,7 @@ async def _binding_add(event: MessageEvent, tokens: List[ArgToken]):
 async def _binding_remove(event: MessageEvent, tokens: List[ArgToken]):
     if not tokens:
         await perm_cmd.finish("用法: 权限 绑定 解除 <群号>")
-    qq = _try_parse_qq(tokens[0])
+    qq = try_parse_qq(tokens[0])
     if qq is None:
         await perm_cmd.finish("请提供有效的群号")
 
@@ -76,7 +76,7 @@ async def _binding_remove(event: MessageEvent, tokens: List[ArgToken]):
 async def _binding_list(event: MessageEvent, tokens: List[ArgToken]):
     qq_filter = None
     if tokens:
-        qq_filter = _try_parse_qq(tokens[0])
+        qq_filter = try_parse_qq(tokens[0])
 
     async with async_session_factory() as session:
         if qq_filter:

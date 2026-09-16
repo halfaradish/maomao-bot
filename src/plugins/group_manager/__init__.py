@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import importlib
-from dataclasses import dataclass
 from typing import List, Optional
 
 from nonebot import get_plugin_config, on_command
@@ -12,6 +11,7 @@ from nonebot.plugin import PluginMetadata
 from sqlalchemy import func, select
 from sqlalchemy.orm import selectinload
 
+from ...common.arg_parser import ArgToken, tokenize_arguments, try_parse_qq
 from ...common.database import async_session_factory
 from ...common.models.botdb_models import Group, GroupMember
 from .config import Config
@@ -32,27 +32,6 @@ __plugin_meta__ = PluginMetadata(
 
 
 config = get_plugin_config(Config)
-
-
-@dataclass
-class ArgToken:
-    kind: str  # text / at
-    value: str
-
-
-def _tokenize_arguments(message: Message) -> List[ArgToken]:
-    tokens: List[ArgToken] = []
-    for seg in message:
-        if seg.type == "text":
-            text = seg.data.get("text", "")
-            for part in text.replace("\n", " ").split():
-                if part:
-                    tokens.append(ArgToken("text", part))
-        elif seg.type == "at":
-            qq = seg.data.get("qq")
-            if qq and qq not in ("all", "0"):
-                tokens.append(ArgToken("at", qq))
-    return tokens
 
 
 async def _list_all_groups():
@@ -172,25 +151,13 @@ def _build_help_text() -> str:
     )
 
 
-def _extract_user_id(tokens: List[ArgToken]) -> (Optional[int], Optional[int]):
+def _extract_user_id(tokens: List[ArgToken]) -> tuple[Optional[int], Optional[int]]:
+    """返回首个能解析出 QQ 的 token 及其下标（当前无调用方）。"""
     for idx, token in enumerate(tokens):
-        if token.kind == "at" and token.value.isdigit():
-            return int(token.value), idx
-        if token.kind == "text":
-            text = token.value.lstrip("@")
-            if text.isdigit():
-                return int(text), idx
+        user_id = try_parse_qq(token)
+        if user_id is not None:
+            return user_id, idx
     return None, None
-
-
-def _try_parse_user_token(token: ArgToken) -> Optional[int]:
-    if token.kind == "at" and token.value.isdigit():
-        return int(token.value)
-    if token.kind == "text":
-        text = token.value.lstrip("@")
-        if text.isdigit():
-            return int(text)
-    return None
 
 
 def _parse_add_arguments(tokens: List[ArgToken]):
@@ -206,7 +173,7 @@ def _parse_add_arguments(tokens: List[ArgToken]):
     idx = 0
     while idx < len(member_tokens):
         token = member_tokens[idx]
-        user_id = _try_parse_user_token(token)
+        user_id = try_parse_qq(token)
         if user_id is None:
             idx += 1
             continue
@@ -214,7 +181,7 @@ def _parse_add_arguments(tokens: List[ArgToken]):
         nickname_parts: List[str] = []
         while idx < len(member_tokens):
             next_token = member_tokens[idx]
-            if _try_parse_user_token(next_token) is not None:
+            if try_parse_qq(next_token) is not None:
                 break
             nickname_parts.append(next_token.value)
             idx += 1
@@ -265,7 +232,7 @@ async def handle_group_command(
     if not await check_permission(event, ADMIN_PERM_KEY):
         await group_cmd.finish("您没有权限使用该命令")
 
-    tokens = _tokenize_arguments(args)
+    tokens = tokenize_arguments(args)
     if not tokens:
         await group_cmd.finish(_build_help_text())
 

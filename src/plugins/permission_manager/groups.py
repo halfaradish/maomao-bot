@@ -7,6 +7,7 @@ from nonebot.exception import FinishedException
 from sqlalchemy import select, delete as sa_delete
 from sqlalchemy.orm import selectinload
 
+from src.common.arg_parser import ArgToken, try_parse_qq
 from src.common.database import async_session_factory
 from src.common.permission.models import (
     PermissionGroup,
@@ -15,7 +16,6 @@ from src.common.permission.models import (
 )
 
 from .guard import _invalidate_related_cache
-from .helpers import ArgToken, _try_parse_qq
 from .runtime import perm_cmd
 
 
@@ -133,7 +133,7 @@ async def _perm_group_add_member(event: MessageEvent, tokens: List[ArgToken]):
 
         added, skipped = [], []
         for token in tokens[1:]:
-            qq = _try_parse_qq(token)
+            qq = try_parse_qq(token)
             if qq is None:
                 continue
             existing = (await session.execute(
@@ -167,7 +167,7 @@ async def _perm_group_remove_member(event: MessageEvent, tokens: List[ArgToken])
     if len(tokens) < 2:
         await perm_cmd.finish("用法: 权限 权限组 移除成员 <名称> <QQ>")
     group_name = tokens[0].value
-    qq = _try_parse_qq(tokens[1])
+    qq = try_parse_qq(tokens[1])
     if qq is None:
         await perm_cmd.finish("请提供有效的 QQ 号")
 
@@ -273,7 +273,7 @@ async def _perm_group_batch_add_group(event: MessageEvent, tokens: List[ArgToken
     if len(tokens) < 2:
         await perm_cmd.finish("用法: 权限 权限组 批量加群 <名称> <群号>")
     group_name = tokens[0].value
-    qq_group_id = _try_parse_qq(tokens[1])
+    qq_group_id = try_parse_qq(tokens[1])
     if qq_group_id is None:
         await perm_cmd.finish("请提供有效的群号")
     # 注意：此命令在群聊中使用时才能获取群成员列表，这里仅做绑定

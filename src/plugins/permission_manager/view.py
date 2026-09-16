@@ -8,6 +8,7 @@ from typing import List
 from nonebot.adapters.onebot.v11 import MessageEvent
 from sqlalchemy import select
 
+from src.common.arg_parser import ArgToken, try_parse_qq
 from src.common.database import async_session_factory
 from src.common.permission import ADMIN_PERM_KEY, user_has_permission
 from src.common.permission.models import (
@@ -19,7 +20,6 @@ from src.common.permission.models import (
     PermissionGroupPerm,
 )
 
-from .helpers import ArgToken, _try_parse_qq
 from .runtime import perm_cmd
 
 
@@ -58,7 +58,7 @@ async def _list_permission_points(event: MessageEvent, tokens: List[ArgToken]):
 async def _view_user_permissions(event: MessageEvent, tokens: List[ArgToken]):
     if not tokens:
         await perm_cmd.finish("用法: 权限 查看 <QQ号>")
-    qq = _try_parse_qq(tokens[0])
+    qq = try_parse_qq(tokens[0])
     if qq is None:
         await perm_cmd.finish("请提供有效的 QQ 号")
 

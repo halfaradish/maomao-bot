@@ -36,8 +36,9 @@ src/
 │       ├── config.py         # Pydantic 配置类（可选）
 │       └── permissions.py    # 权限点注册（可选）
 ├── common/                   # 共享层工具
-│   ├── database.py           # SQLAlchemy 异步引擎 + session 工厂
+│   ├── database.py           # SQLAlchemy 异步引擎 + get_session / 建表
 │   ├── crud.py               # Django 风格 CRUD 包装器
+│   ├── arg_parser.py         # 命令参数分词（text/at token）+ QQ 解析
 │   ├── models/               # SQLAlchemy ORM 模型 (botdb, icpc, like)
 │   ├── plugin_meta.py        # PluginGroupEnum, PluginBadgeColor 枚举
 │   └── permission/           # 权限系统（8 级优先级检查）
@@ -190,8 +191,18 @@ async def handle_my_cmd(bot: Bot, event: GroupMessageEvent, args: Message = Comm
 
 ### Step 6: 可选集成
 
-- **数据库**：在 handler 内使用 `async with async_session_factory() as session:` 访问 Bot DB
+- **数据库**：在 handler 内使用 `async with get_session() as session:` 访问 Bot DB（详见 `diting-db-guide`）
 - **权限**：创建 `permissions.py` 注册权限点，handler 中调用 `check_permission()`
+- **参数解析**：只需要按空格切分就用 `args.extract_plain_text().strip().split()`；**需要同时支持 `@提及` 与纯文本 QQ 号**时，改用共享分词器，不要自己再写一遍：
+
+  ```python
+  from src.common.arg_parser import tokenize_arguments, try_parse_qq
+
+  tokens = tokenize_arguments(args)        # Message -> [ArgToken(kind="text"|"at", value=str)]
+  qq = try_parse_qq(tokens[0]) if tokens else None   # "123" / "@123" / at 段 -> int，否则 None
+  ```
+
+  它由 `permission_manager` 与 `group_manager` 共用（`src/common/arg_parser.py`）。
 - **定时任务**：使用 `require("nonebot_plugin_apscheduler")` + scheduler
 
 ## 3. PluginMetadata 完整参考

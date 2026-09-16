@@ -10,18 +10,18 @@ from nonebot.adapters.onebot.v11 import MessageEvent
 from nonebot.exception import FinishedException
 from sqlalchemy import select, delete as sa_delete
 
+from src.common.arg_parser import ArgToken, try_parse_qq
 from src.common.database import async_session_factory
 from src.common.permission.models import UserBlacklist
 
 from .guard import _invalidate_related_cache
-from .helpers import ArgToken, _try_parse_qq
 from .runtime import perm_cmd
 
 
 async def _blacklist_add(event: MessageEvent, tokens: List[ArgToken], _scope: str):
     if not tokens:
         await perm_cmd.finish("用法: 权限 黑名单 添加 <QQ号> [原因]")
-    qq = _try_parse_qq(tokens[0])
+    qq = try_parse_qq(tokens[0])
     if qq is None:
         await perm_cmd.finish("请提供有效的 QQ 号")
     reason = " ".join(t.value for t in tokens[1:]) if len(tokens) > 1 else ""
@@ -47,7 +47,7 @@ async def _blacklist_add(event: MessageEvent, tokens: List[ArgToken], _scope: st
 async def _blacklist_remove(event: MessageEvent, tokens: List[ArgToken], _scope: str):
     if not tokens:
         await perm_cmd.finish("用法: 权限 黑名单 移除 <QQ号>")
-    qq = _try_parse_qq(tokens[0])
+    qq = try_parse_qq(tokens[0])
     if qq is None:
         await perm_cmd.finish("请提供有效的 QQ 号")
     async with async_session_factory() as session:

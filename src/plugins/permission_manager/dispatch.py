@@ -8,9 +8,9 @@ from nonebot.params import CommandArg
 from nonebot.typing import T_State
 from nonebot import logger
 
+from src.common.arg_parser import tokenize_arguments
 from src.common.permission import ADMIN_PERM_KEY, check_permission
 
-from .helpers import _build_help_text, _tokenize_arguments
 from .runtime import perm_cmd
 from .blacklist import _blacklist_add, _blacklist_list, _blacklist_remove
 from .bindings import _binding_add, _binding_list, _binding_remove
@@ -29,6 +29,41 @@ from .view import _list_permission_points, _view_user_permissions
 from .whitelist import _whitelist_add, _whitelist_list, _whitelist_remove
 
 
+def _build_help_text() -> str:
+    return (
+        "perm 命令可用操作（也支持中文）:\n"
+        "━━━ 黑名单/blacklist ━━━\n"
+        "perm 黑名单 添加/add <QQ号> [原因]\n"
+        "perm 黑名单 移除/remove <QQ号>\n"
+        "perm 黑名单 列表/list\n"
+        "━━━ 白名单/whitelist ━━━\n"
+        "perm 白名单 用户/user 添加/add <QQ号> [原因]\n"
+        "perm 白名单 用户/user 移除/remove <QQ号>\n"
+        "perm 白名单 用户/user 列表/list\n"
+        "perm 白名单 群/group 添加/add <群号> [原因]\n"
+        "perm 白名单 群/group 移除/remove <群号>\n"
+        "perm 白名单 群/group 列表/list\n"
+        "━━━ 权限组/group ━━━\n"
+        "perm 权限组 创建/create <名称> [展示名] [描述]\n"
+        "perm 权限组 删除/delete <名称>\n"
+        "perm 权限组 列表/list\n"
+        "perm 权限组 详情/info <名称>\n"
+        "perm 权限组 添加成员/addmember <名称> <QQ> [QQ...]\n"
+        "perm 权限组 移除成员/removemember <名称> <QQ>\n"
+        "perm 权限组 添加权限/addperm <名称> <perm_key> [perm_key...]\n"
+        "perm 权限组 移除权限/removeperm <名称> <perm_key>\n"
+        "perm 权限组 批量加群/batchaddgroup <名称> <群号>\n"
+        "━━━ 群绑定/bind ━━━\n"
+        "perm 绑定 群/group <群号> <权限组名>\n"
+        "perm 绑定 解除/unbind <群号>\n"
+        "perm 绑定 列表/list [群号]\n"
+        "━━━ 其他 ━━━\n"
+        "perm 注册点/points 列表/list [插件名]\n"
+        "perm 查看/view <QQ号>\n"
+        "perm 登录/login - 获取Web管理面板登录验证码"
+    )
+
+
 @perm_cmd.handle()
 async def handle_permission_command(
     bot: Bot,
@@ -42,7 +77,7 @@ async def handle_permission_command(
         await perm_cmd.finish("你没有权限管理权限系统（仅超级管理员或拥有「权限管理」权限的用户可执行）")
 
     logger.info(f"用户 {event.user_id} 执行权限管理命令: {args.extract_plain_text().strip()}")
-    tokens = _tokenize_arguments(args)
+    tokens = tokenize_arguments(args)
     if not tokens:
         await perm_cmd.finish(_build_help_text())
 
