@@ -460,10 +460,6 @@ async def _handle_log(bot: Bot, event: MessageEvent, arg: str) -> None:
 
     job_id, header, body = payload
     plain = f"{header}\n{body}"
-    if len(plain) <= _MESSAGE_LIMIT:
-        # 短日志没必要套一层转发卡片
-        await diting_cmd.finish(plain)
-        return
 
     if await _send_forward_log(bot, _session_of(event), _log_nodes(job_id, header, body)):
         await diting_cmd.finish()
