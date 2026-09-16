@@ -13,7 +13,7 @@ from ...common.crud import (
     async_get_many,
     async_update_records,
 )
-from ...common.database import async_session_factory
+from ...common.database import get_session
 from ...common.models.botdb_models import TodoReminder, TodoReminderLog
 
 
@@ -151,7 +151,7 @@ class TodoDatabase:
         try:
             if status == 'completed':
                 # 原子递增 execution_count
-                async with async_session_factory() as session:
+                async with get_session() as session:
                     stmt = (
                         sa_update(TodoReminder)
                         .where(TodoReminder.id == reminder_id)
@@ -169,7 +169,6 @@ class TodoDatabase:
                             .values(error_message=error_message)
                         )
                         await session.execute(stmt2)
-                    await session.commit()
                 return True
             updates: Dict[str, Any] = {'status': status}
             if status == 'failed' and error_message:
@@ -183,13 +182,12 @@ class TodoDatabase:
     async def delete_reminder(self, reminder_id: int, user_id: int) -> bool:
         """删除提醒（个人）"""
         try:
-            async with async_session_factory() as session:
+            async with get_session() as session:
                 stmt = sa_delete(TodoReminder).where(
                     TodoReminder.id == reminder_id,
                     TodoReminder.user_id == user_id,
                 )
                 result = await session.execute(stmt)
-                await session.commit()
                 return result.rowcount > 0
         except Exception as e:
             logger.error(f"删除提醒失败: {e}")
@@ -198,13 +196,12 @@ class TodoDatabase:
     async def delete_group_shared_reminder(self, reminder_id: int, group_id: int) -> bool:
         """删除群组共享提醒（群内任何用户都可以删除）"""
         try:
-            async with async_session_factory() as session:
+            async with get_session() as session:
                 stmt = sa_delete(TodoReminder).where(
                     TodoReminder.id == reminder_id,
                     TodoReminder.group_id == group_id,
                 )
                 result = await session.execute(stmt)
-                await session.commit()
                 return result.rowcount > 0
         except Exception as e:
             logger.error(f"删除群组共享提醒失败: {e}")
@@ -215,7 +212,7 @@ class TodoDatabase:
         """清理旧的已完成提醒"""
         try:
             cutoff_date = datetime.now() - timedelta(days=days)
-            async with async_session_factory() as session:
+            async with get_session() as session:
                 stmt = sa_delete(TodoReminder).where(
                     and_(
                         TodoReminder.status.in_(['completed', 'cancelled']),
@@ -223,7 +220,6 @@ class TodoDatabase:
                     )
                 )
                 result = await session.execute(stmt)
-                await session.commit()
                 return result.rowcount
         except Exception as e:
             logger.error(f"清理旧提醒失败: {e}")

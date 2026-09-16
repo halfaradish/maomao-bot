@@ -13,7 +13,7 @@ from typing import Optional
 
 from sqlalchemy import select
 
-from src.common.database import async_session_factory
+from src.common.database import get_session
 from src.common.permission.models import (
     GroupWhitelist,
     GroupPermBinding,
@@ -41,7 +41,7 @@ async def is_group_feature_enabled(group_id: int, perm_key: str) -> bool:
     if cached is not None:
         return cached
 
-    async with async_session_factory() as session:
+    async with get_session(commit=False) as session:
         # 1. 群白名单 — 完全信任，直接放行
         stmt = select(GroupWhitelist.id).where(
             GroupWhitelist.group_id == group_id
@@ -82,7 +82,7 @@ async def get_ban_word_log_targets() -> list[int]:
     if cached is not None:
         return cached
 
-    async with async_session_factory() as session:
+    async with get_session(commit=False) as session:
         stmt = (
             select(GroupPermBinding.qq_group_id)
             .join(

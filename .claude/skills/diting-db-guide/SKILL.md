@@ -65,7 +65,46 @@ async def read_only_example():
         ...
 ```
 
-仍可直接使用 `async_session_factory()`（自管 commit/rollback），但新代码建议统一走 `get_session()`。
+仍可直接使用 `async_session_factory()`（自管 commit/rollback），但**新代码一律走 `get_session()`**；存量裸工厂属待迁移遗留，清单见 §1.2。
+
+### 1.1 两条硬规则
+
+**规则一：`finish()` 等一切「会抛异常的收尾」必须放在会话块之外。**
+
+`get_session()` 在块内异常退出时先 rollback 再重抛，而 nonebot 的 `matcher.finish()` 抛的正是 `FinishedException`。写在块内会让同块里刚写入的数据**静默回滚**，用户却收到成功提示：
+
+```python
+# ❌ finish() 在块内：绑定写进去又被回滚，用户却看到「已添加」
+async with get_session() as session:
+    session.add(GroupPermBinding(...))
+    await matcher.finish("已添加")        # 抛 FinishedException → rollback
+
+# ✅ 块内只做 DB，块外统一 finish
+async with get_session() as session:
+    session.add(GroupPermBinding(...))
+await matcher.finish("已添加")            # 退出块时已 commit
+```
+
+辅助函数同理：`await helper()` 里若可能走到 `finish()`，该 helper 必须在会话块外调用。反过来说，**不要跨网络调用持有 session**——`finish()`/`bot.send()` 都该在块外。
+
+（历史案例：`group_file_manager/handlers.py` 曾因此必须在 `finish()` 前显式补一次 `commit()`。）
+
+**规则二：纯读取用 `commit=False`。**
+
+只读块若用默认的 `commit=True`，退出时会多发一次无意义的 COMMIT；更要紧的是它把「这个块不会写」这一意图显式化了。反过来，**块内存在「查到就写、查不到就不写」分支时用默认 `commit=True`**，让未命中分支也走一次空提交，与改造前行为一致。
+
+### 1.2 会话入口迁移状态
+
+| 状态 | 文件数 | 站点数 |
+|---|---|---|
+| 已用 `get_session()` | 16 | 57 |
+| 仍用裸 `async_session_factory()` | 26 | 84 |
+
+（另 `scripts/migrate_json_to_db.py` 5 处未迁移。不计入：`common/database.py` 是工厂定义处、`common/icpc_db_pool.py` 属 ICPC 库。）
+
+已迁移：`group_statistics/database.py`、`todo_reminder/database.py`、`auto_manage_group/{__init__,group_checker,migrate}.py`，以及 `common/crud.py`、`common/permission/auto_register.py` 和 `{duel,prd,fakemsg,mass_kick,plugin_usage_stats,shit_transport}/dao.py`、`group_file_manager/{handlers,hooks,service}.py`。
+
+仍待迁移：`api/` 下 9 个、`plugins/permission_manager/` 下 5 个，以及 `plugins/group_manager`、`plugins/fakemsg`（2 个文件）、`plugins/like`、`plugins/vv`、`plugins/shit_transport/transport.py`、`plugins/group_sentinel`、`plugins/group_card_changer/holidays.py`、`plugins/diting_deploy/commands.py`、`common/permission/{checker,queries,bootstrap}.py`。
 
 **绝对不要**在模块顶层（插件导入时）创建会话：
 
@@ -245,10 +284,10 @@ members = await async_get_many(
 
 ```python
 from sqlalchemy import func, select
-from src.common.database import async_session_factory
+from src.common.database import get_session
 from src.common.models.botdb_models import Group, GroupMember
 
-async with async_session_factory() as session:
+async with get_session(commit=False) as session:      # 纯读取
     stmt = (
         select(
             Group.name,
@@ -269,7 +308,7 @@ async with async_session_factory() as session:
 ```python
 from sqlalchemy.orm import selectinload
 
-async with async_session_factory() as session:
+async with get_session(commit=False) as session:      # 纯读取
     stmt = (
         select(Group)
         .where(Group.name == "ACM")
@@ -287,7 +326,7 @@ async with async_session_factory() as session:
 ```python
 from sqlalchemy import update as sa_update
 
-async with async_session_factory() as session:
+async with get_session() as session:
     stmt = (
         sa_update(TodoReminder)
         .where(TodoReminder.id == reminder_id)
@@ -298,7 +337,7 @@ async with async_session_factory() as session:
         )
     )
     await session.execute(stmt)
-    await session.commit()
+    # 退出块时自动 commit，无需显式写法
 ```
 
 这和 Django 的 `F('execution_count') + 1` 效果相同，在数据库层面原子递增，避免并发竞争。
@@ -306,7 +345,7 @@ async with async_session_factory() as session:
 ### 4.4 Update-or-Create 模式
 
 ```python
-async with async_session_factory() as session:
+async with get_session() as session:
     stmt = select(LikeRecord).where(LikeRecord.user_id == user_id)
     result = await session.execute(stmt)
     obj = result.scalars().first()
@@ -319,20 +358,18 @@ async with async_session_factory() as session:
         # 创建新记录
         obj = LikeRecord(user_id=user_id, nickname=nickname, is_following=True)
         session.add(obj)
-
-    await session.commit()
+    # 退出块时统一提交
 ```
 
 ### 4.5 通过 session.delete() 删除
 
 ```python
-async with async_session_factory() as session:
+async with get_session() as session:
     stmt = select(GroupStatistic).where(GroupStatistic.group_id == group_id)
     result = await session.execute(stmt)
     obj = result.scalars().first()
     if obj:
         await session.delete(obj)
-        await session.commit()
 ```
 
 另一种方式是 `sa_delete()` 语句（不需要先查询）：
@@ -340,13 +377,14 @@ async with async_session_factory() as session:
 ```python
 from sqlalchemy import delete as sa_delete
 
-async with async_session_factory() as session:
+async with get_session() as session:
     stmt = sa_delete(TodoReminder).where(
         TodoReminder.id == reminder_id,
         TodoReminder.user_id == user_id,
     )
-    await session.execute(stmt)
-    await session.commit()
+    result = await session.execute(stmt)
+    # result.rowcount 在 with 块内取，块退出后即为已提交状态
+    deleted = result.rowcount
 ```
 
 ---
@@ -488,11 +526,12 @@ stmt = stmt.where(PluginUsageRecord.env_tag == current_env_tag())
 **按自增 id 读写必须校验 env_tag**（自增主键跨环境共享序列，防止 dev 误改 prod），参考 `prd/dao.py`：
 
 ```python
-async with async_session_factory() as session:
+async with get_session() as session:      # 查到才写，用默认 commit=True
     row = await session.get(PrdTodo, todo_id)
     if row is None or row.env_tag != current_env_tag():
+        # 未命中：返回前块会走一次空提交（与显式 commit 的旧写法行为一致）
         return None              # 不是本环境的数据，视同不存在
-    # ... 修改并 commit ...
+    # ... 修改，退出块时统一 commit ...
 ```
 
 ### 7.4 适用边界 — 默认必加 + 豁免清单
@@ -653,7 +692,7 @@ group_name: Mapped[str] = mapped_column(
 
 ```python
 # ❌ 错误：在 async with 外访问关系属性可能失败（MissingGreenlet）
-async with async_session_factory() as session:
+async with get_session(commit=False) as session:
     result = await session.execute(select(Group).where(...))
     group = result.scalars().first()
 # ⚠️ 此处访问 group.members 可能触发懒加载 → 报错
@@ -661,7 +700,7 @@ for member in group.members:
     ...
 
 # ✅ 正确：在会话内完成所有访问，或使用 selectinload 预加载
-async with async_session_factory() as session:
+async with get_session(commit=False) as session:
     result = await session.execute(
         select(Group).where(...).options(selectinload(Group.members))
     )
@@ -699,6 +738,24 @@ await async_create_record(QQMessageReceiptSummary, ...)  # 独立 session
 ### 11.7 `pymysql` 仅限 `llm_scribe`
 
 整个代码库中，**只有** `llm_scribe` 插件还在使用 `pymysql`（独立的数据库连接，非 Bot DB）。所有 Bot DB 操作都已迁移到 SQLAlchemy async。不要在 Bot DB 相关代码中引入 `pymysql`。
+
+### 11.8 `finish()` 写在 `get_session()` 块内会静默回滚
+
+最常见也最隐蔽的一个坑：`matcher.finish()` 抛 `FinishedException`，被 `get_session()` 当成异常 → rollback。结果是**数据没写进去，用户却收到成功提示**。
+
+```python
+# ❌ 用户看到「已添加」，但绑定已被回滚
+async with get_session() as session:
+    session.add(GroupPermBinding(...))
+    await matcher.finish("已添加")
+
+# ✅ 块内只做 DB，块外统一 finish
+async with get_session() as session:
+    session.add(GroupPermBinding(...))
+await matcher.finish("已添加")
+```
+
+判断口诀：**块内只碰 DB，`finish()`/`send()` 一律在块外。** 详见 §1.1 规则一。
 
 ---
 

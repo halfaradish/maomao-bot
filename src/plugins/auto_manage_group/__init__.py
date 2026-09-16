@@ -34,7 +34,7 @@ from ...common.send_forward_msg import send_forward_msg
 from ..logging_info.message_dao import message_dao
 from ...common.utils import QQAvatarLoader
 from src.common.plugin_meta import PluginGroupEnum, PluginBadgeColor
-from src.common.database import async_session_factory
+from src.common.database import get_session
 from src.common.permission.models import (
     PermissionGroup,
     PermissionGroupPerm,
@@ -181,10 +181,9 @@ async def context_erase_messages(bot: Bot, user_id: int, group_id: int, base_tim
         
         # 从数据库查询该用户在指定时间范围内的所有消息
         from sqlalchemy import select, and_
-        from src.common.database import async_session_factory
         from src.common.models.botdb_models import MessageEventLog
 
-        async with async_session_factory() as session:
+        async with get_session(commit=False) as session:
             stmt = select(MessageEventLog).where(
                 and_(
                     MessageEventLog.user_id == user_id,
@@ -377,7 +376,7 @@ async def _ensure_default_perm_groups():
         ("auto_manage_ban_word", "auto_manage_group:ban_word_detect", "违禁词检测"),
         ("auto_manage_ban_word_log", "auto_manage_group:ban_word_log_target", "违禁词告警日志"),
     ]
-    async with async_session_factory() as session:
+    async with get_session() as session:
         for group_name, perm_key, display_name in default_groups:
             existing = (await session.execute(
                 select(PermissionGroup).where(PermissionGroup.name == group_name)
@@ -393,7 +392,6 @@ async def _ensure_default_perm_groups():
                 await session.flush()
                 session.add(PermissionGroupPerm(group_id=pg.id, perm_key=perm_key))
                 logger.info(f"[auto_manage_group] 自动创建权限组: {group_name} (perm_key={perm_key})")
-        await session.commit()
 
 
 # ============================================================
@@ -489,7 +487,7 @@ async def _handle_monitor_add(event: MessageEvent, parts: list[str]):
     if feature == "全部":
         features = list(FEATURE_MAP.keys())
 
-    async with async_session_factory() as session:
+    async with get_session() as session:
         for feat in features:
             perm_key, pg_name = FEATURE_MAP[feat]
             # 查找或创建权限组
@@ -523,8 +521,6 @@ async def _handle_monitor_add(event: MessageEvent, parts: list[str]):
             else:
                 logger.info(f"[群管理] 群 {group_id} 已开启功能 {feat}，跳过")
 
-        await session.commit()
-
     # 清除告警日志目标缓存（如果添加了告警日志）
     if "告警日志" in features:
         perm_cache.delete("ban_word_log_targets")
@@ -543,7 +539,7 @@ async def _handle_monitor_remove(event: MessageEvent, parts: list[str]):
     if feature == "全部":
         features = list(FEATURE_MAP.keys())
 
-    async with async_session_factory() as session:
+    async with get_session() as session:
         for feat in features:
             perm_key, pg_name = FEATURE_MAP[feat]
             # 查找权限组
@@ -569,8 +565,6 @@ async def _handle_monitor_remove(event: MessageEvent, parts: list[str]):
                 perm_cache.delete(f"group_feature:{group_id}:{perm_key}")
                 logger.info(f"[群管理] 群 {group_id} 已关闭功能: {feat}")
 
-        await session.commit()
-
     # 清除告警日志目标缓存
     if "告警日志" in features:
         perm_cache.delete("ban_word_log_targets")
@@ -582,7 +576,7 @@ async def _handle_monitor_list(event: MessageEvent, parts: list[str]):
     """查看群的监控状态"""
     group_id, _ = await _parse_group_and_feature(parts)
 
-    async with async_session_factory() as session:
+    async with get_session(commit=False) as session:
         if group_id:
             # 查看指定群
             lines = [f"群 {group_id} 监控状态："]
@@ -605,7 +599,7 @@ async def _handle_monitor_list(event: MessageEvent, parts: list[str]):
                 )
                 status = "✅ 已开启" if result.first() else "❌ 未开启"
                 lines.append(f"  {feat}: {status}")
-            await manage_cmd.finish("\n".join(lines))
+            message = "\n".join(lines)
         else:
             # 查看所有被监控的群（取并集）
             group_sets: dict[int, set[str]] = {}
@@ -629,22 +623,27 @@ async def _handle_monitor_list(event: MessageEvent, parts: list[str]):
                     group_sets[gid].add(feat)
 
             if not group_sets:
-                await manage_cmd.finish("当前没有任何群被监控")
-                return
+                message = "当前没有任何群被监控"
+            else:
+                lines = ["所有被监控的群："]
+                for gid, feats in sorted(group_sets.items()):
+                    lines.append(f"  群 {gid}: {', '.join(sorted(feats))}")
+                lines.append(f"\n共 {len(group_sets)} 个群")
+                message = "\n".join(lines)
 
-            lines = ["所有被监控的群："]
-            for gid, feats in sorted(group_sets.items()):
-                lines.append(f"  群 {gid}: {', '.join(sorted(feats))}")
-            lines.append(f"\n共 {len(group_sets)} 个群")
-            await manage_cmd.finish("\n".join(lines))
+    await manage_cmd.finish(message)
 
 
 async def _handle_log_target(event: MessageEvent, parts: list[str]):
     """管理告警日志目标群"""
     perm_key = "auto_manage_group:ban_word_log_target"
     pg_name = "auto_manage_ban_word_log"
+    sub = parts[0] if parts else ""
+    gid_str = parts[1] if len(parts) > 1 else ""
 
-    async with async_session_factory() as session:
+    # finish() 抛出的 FinishedException 会跳过 get_session 的自动提交，
+    # 所以所有 DB 操作都在这个块内跑完，finish() 一律移到块外。
+    async with get_session() as session:
         # 确保权限组存在
         result = await session.execute(
             select(PermissionGroup).where(PermissionGroup.name == pg_name).limit(1)
@@ -660,63 +659,62 @@ async def _handle_log_target(event: MessageEvent, parts: list[str]):
             session.add(pg)
             await session.flush()
             session.add(PermissionGroupPerm(group_id=pg.id, perm_key=perm_key))
-            await session.commit()
-
-        sub = parts[0] if parts else ""
 
         if sub == "添加":
-            gid_str = parts[1] if len(parts) > 1 else ""
             if not gid_str.isdigit():
-                await manage_cmd.finish("用法: 群管理 告警日志目标 添加 <群号>")
-                return
-            gid = int(gid_str)
-            existing = await session.execute(
-                select(GroupPermBinding.id).where(
-                    GroupPermBinding.qq_group_id == gid,
-                    GroupPermBinding.permission_group_id == pg.id,
-                ).limit(1)
-            )
-            if existing.first() is None:
-                session.add(GroupPermBinding(qq_group_id=gid, permission_group_id=pg.id))
-                await session.commit()
-                perm_cache.delete("ban_word_log_targets")
-                await manage_cmd.finish(f"群 {gid} 已添加为告警日志接收群")
+                message = "用法: 群管理 告警日志目标 添加 <群号>"
             else:
-                await manage_cmd.finish(f"群 {gid} 已是告警日志接收群")
+                gid = int(gid_str)
+                existing = await session.execute(
+                    select(GroupPermBinding.id).where(
+                        GroupPermBinding.qq_group_id == gid,
+                        GroupPermBinding.permission_group_id == pg.id,
+                    ).limit(1)
+                )
+                if existing.first() is None:
+                    session.add(GroupPermBinding(qq_group_id=gid, permission_group_id=pg.id))
+                    perm_cache.delete("ban_word_log_targets")
+                    message = f"群 {gid} 已添加为告警日志接收群"
+                else:
+                    message = f"群 {gid} 已是告警日志接收群"
 
         elif sub == "移除":
-            gid_str = parts[1] if len(parts) > 1 else ""
             if not gid_str.isdigit():
-                await manage_cmd.finish("用法: 群管理 告警日志目标 移除 <群号>")
-                return
-            gid = int(gid_str)
-            result = await session.execute(
-                select(GroupPermBinding).where(
-                    GroupPermBinding.qq_group_id == gid,
-                    GroupPermBinding.permission_group_id == pg.id,
+                message = "用法: 群管理 告警日志目标 移除 <群号>"
+            else:
+                gid = int(gid_str)
+                result = await session.execute(
+                    select(GroupPermBinding).where(
+                        GroupPermBinding.qq_group_id == gid,
+                        GroupPermBinding.permission_group_id == pg.id,
+                    )
                 )
-            )
-            bindings = result.scalars().all()
-            for b in bindings:
-                await session.delete(b)
-            await session.commit()
-            perm_cache.delete("ban_word_log_targets")
-            await manage_cmd.finish(f"群 {gid} 已从告警日志接收群中移除")
+                bindings = result.scalars().all()
+                for b in bindings:
+                    await session.delete(b)
+                perm_cache.delete("ban_word_log_targets")
+                message = f"群 {gid} 已从告警日志接收群中移除"
 
         elif sub == "列表":
-            targets = await get_ban_word_log_targets()
-            if targets:
-                await manage_cmd.finish(
-                    f"告警日志接收群（共 {len(targets)} 个）：\n"
-                    + "\n".join(f"  群 {t}" for t in targets)
-                )
-            else:
-                await manage_cmd.finish("当前没有告警日志接收群")
+            # 该分支自带会话与缓存（get_ban_word_log_targets），留到块外查询
+            message = None
 
         else:
-            await manage_cmd.finish(
+            message = (
                 "告警日志目标 用法：\n"
                 "  群管理 告警日志目标 添加 <群号>\n"
                 "  群管理 告警日志目标 移除 <群号>\n"
                 "  群管理 告警日志目标 列表"
             )
+
+    if message is None:
+        targets = await get_ban_word_log_targets()
+        if targets:
+            message = (
+                f"告警日志接收群（共 {len(targets)} 个）：\n"
+                + "\n".join(f"  群 {t}" for t in targets)
+            )
+        else:
+            message = "当前没有告警日志接收群"
+
+    await manage_cmd.finish(message)

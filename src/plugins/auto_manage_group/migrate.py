@@ -18,7 +18,7 @@ import os
 from sqlalchemy import select
 
 from src.common import JsonUtils
-from src.common.database import async_session_factory
+from src.common.database import get_session
 from src.common.permission.models import (
     PermissionGroup,
     PermissionGroupPerm,
@@ -99,7 +99,7 @@ async def migrate_from_json(data_filename: str = "auto_manage_group.json") -> di
         stats["errors"].append("JSON 文件为空或不存在")
         return stats
 
-    async with async_session_factory() as session:
+    async with get_session() as session:
         # 确保权限组存在
         pg_map = await _ensure_permission_groups(session)
 
@@ -142,8 +142,6 @@ async def migrate_from_json(data_filename: str = "auto_manage_group.json") -> di
                     logger.info(
                         f"[migrate] 群 {group_id} → 权限组 {pg_name} ({pg.display_name})"
                     )
-
-        await session.commit()
 
     # 清除所有相关缓存
     perm_cache.clear_all()
