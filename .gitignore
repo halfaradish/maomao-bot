@@ -13,8 +13,10 @@ logs-dev
 *.bak
 cache
 .vscode
+src/plugins/refer_collector/data
 
-table_gen.so
+# C++ 插件编译产物（由 Dockerfile / scripts/entrypoint.sh 生成，不要提交）
+libs/
 
 # ai agent
 CLAUDE.md
@@ -22,6 +24,10 @@ CLAUDE.md
 !.claude/skills/
 docs/superpowers
 .zcode/
+
+# 本地开发附加服务与临时配置 (含凭据, 禁止入库)
+docker-compose.override.yml
+.tmp_openclaw_cfg.json
 
 # webui (Vite + Vue)
 node_modules/
@@ -37,7 +43,7 @@ __pycache__/
 *$py.class
 
 # C extensions
-#*.so
+*.so
 
 # Distribution / packaging
 .Python

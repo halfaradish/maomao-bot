@@ -1,34 +1,64 @@
-import { useCallback, useState } from "react";
-import { Outlet, useNavigate } from "react-router-dom";
+import { useCallback, useEffect, useRef } from "react";
+import { Outlet, useLocation, useNavigate } from "react-router-dom";
 import { motion } from "framer-motion";
 import { ErrorBoundary } from "react-error-boundary";
+import { useIsFetching } from "@tanstack/react-query";
 import clsx from "clsx";
 
 import { siteConfig } from "@/config/site";
 import { useAuthStore } from "@/store/authStore";
+import { useTheme, useLocalStorageState } from "@/hooks/useTheme";
+import { useConfirm } from "@/hooks/useConfirm";
 import PageBackground from "@/components/PageBackground";
 import Sidebar from "@/components/Sidebar";
 import BreadcrumbBar from "@/components/BreadcrumbBar";
 import ErrorFallback from "@/components/ErrorFallback";
+import ConfirmDialog from "@/components/ConfirmDialog";
+import PageLoading from "@/components/PageLoading";
 
 export default function DefaultLayout() {
-  const [openSideBar, setOpenSideBar] = useState(true);
-  const [isDark, setIsDark] = useState(
-    document.documentElement.classList.contains("dark")
+  const [openSideBar, setOpenSideBar] = useLocalStorageState<boolean>(
+    "diting_sidebar_open",
+    true
   );
+  const { isDark, toggleTheme } = useTheme();
   const navigate = useNavigate();
+  const { pathname } = useLocation();
   const logout = useAuthStore((s) => s.logout);
   const user = useAuthStore((s) => s.user);
 
-  const toggleTheme = useCallback(() => {
-    document.documentElement.classList.toggle("dark");
-    setIsDark((prev) => !prev);
-  }, []);
+  const contentRef = useRef<HTMLDivElement>(null);
+
+  // 路由切换平滑回顶
+  useEffect(() => {
+    contentRef.current?.scrollTo({ top: 0, behavior: "smooth" });
+  }, [pathname]);
+
+  // 仅首次加载数据时显示全局遮罩(后台 refetch 不闪烁)
+  const pending = useIsFetching({
+    predicate: (q) => q.state.status === "pending",
+  });
+
+  const {
+    isOpen: confirmOpen,
+    options,
+    confirm,
+    handleConfirm,
+    handleCancel,
+  } = useConfirm();
 
   const handleLogout = useCallback(() => {
-    logout();
-    navigate("/login");
-  }, [logout, navigate]);
+    confirm({
+      title: "退出登录",
+      message: "确定要退出登录吗？",
+      confirmText: "退出",
+      color: "danger",
+      onConfirm: () => {
+        logout();
+        navigate("/login");
+      },
+    });
+  }, [confirm, logout, navigate]);
 
   return (
     <div className="h-screen relative flex items-stretch overflow-hidden">
@@ -45,6 +75,7 @@ export default function DefaultLayout() {
       />
 
       <motion.div
+        ref={contentRef}
         layout
         initial={{ opacity: 0, scale: 0.98 }}
         animate={{ opacity: 1, scale: 1 }}
@@ -72,6 +103,19 @@ export default function DefaultLayout() {
           </motion.div>
         </ErrorBoundary>
       </motion.div>
+
+      <PageLoading loading={pending > 0} />
+
+      <ConfirmDialog
+        isOpen={confirmOpen}
+        title={options?.title ?? ""}
+        message={options?.message ?? ""}
+        confirmText={options?.confirmText}
+        cancelText={options?.cancelText}
+        color={options?.color}
+        onConfirm={handleConfirm}
+        onCancel={handleCancel}
+      />
     </div>
   );
 }

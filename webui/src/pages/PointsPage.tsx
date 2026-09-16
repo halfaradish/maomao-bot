@@ -16,6 +16,7 @@ import { Chip } from "@heroui/chip";
 import { motion, AnimatePresence } from "framer-motion";
 
 import { usePermissionPoints, usePermissionPlugins } from "@/api/hooks";
+import { GLASS_CARD_CLASS, TABLE_CLASS_NAMES, PAGE_SIZE } from "@/constants";
 
 export default function PointsPage() {
   const [page, setPage] = useState(1);
@@ -24,12 +25,12 @@ export default function PointsPage() {
   const [showDropdown, setShowDropdown] = useState(false);
   const wrapperRef = useRef<HTMLDivElement>(null);
 
-  const { data, isLoading } = usePermissionPoints(page, 20, activeFilter || undefined);
+  const { data, isLoading } = usePermissionPoints(page, PAGE_SIZE, activeFilter || undefined);
   const { data: pluginsData } = usePermissionPlugins();
 
   const points = data?.data?.items ?? [];
   const total = data?.data?.total ?? 0;
-  const totalPages = Math.ceil(total / 20);
+  const totalPages = Math.ceil(total / PAGE_SIZE);
 
   const pluginNames = useMemo(() => {
     return pluginsData?.data?.plugins ?? [];
@@ -98,9 +99,11 @@ export default function PointsPage() {
       transition={{ duration: 0.3 }}
       className="space-y-4"
     >
-      <h1 className="text-2xl font-bold text-default-900">权限点目录</h1>
+      <h1 className="text-2xl font-bold text-default-900 dark:text-white">
+        权限点目录
+      </h1>
 
-      <Card className="bg-white/60 dark:bg-black/40 backdrop-blur-xl border border-white/40 dark:border-white/10 shadow-sm">
+      <Card className={GLASS_CARD_CLASS}>
         <CardBody className="space-y-4">
           {/* Filter */}
           <div className="flex gap-2 items-end">
@@ -127,7 +130,7 @@ export default function PointsPage() {
                     animate={{ opacity: 1, y: 0, scaleY: 1 }}
                     exit={{ opacity: 0, y: -8, scaleY: 0.95 }}
                     transition={{ duration: 0.15, ease: "easeOut" }}
-                    className="absolute z-50 top-full mt-1 w-full origin-top bg-white dark:bg-default-50 border border-default-200 rounded-lg shadow-lg max-h-[300px] overflow-y-auto"
+                    className="absolute z-50 top-full mt-1 w-full origin-top bg-white/80 dark:bg-default-50/80 backdrop-blur-xl border border-white/40 dark:border-white/10 rounded-2xl shadow-lg max-h-[300px] overflow-y-auto"
                   >
                     {filteredPlugins.map((name, i) => (
                       <motion.div
@@ -152,20 +155,19 @@ export default function PointsPage() {
               </AnimatePresence>
             </div>
             {activeFilter && (
-              <Button variant="light" onPress={handleClear}>
+              <Button
+                variant="flat"
+                radius="full"
+                className="bg-default-100 dark:bg-default-50/50 text-default-600 font-medium"
+                onPress={handleClear}
+              >
                 清除
               </Button>
             )}
           </div>
 
           {/* Table */}
-          <Table
-            radius="sm"
-            classNames={{
-              wrapper: "bg-transparent shadow-none",
-              th: "bg-white/40 dark:bg-white/5 backdrop-blur-md text-default-600",
-            }}
-          >
+          <Table radius="sm" classNames={TABLE_CLASS_NAMES}>
             <TableHeader>
               <TableColumn>插件</TableColumn>
               <TableColumn>权限点 Key</TableColumn>

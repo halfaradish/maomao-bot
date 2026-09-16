@@ -8,6 +8,7 @@ import {
   MdSecurity,
   MdPerson,
 } from "react-icons/md";
+import { GLASS_CARD_CLASS } from "@/constants";
 
 const navCards = [
   {
@@ -78,7 +79,9 @@ export default function DashboardPage() {
       className="space-y-6"
     >
       <div>
-        <h1 className="text-2xl font-bold text-default-900">权限管理</h1>
+        <h1 className="text-2xl font-bold text-default-900 dark:text-white">
+          权限管理
+        </h1>
         <p className="text-default-500 mt-1">选择要管理的功能模块</p>
       </div>
 
@@ -95,14 +98,14 @@ export default function DashboardPage() {
               <Card
                 isPressable
                 onPress={() => navigate(card.href)}
-                className="bg-white/60 dark:bg-black/40 backdrop-blur-xl border border-white/40 dark:border-white/10 shadow-sm hover:shadow-lg hover:-translate-y-1 transition-all duration-300"
+                className={`${GLASS_CARD_CLASS} hover:shadow-lg hover:-translate-y-1 duration-300`}
               >
                 <CardBody className="flex flex-row items-center gap-4 p-6">
                   <div className={`p-3 rounded-xl ${card.iconBg}`}>
                     <Icon size={28} className={card.iconColor} />
                   </div>
                   <div>
-                    <h2 className="text-lg font-bold text-default-900">
+                    <h2 className="text-lg font-bold text-default-900 dark:text-white">
                       {card.title}
                     </h2>
                     <p className="text-sm text-default-500">

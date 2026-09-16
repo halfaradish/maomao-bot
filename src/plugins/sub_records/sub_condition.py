@@ -10,13 +10,9 @@ from .table_generator import generate_table_png_bytes
 from ...common import get_icpc_db_connection, utils
 from ...common.timer import timer
 
-import time
-
 config = get_plugin_config(Config)
 
-t0 = time.perf_counter()
-t1 = time.perf_counter()
-logger.info(f"① 获取数据耗时：{(t1 - t0) * 1000:.2f} ms")
+
 class Submission(object):
 
     """
@@ -142,18 +138,21 @@ class Submission(object):
                 item['role_name'],
                 item['school'].strip()
             ])
-        t1=time.perf_counter()
 
         # 4. 用 C++ 生成 PNG
         try:
             with timer("cpp图片生成"):
                 png_bytes = await generate_table_png_bytes(headers, rows)
-            logger.success("过题表格图片已生成")
-            return (True, "过题表格生成成功", png_bytes)
         except Exception as e:
             logger.error(f"表格图片生成失败：{str(e)}", exc_info=True)
             return (False, "表格图片生成失败", None)
 
+        if not png_bytes:
+            logger.error("表格图片生成失败：没有取到图片数据")
+            return (False, "表格图片生成失败", None)
+
+        logger.success("过题表格图片已生成")
+        return (True, "过题表格生成成功", png_bytes)
 
 
 test_table = on_command("测表格", priority=5, block=True)

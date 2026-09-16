@@ -16,9 +16,11 @@ html {
 body {
   margin: 0;
   min-height: 100vh;
+  letter-spacing: 0.02em;
+  text-rendering: optimizeLegibility;
 }
 
-/* Custom scrollbar — NapCat style */
+/* Custom scrollbar — NapCat nc_pink style (樱花粉) */
 ::-webkit-scrollbar {
   width: 6px;
   height: 6px;
@@ -26,15 +28,23 @@ body {
 
 ::-webkit-scrollbar-track {
   background: transparent;
-}
-
-::-webkit-scrollbar-thumb {
-  background: hsl(var(--heroui-default-300));
   border-radius: 3px;
 }
 
+::-webkit-scrollbar-thumb {
+  background: rgba(255, 182, 193, 0.4);
+  border-radius: 3px;
+  transition: all 0.3s;
+}
+
 ::-webkit-scrollbar-thumb:hover {
-  background: hsl(var(--heroui-default-400));
+  background: rgba(255, 127, 172, 0.6);
+}
+
+/* 文本选中 — 粉色 */
+::selection {
+  background-color: #ffcdba;
+  color: #fff;
 }
 
 /* Smooth scrolling */
@@ -47,4 +57,22 @@ body {
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
     "Helvetica Neue", Arial, "Noto Sans", sans-serif, "Apple Color Emoji",
     "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji";
+}
+
+/* 隐藏滚动条工具类 (NapCat 同款) */
+@layer components {
+  .hide-scrollbar::-webkit-scrollbar {
+    width: 0;
+    height: 0;
+    background-color: transparent;
+  }
+  .hide-scrollbar::-webkit-scrollbar-thumb {
+    background-color: transparent;
+  }
+  .hide-scrollbar::-webkit-scrollbar-track {
+    background-color: transparent;
+  }
+  .hide-scrollbar {
+    scrollbar-width: none;
+  }
 }

@@ -6,19 +6,28 @@ echo "=== DiTing Entrypoint ==="
 # ═══════════════════════════════════════════════════════════════
 # C++ 插件增量编译
 # ═══════════════════════════════════════════════════════════════
-# 源码挂载后镜像内预编译的 .so 被宿主目录覆盖。
-# -nt 守卫：只在 .cpp 比 .so 新或 .so 缺失时才编译。
-# table_gen.cpp 变更频率远低于容器重启频率，99% 的启动跳过此步。
+# 产物编译到 libs/libtablegen.so（不被源码挂载覆盖），镜像里已有一份，
+# 只有源码更新、产物缺失或产物依赖在当前镜像里解析不了时才重编译。
+# 依赖检查必要的原因：基础镜像换 Debian 大版本时 libjsoncpp 的 soname 会变，
+# 旧产物会 dlopen 失败，此时必须重新链接。
 CPP_SRC="src/plugins/sub_records/table_gen.cpp"
-CPP_SO="src/plugins/sub_records/table_gen.so"
-if [ -f "$CPP_SRC" ]; then
-    if [ ! -f "$CPP_SO" ] || [ "$CPP_SRC" -nt "$CPP_SO" ]; then
-        echo "[entrypoint] Recompiling table_gen.so..."
-        g++ -fPIC -shared "$CPP_SRC" -o "$CPP_SO" \
-            $(pkg-config --cflags --libs cairo pango pangocairo jsoncpp) \
-            -O3
-        echo "[entrypoint] C++ plugin recompiled"
-    fi
+CPP_SO="libs/libtablegen.so"
+
+needs_rebuild() {
+    if [ ! -f "$CPP_SO" ]; then return 0; fi
+    if [ "$CPP_SRC" -nt "$CPP_SO" ]; then return 0; fi
+    if ! ldd "$CPP_SO" >/dev/null 2>&1; then return 0; fi
+    if ldd "$CPP_SO" 2>/dev/null | grep -q "not found"; then return 0; fi
+    return 1
+}
+
+if [ -f "$CPP_SRC" ] && needs_rebuild; then
+    echo "[entrypoint] Recompiling $CPP_SO..."
+    mkdir -p "$(dirname "$CPP_SO")"
+    g++ -fPIC -shared "$CPP_SRC" -o "$CPP_SO" \
+        $(pkg-config --cflags --libs cairo pango pangocairo jsoncpp) \
+        -O3
+    echo "[entrypoint] C++ plugin recompiled"
 fi
 
 # ═══════════════════════════════════════════════════════════════

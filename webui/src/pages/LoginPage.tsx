@@ -9,6 +9,9 @@ import { MdPerson, MdLock } from "react-icons/md";
 
 import { apiPost } from "@/api/client";
 import { useAuthStore } from "@/store/authStore";
+import BrandIcon from "@/components/BrandIcon";
+import PageBackground from "@/components/PageBackground";
+import { GLASS_CARD_CLASS } from "@/constants";
 
 interface LoginResponse {
   token: string;
@@ -51,22 +54,17 @@ export default function LoginPage() {
 
   return (
     <div className="min-h-screen flex items-center justify-center p-4 relative">
-      {/* Background */}
-      <div className="fixed inset-0 -z-10">
-        <div className="absolute inset-0 bg-gradient-to-br from-background via-background to-background" />
-        <div className="absolute -top-1/4 -left-1/4 w-[600px] h-[600px] rounded-full opacity-30 blur-[120px] bg-primary/40" />
-        <div className="absolute bottom-1/4 right-1/4 w-[400px] h-[400px] rounded-full opacity-25 blur-[80px] bg-secondary/30" />
-      </div>
+      <PageBackground />
 
       <motion.div
         initial={{ opacity: 0, y: 30, scale: 0.95 }}
         animate={{ opacity: 1, y: 0, scale: 1 }}
         transition={{ duration: 0.5, type: "spring", stiffness: 100 }}
       >
-        <Card className="w-full max-w-md bg-white/60 dark:bg-black/40 backdrop-blur-xl border border-white/40 dark:border-white/10 shadow-xl">
+        <Card className={`w-full max-w-md ${GLASS_CARD_CLASS}`}>
           <CardHeader className="flex flex-col items-center gap-2 pt-8 pb-4">
             <div className="flex items-center gap-3">
-              <div className="h-8 w-1.5 bg-primary rounded-full shadow-sm" />
+              <BrandIcon className="w-9 h-9" />
               <h1 className="text-2xl font-bold text-default-900 dark:text-white">
                 谛听 · 权限管理
               </h1>
@@ -111,8 +109,9 @@ export default function LoginPage() {
                 color="primary"
                 size="lg"
                 radius="full"
+                variant="shadow"
                 isLoading={loading}
-                className="mt-2 font-semibold shadow-lg hover:shadow-xl transition-all duration-300"
+                className="mt-2 font-semibold"
               >
                 登录
               </Button>

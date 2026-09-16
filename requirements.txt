@@ -3,6 +3,7 @@ aiohttp==3.12.15
 Pillow==11.3.0
 playwright==1.55.0
 pydantic==2.11.9
+typing-extensions>=4.12
 python-dotenv==1.1.1
 redis==6.4.0
 Requests==2.32.5
