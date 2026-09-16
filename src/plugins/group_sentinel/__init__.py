@@ -9,6 +9,7 @@ from sqlalchemy import select
 from .config import Config
 from . import permissions  # noqa: F401 — 注册权限点到权限系统
 from .auditor import audit_join_request
+from .notifier import notify_pending_review, email_status_text
 from ..auto_manage_group.group_checker import is_group_feature_enabled
 from src.common.plugin_meta import PluginGroupEnum, PluginBadgeColor
 from src.common.database import async_session_factory
@@ -73,23 +74,50 @@ else:
                 f"comment={comment}"
             )
         else:
-            # await event.reject(bot, reason="学号前6位错误或虚假。有异议可上报群主1950482412")
+            # 初审未通过时不批准也不拒绝，保留申请供管理员人工复核。
             logger.info(
                 f"[group_sentinel] 入群申请挂起待人工复核: user={user_id} group={group_id} "
                 f"reason={reason}"
             )
 
-            # 发送群通知，供群主/群友人工复核
+            # 先发送群内审核结果，避免 SMTP 耗时延迟群主/群友的人工复核。
+            initial_email_text = (
+                "邮件通知：处理结果稍后通知"
+                if plugin_config.group_sentinel_email_enabled
+                else email_status_text("disabled")
+            )
             notify_msg = (
                 f"⚠️ 入群申请【挂起待人工审查】\n"
                 f"申请人：{user_id}\n"
                 f"初审标记原因：{reason}\n"
-                f"申请信息：{comment or '(空)'}"
+                f"申请信息：{comment or '(空)'}\n"
+                f"{initial_email_text}"
             )
             try:
                 await bot.send_group_msg(group_id=group_id, message=notify_msg)
             except Exception as e:
-                logger.warning(f"[group_sentinel] 发送拒绝通知失败: {e}")
+                logger.warning(f"[group_sentinel] 发送待复核通知失败: {e}")
+
+            if plugin_config.group_sentinel_email_enabled:
+                # 在初审挂起时通知申请人；不等待最终拒绝，也不创建游离后台任务。
+                email_status = await notify_pending_review(
+                    bot_id=bot.self_id,
+                    group_id=group_id,
+                    user_id=user_id,
+                    request_flag=event.flag,
+                    reason=reason,
+                    config=plugin_config,
+                )
+                try:
+                    await bot.send_group_msg(
+                        group_id=group_id,
+                        message=(
+                            f"申请人：{user_id}\n"
+                            f"{email_status_text(email_status)}"
+                        ),
+                    )
+                except Exception as e:
+                    logger.warning(f"[group_sentinel] 发送邮件结果通知失败: {e}")
 
     # ── 启动时自动创建默认权限组 ──
     @get_driver().on_startup
