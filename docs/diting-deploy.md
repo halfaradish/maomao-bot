@@ -332,6 +332,8 @@ sudo DITING_DEPLOY_DRY_RUN=1 bash scripts/diting-agent.sh drain   # 只走预检
 | `DITING_DEPLOY_ALLOW_DIRTY` | `0` | 置 1 允许在工作区有未提交改动时执行（会 `git checkout -f` 丢弃它们） |
 | `DITING_DEPLOY_DRY_RUN` | `0` | 置 1 只走预检与状态写入 |
 | `DITING_DEPLOY_HEARTBEAT_REMOTE` | `1` | 置 0 心跳不做 `git ls-remote`（省一次网络往返，但看不到落后提交数） |
+| `HOME` | 模板里已置上 `/root` | systemd 的服务进程**不设置 `HOME`**，不置它执行器就读不到 `/root/.gitconfig`（`credential.helper`、`safe.directory` 都在那份文件里），会表现为「可疑的仓库所有权」或「公开仓库也被要求登录」 |
+| `DITING_DEPLOY_GIT_CREDENTIAL_FILE` | `/root/.git-credentials` | 逐命令注入给 git 的凭据文件（**文件存在才注入**，留空即不注入）。给「平台要求登录」的仓库用，内容形如 `https://<用户名>:<私人令牌>@gitee.com` |
 
 ---
 
@@ -355,7 +357,8 @@ sudo DITING_DEPLOY_DRY_RUN=1 bash scripts/diting-agent.sh drain   # 只走预检
 | 装第二个环境时 install.sh 直接报错退出 | 它在保护你：检测到已有单元指向同一个目录。两个环境必须各有一份独立 clone（见 4.3），换目录后用 `--name` 再装 |
 | pull 成功但代码没变 | 看 `state.json` 的 `behind`；可能是分支配错（`DITING_DEPLOY_BRANCH`）或远端确实没新提交 |
 | 命令发出去**机器人完全没反应**（不是回「没有权限」，而是什么都不回） | 命令没匹配上任何 matcher。最常见是 `DITING_DEPLOY_CMD` 自己又加了一次前缀：`.env.dev` 的 `COMMAND_START=["dev-"]` 已经把命令拼成 `dev-diting`，命令名再填 `dev-diting` 就变成 `dev-dev-diting`。**命令名保持默认 `diting`**。排查：发一次 `dev-dev-diting`（不带子命令），会回帮助文本，而帮助里的命令形态是按真实前缀算的，会直接告诉你正确写法；启动日志里也会有一条 `[diting_deploy] DITING_DEPLOY_CMD=... 已经带了 COMMAND_START 前缀` 的 warning |
-| `state.json` 里 `branch`/`local_sha`/`remote_sha` 全是空、`dirty` 却是 `false` | 执行器读不到 git。`git_ok: false` + `warnings` 里会写明原因（2026-09-15 之后的版本才有这两个字段）。最常见是**执行器以 root 运行而仓库属主是别的用户**（git 的 dubious ownership）—— 新版本已用逐命令 `safe.directory` 解决；老版本会表现为 `/diting pull` 能用但状态全是空、**脏工作区保护静默失效**。手工确认：`sudo git -C <仓库> rev-parse --short HEAD`，若报 `detected dubious ownership` 就是这个原因 |
+| `state.json` 里 `branch`/`local_sha`/`remote_sha` 全是空、`dirty` 却是 `false` | 执行器读不到 git。`git_ok: false` + `warnings` 里会写明原因（2026-09-15 之后的版本才有这两个字段）。最常见是**执行器以 root 运行而仓库属主是别的用户**（git 的 dubious ownership）—— 新版本已用逐命令 `safe.directory` 解决；老版本会表现为 `/diting pull` 能用但状态全是空、**脏工作区保护静默失效**。手工确认：`sudo git -C <仓库> rev-parse --short HEAD`，若报 `detected dubious ownership` 就是这个原因。**同一个根因**（systemd 不设 `HOME` → 执行器读不到 root 的全局 git 配置）也会让凭据失效，见下面那条 |
+| 执行器报 `could not read Username for 'https://…'`（1 秒内失败、`exit_code: 3`、QQ 里显示「拉取或切换分支失败」） | 远端回了「需要认证」，而执行器手头没有可用凭据。systemd 的服务进程**不设置 `HOME`**，git 因此读不到 `/root/.gitconfig`（`credential.helper=store` 在里面），也就找不到 `/root/.git-credentials` —— 公开仓库也会退回匿名访问，而 gitee 这类平台会对匿名请求回 401。新版执行器已改为**逐命令注入**：文件存在就加 `-c credential.helper=store --file=<DITING_DEPLOY_GIT_CREDENTIAL_FILE>`（默认 `/root/.git-credentials`），不依赖 `HOME`、不改宿主全局配置；env 模板也预置了 `HOME=/root`。区分「配置问题」还是「平台问题」：在你的交互 shell 里跑 `sudo GIT_TERMINAL_PROMPT=0 git -C <仓库> ls-remote origin`，**它能成功而执行器失败**就是这个问题。想复现执行器的环境：`sudo systemd-run --wait --pipe --collect -p EnvironmentFile=/etc/default/diting-agent /bin/bash -c 'echo HOME=${HOME:-<未设置>}; git config --get-all credential.helper'`。注意这只解决**执行器（root）**：你自己以别的用户 pull 仍会被问，那需要给自己的 `~/.gitconfig` 单独配一份，或把 remote 换成 SSH + 部署公钥 |
 | `state.json` 报「宿主机 PATH 里找不到 git」 | systemd 服务的 PATH 比登录 shell 窄。确认 `command -v git`（root 身份）能找到，必要时给单元加 `Environment=PATH=/usr/local/bin:/usr/bin:/bin` |
 | build 报「跳过重建」 | `BUILD_MODE=auto` 且构建指纹未变（依赖/Dockerfile/`.cpp`/webui 都没动）。改 `always` 可强制 |
 | build 跑了大约半小时忽然无声无息结束，`status/<job_id>.json` 停在 `"state": "running"` / `"step": "rebuild"`，QQ 里既没 ❌ 也没 ✅ | systemd 的 `TimeoutStartSec` 到点了，整个 cgroup 被 SIGTERM 掉，执行器来不及写终态。单元模板的早期版本误设成 `1800`（30 分钟），而一次全量重建实测约 28 分钟，正好被砍在 export 阶段。修法：确认 `systemctl cat diting-agent.service` 里是 `TimeoutStartSec=7200`（重装一次单元即可刷新），再清掉僵尸作业 `rm -f data/deploy/status/<job_id>.json data/deploy/running/<job_id>.json`。注意僵尸作业是「非终态 + 没打回报标记」，所以**每次容器重启都会被重新播报一条 🔄**，而它的 `running/` 残留会让后续作业被判「已有任务在执行」（残留超 30 分钟后由 `cleanup_stale_running` 自动清掉） |

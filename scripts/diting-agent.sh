@@ -76,6 +76,8 @@ BUILD_MODE="${DITING_DEPLOY_BUILD_MODE:-auto}"
 RELOAD_TIMEOUT="${DITING_DEPLOY_RELOAD_TIMEOUT:-120}"
 HEALTH_TIMEOUT="${DITING_DEPLOY_HEALTH_TIMEOUT:-120}"
 GIT_TIMEOUT="${DITING_DEPLOY_GIT_TIMEOUT:-300}"
+# 逐命令注入给 git 的凭据文件（见下面的 GIT_SAFE）。留空 = 不注入。
+GIT_CRED_FILE="${DITING_DEPLOY_GIT_CREDENTIAL_FILE:-/root/.git-credentials}"
 ALLOW_DIRTY="${DITING_DEPLOY_ALLOW_DIRTY:-0}"
 DRY_RUN="${DITING_DEPLOY_DRY_RUN:-0}"
 HEARTBEAT_REMOTE="${DITING_DEPLOY_HEARTBEAT_REMOTE:-1}"
@@ -139,6 +141,16 @@ with_timeout() { # $1=秒数，其余为命令
 # 而 stderr 被 2>/dev/null 吞掉 —— 极难排查，且会让「脏工作区」保护静默失效。
 # 用逐命令的 -c safe.directory 而不是写全局 git config：不改宿主状态、幂等、可重复。
 GIT_SAFE=(-c "safe.directory=$ROOT")
+
+# 凭据走同一招，原因也是 systemd：服务进程**没有 HOME**，git 因此读不到
+# /root/.gitconfig 里的 credential.helper，也就找不到 /root/.git-credentials，
+# 于是公开仓库也会退回匿名访问 —— 若平台限速/要求登录（gitee 就会），
+# 报错是「could not read Username ... 没有那个设备或地址」，1 秒即失败。
+# 逐命令注入既不依赖 HOME，也不改宿主 git 全局配置；文件不存在就什么都不加，
+# 保持「没配凭据的机器行为完全不变」。
+if [ -n "$GIT_CRED_FILE" ] && [ -f "$GIT_CRED_FILE" ]; then
+    GIT_SAFE+=(-c "credential.helper=store --file=$GIT_CRED_FILE")
+fi
 gitr() { git "${GIT_SAFE[@]}" -C "$ROOT" "$@"; }
 
 _mtime_of() { stat -c %Y "$1" 2>/dev/null || stat -f %m "$1" 2>/dev/null || echo 0; }
