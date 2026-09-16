@@ -40,22 +40,30 @@ src/common/permission/
   ├─ models.py            ← 9 个 SQLAlchemy 模型（8 张表）
   └─ auto_register.py     ← 启动钩子：建表 + 同步权限点到数据库
        │
-       ├──────────────────────────────────────────┐
-       ▼                                          ▼
-src/plugins/permission_manager/          src/api/
-  QQ 聊天管理面板                           REST API (WebUI 后端)
-  └─ 权限/perm 命令                         ├─ auth.py       认证 (JWT)
-                                             └─ permissions/   CRUD (30 端点)
-                                                  ├─ __init__.py  父router + 鉴权
-                                                  ├─ helpers.py   分页/序列化
-                                                  ├─ schemas.py   请求模型
-                                                  └─ blacklist/whitelist/groups/
-                                                     bindings/points/status/cache.py
-                                                  │
-                                                  ▼
-                                            webui/
-                                              Vue 3 + Vite SPA
-                                              └─ 9 个管理视图
+       │
+       ▼
+src/plugins/permission_manager/          ← QQ 聊天管理面板（包，12 模块）
+  ├─ __init__.py   装配：__plugin_meta__ + 导入触发注册
+  ├─ runtime.py    配置 + 唯一的 perm_cmd 匹配器（其余模块都从这里取）
+  ├─ dispatch.py   `权限` 子命令分发（@perm_cmd.handle()）
+  ├─ login.py      登录验证码 + 二次确认（@perm_cmd.got()）
+  ├─ helpers.py    ArgToken / _tokenize_arguments / _try_parse_qq / _build_help_text
+  ├─ guard.py      _ensure_superuser / _invalidate_related_cache
+  ├─ blacklist.py / whitelist.py / groups.py / bindings.py / view.py
+  └─ config.py / permissions.py（配置模型与权限点注册）
+
+src/api/
+  ├─ auth.py                认证 (JWT)
+  └─ permissions/           权限管理 CRUD (30 端点)
+       ├─ __init__.py       父router + 鉴权
+       ├─ helpers.py        分页/序列化
+       ├─ schemas.py        请求模型
+       └─ blacklist/whitelist/groups/bindings/points/status/cache.py
+            │
+            ▼
+webui/
+  Vue 3 + Vite SPA
+  └─ 9 个管理视图
 ```
 
 | 组件 | 说明 |
@@ -65,7 +73,7 @@ src/plugins/permission_manager/          src/api/
 | 注册表 | `PermissionRegistry` — 内存单例，插件 import 时收集权限点定义 |
 | NoneBot 适配 | `permission_checker(perm_key)` → `Permission` 对象，可与 `SUPERUSER` 组合 |
 | 启动同步 | `auto_register.py` 在 startup 时建表 + 将注册表同步到 `permission_points` 表 |
-| 管理面板 | `permission_manager` 插件，通过 QQ 聊天命令管理全部权限配置 |
+| 管理面板 | `permission_manager` 插件（`src/plugins/permission_manager/`，12 模块的包），通过 QQ 聊天命令管理全部权限配置 |
 
 **核心约束**：
 - 权限 key 格式：`plugin_name:action`（例如 `group_ban:ban`）
@@ -386,11 +394,11 @@ perm 登录/login
 
 ### 5.8 参数解析说明
 
-命令参数支持 `@提及` 和纯文本两种形式。解析函数 `_tokenize_arguments()` 将消息段拆分为 `ArgToken` 列表：`at` 类型的 token 取其 `qq` 属性，`text` 类型的 token 按空格分词。
+命令参数支持 `@提及` 和纯文本两种形式。解析函数 `_tokenize_arguments()`（在 `src/plugins/permission_manager/helpers.py`）将消息段拆分为 `ArgToken` 列表：`at` 类型的 token 取其 `qq` 属性，`text` 类型的 token 按空格分词。
 
 ### 5.9 缓存失效策略
 
-所有管理操作都会通过 `_invalidate_related_cache()` 失效相关缓存：
+所有管理操作都会通过 `_invalidate_related_cache()`（在 `src/plugins/permission_manager/guard.py`）失效相关缓存：
 
 | 操作类型 | 失效策略 | 示例 |
 |---|---|---|
@@ -538,7 +546,7 @@ async def external_sync():
 ### 7.3 注意事项
 
 - 缓存是进程内内存存储，**多进程部署不共享**——每个进程各自独立缓存
-- 管理面板的 `_invalidate_related_cache()` 已覆盖所有内置修改场景，不需要额外处理
+- 管理面板的 `_invalidate_related_cache()`（`src/plugins/permission_manager/guard.py`）已覆盖所有内置修改场景，不需要额外处理
 - TTL 60 秒意味着：即使不手动失效缓存，修改也最多 60 秒后生效
 - `clear_pattern` 做的是子串包含匹配（`in` 操作符），不是严格前缀匹配
 

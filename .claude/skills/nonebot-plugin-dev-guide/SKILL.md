@@ -236,7 +236,7 @@ __plugin_meta__ = PluginMetadata(
 )
 ```
 
-**复杂版** (from [permission_manager/__init__.py](../../src/plugins/permission_manager/__init__.py))：
+**复杂版** (from [permission_manager/__init__.py](../../src/plugins/permission_manager/__init__.py)，子命令分发见 [dispatch.py](../../src/plugins/permission_manager/dispatch.py))：
 
 ```python
 __plugin_meta__ = PluginMetadata(
@@ -1048,7 +1048,7 @@ async def _(bot: Bot):
 | [like](../../src/plugins/like/) | 多命令+别名, 数据库直接访问, APScheduler | DB + 调度器模式 |
 | [contest_reminder](../../src/plugins/contest_reminder/) | on_command + add_job cron/date, 合并转发 | 定时任务密集型 |
 | [group_sentinel](../../src/plugins/group_sentinel/) | 权限点注册, 禁用模式, on_request, 启动钩子 | 生产级多模式插件 |
-| [permission_manager](../../src/plugins/permission_manager/) | 复杂命令解析, 完整 DB CRUD, 缓存管理, matcher.got | 权限系统集成 |
+| [permission_manager](../../src/plugins/permission_manager/) | 多模块包拆分（runtime 共享 matcher / dispatch 子命令分发 / 完整 DB CRUD / 缓存失效 / matcher.got 二次确认） | 权限系统集成 |
 | [logging_info](../../src/plugins/logging_info/) | on_message 监听, DAO 模式, 事件序列化 | 消息日志机器人 |
 | [todo_reminder](../../src/plugins/todo_reminder/) | 多模块插件, 自然语言解析, 调度器集成 | 复杂业务逻辑 |
 | [group_file_manager](../../src/plugins/group_file_manager/) | 禁用模式, on_notice (upload), 条件导入, FK 迁移 | 文件管理 + 条件加载 |
