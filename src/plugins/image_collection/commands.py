@@ -1,7 +1,6 @@
 import base64
 from math import ceil
 
-from nonebot import get_driver
 from nonebot.adapters.onebot.v11 import MessageSegment
 
 from .config import Config
@@ -18,10 +17,6 @@ _HELP = """图片收藏命令：
 /图片 帮助 - 显示本帮助
 
 仅管理员可使用；可在私聊或群聊中执行。"""
-
-
-def is_admin(user_id: str) -> bool:
-    return user_id in get_driver().config.superusers
 
 
 async def execute_command(

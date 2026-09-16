@@ -11,15 +11,15 @@ from nonebot.adapters.onebot.v11 import Bot, MessageEvent, GroupMessageEvent
 from nonebot.exception import FinishedException
 from nonebot.typing import T_State
 
+from src.common.permission import ADMIN_PERM_KEY, check_permission
 from src.common.permission.cache import perm_cache
 
-from .guard import _ensure_superuser
 from .runtime import perm_cmd
 
 
 async def _handle_login(bot: Bot, event: MessageEvent, state: T_State):
     """处理 `权限 登录` 子命令：生成Web面板临时密码，进入二次确认"""
-    if not await _ensure_superuser(event):
+    if not await check_permission(event, ADMIN_PERM_KEY):
         logger.warning(f"用户 {event.user_id} 尝试获取登录验证码但权限不足")
         await perm_cmd.finish("你没有权限执行此操作")
 

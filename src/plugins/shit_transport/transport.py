@@ -25,7 +25,7 @@ from . import dao
 from . import permissions  # noqa: F401
 from ...config import QQControlConfig
 from src.common.plugin_meta import PluginGroupEnum, PluginBadgeColor
-from src.common.permission import check_permission, get_bound_group_ids
+from src.common.permission import ADMIN_PERM_KEY, check_permission, get_bound_group_ids
 from src.common.permission.cache import perm_cache
 from src.common.database import async_session_factory, ensure_tables
 from src.common.models.shit_transport_models import ShitTransportStats
@@ -350,7 +350,7 @@ async def handle_transport(bot: Bot, event: GroupMessageEvent, args: Message = C
 
         elif command in ["addpost", "添加发送"]:
             # 添加可发送群组（仅超级管理员）
-            if str(event.user_id) not in bot.config.superusers:
+            if not await check_permission(event, ADMIN_PERM_KEY):
                 await bot.send(event=event, message="仅超级管理员可执行此操作")
                 return
             if len(params) < 2 or not params[1].isdigit():
@@ -373,7 +373,7 @@ async def handle_transport(bot: Bot, event: GroupMessageEvent, args: Message = C
 
         elif command in ["addreceive", "添加接收"]:
             # 添加可接收群组（仅超级管理员）
-            if str(event.user_id) not in bot.config.superusers:
+            if not await check_permission(event, ADMIN_PERM_KEY):
                 await bot.send(event=event, message="仅超级管理员可执行此操作")
                 return
             if len(params) < 2 or not params[1].isdigit():
@@ -395,7 +395,7 @@ async def handle_transport(bot: Bot, event: GroupMessageEvent, args: Message = C
 
         elif command in ["rmpost", "删除发送", "移除发送"]:
             # 删除可发送群组（仅超级管理员）
-            if str(event.user_id) not in bot.config.superusers:
+            if not await check_permission(event, ADMIN_PERM_KEY):
                 await bot.send(event=event, message="仅超级管理员可执行此操作")
                 return
             if len(params) < 2 or not params[1].isdigit():
@@ -412,7 +412,7 @@ async def handle_transport(bot: Bot, event: GroupMessageEvent, args: Message = C
 
         elif command in ["rmreceive", "删除接收", "移除接收"]:
             # 删除可接收群组（仅超级管理员）
-            if str(event.user_id) not in bot.config.superusers:
+            if not await check_permission(event, ADMIN_PERM_KEY):
                 await bot.send(event=event, message="仅超级管理员可执行此操作")
                 return
             if len(params) < 2 or not params[1].isdigit():

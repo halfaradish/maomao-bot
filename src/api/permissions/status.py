@@ -10,7 +10,7 @@ from src.common.permission.models import (
     UserBlacklist,
     UserWhitelist,
 )
-from src.common.permission.supervisor import is_superuser
+from src.common.permission import ADMIN_PERM_KEY, user_has_permission
 from src.config.response import success
 
 router = APIRouter()
@@ -23,12 +23,12 @@ async def get_user_status(
 ):
     """聚合查询指定用户的完整权限状态。
 
-    返回：是否为超管、黑名单/白名单状态、所属权限组（含权限点）、
+    返回：是否为管理员、黑名单/白名单状态、所属权限组（含权限点）、
     以及通过群绑定获得的权限组。
     """
     async with async_session_factory() as session:
-        # 1. Superuser check
-        superuser = is_superuser(user_id)
+        # 1. Admin check（持有管理员权限点；这里无群语境，只统计直属成员关系）
+        is_admin = await user_has_permission(user_id, ADMIN_PERM_KEY)
 
         # 2. Blacklist check
         bl = (await session.execute(
@@ -67,7 +67,7 @@ async def get_user_status(
     return success(
         data={
             "user_id": user_id,
-            "is_superuser": superuser,
+            "is_admin": is_admin,
             "blacklisted": {
                 "reason": bl.reason,
                 "created_by": bl.created_by,

@@ -11,6 +11,7 @@ from .config import Config
 from .get_plugin_usage import get_help_usage, get_plugin_detail
 from .img_generator import get_img, get_detail_img, refresh_img, preheat, shutdown_browser
 from src.common.plugin_meta import PluginGroupEnum, PluginBadgeColor
+from src.common.permission import ADMIN_PERM_KEY, check_permission
 
 config = get_plugin_config(Config)
 driver = get_driver()
@@ -48,7 +49,7 @@ async def _(event: MessageEvent):
     args = result.split()
 
     if any(arg in ('-refresh', '--refresh') for arg in args):
-        if str(event.get_user_id()) not in driver.config.superusers:
+        if not await check_permission(event, ADMIN_PERM_KEY):
             await help_cmd.finish("仅管理员可刷新帮助图缓存")
         await generate_all_plugins(help_cmd, force=True)
         return

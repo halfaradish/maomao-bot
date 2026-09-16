@@ -20,11 +20,12 @@ description: >
 ```
 插件代码（三种接入方式）
   │
-  ├─ A) Matcher 级:  permission_checker("plugin:action") | SUPERUSER
+  ├─ A) Matcher 级:  permission_checker("plugin:action")
   │                    └─ on_command(..., permission=...) 直接传入
   │
   ├─ B) 命令式:      await check_permission(event, "plugin:action")
   │                    └─ 在任意 async 函数内直接调用，返回 bool
+  │                    └─ 没有 Event 的场景用 await user_has_permission(user_id, key)
   │
   └─ C) 注册点:      register_perm_point("plugin:action", "名称", "描述", plugin_name="p")
                        └─ 插件 import 时调用，启动时自动同步到数据库
@@ -34,11 +35,13 @@ src/common/permission/
   ├─ __init__.py          ← 公共 API 出口（re-export 所有关键符号）
   ├─ registry.py          ← PermissionRegistry 内存单例 → PermissionPointDef
   ├─ checker.py           ← PermissionChecker 校验引擎（8 步判断 + 缓存）
+  │                          ADMIN_PERM_KEY = "permission_manager:manage"
   ├─ permission.py        ← permission_checker() → NoneBot Permission 适配器
   ├─ cache.py             ← TTLCache 内存缓存（默认 60 秒 TTL）
-  ├─ supervisor.py        ← is_superuser() 读取 NoneBot SUPERUSERS
+  ├─ supervisor.py        ← superuser_ids() —— 只是启动播种的种子，**不是鉴权入口**
   ├─ models.py            ← 9 个 SQLAlchemy 模型（8 张表）
-  └─ auto_register.py     ← 启动钩子：建表 + 同步权限点到数据库
+  ├─ bootstrap.py         ← 确保 perm_admin 管理员组存在（缺失时用 SUPERUSERS 播种）
+  └─ auto_register.py     ← 启动钩子：建表 + 同步权限点 + 播种管理员组
        │
        │
        ▼
@@ -71,13 +74,14 @@ webui/
 | 校验引擎 | `PermissionChecker.check()` — 8 步优先级流程，带 TTL 缓存 |
 | 缓存 | `TTLCache` — 进程内内存缓存，默认 TTL 60 秒，管理操作时主动失效 |
 | 注册表 | `PermissionRegistry` — 内存单例，插件 import 时收集权限点定义 |
-| NoneBot 适配 | `permission_checker(perm_key)` → `Permission` 对象，可与 `SUPERUSER` 组合 |
-| 启动同步 | `auto_register.py` 在 startup 时建表 + 将注册表同步到 `permission_points` 表 |
+| NoneBot 适配 | `permission_checker(perm_key)` → `Permission` 对象，直接传给 `permission=`；需要组合多个时用 NoneBot 的 `\|` |
+| 启动同步 | `auto_register.py` 在 startup 时建表 + 同步 `permission_points` 表 + 播种 `perm_admin` 管理员组 |
 | 管理面板 | `permission_manager` 插件（`src/plugins/permission_manager/`，12 模块的包），通过 QQ 聊天命令管理全部权限配置 |
 
 **核心约束**：
 - 权限 key 格式：`plugin_name:action`（例如 `group_ban:ban`）
-- 管理操作可由 **SUPERUSERS** 或拥有 `permission_manager:manage` 权限点的用户执行
+- 管理操作（含 QQ 面板与 WebUI 登录）由持有 `permission_manager:manage` 权限点的用户执行 ——
+  管理员判据就是这一个权限点，**不再看 `SUPERUSERS`**
 - 缓存默认 60 秒过期，管理操作（增删改黑白名单/权限组/绑定）自动失效相关缓存
 - 同步依赖 `async_session_factory`（Bot DB 的 SQLAlchemy session）
 
@@ -148,16 +152,20 @@ perm 注册点/points 列表/list group_ban    # 按插件名筛选
 
 ```python
 from nonebot import on_command
-from nonebot.permission import SUPERUSER
 from src.common.permission import permission_checker
 
 ban_cmd = on_command(
     "ban",
-    permission=permission_checker("group_ban:ban") | SUPERUSER,
+    permission=permission_checker("group_ban:ban"),
 )
 ```
 
-`permission_checker("group_ban:ban")` 返回一个 `Permission` 对象。通过 `|`（逻辑或）与 `SUPERUSER` 组合后，**超级管理员或拥有 `group_ban:ban` 权限的用户**都能触发该命令。
+`permission_checker("group_ban:ban")` 返回一个 `Permission` 对象，**持有 `group_ban:ban` 权限点的用户**（以及管理员，见第 4 节第 0 步）都能触发该命令。
+
+> 不要再写 `| SUPERUSER`：管理员判据已经是权限点（`ADMIN_PERM_KEY`），而
+> `SUPERUSER` 来自 `.env`，改它必须重启。历史上 `permission_checker` 的形参没有类型注解
+> 导致它根本无法使用（NoneBot 的 `Dependent.parse` 靠注解解析形参），现已修复 ——
+> 改这个适配器时**务必保留 `bot: Bot, event: Event` 注解**。
 
 ### 2.2 组合多个权限
 
@@ -180,14 +188,13 @@ admin_cmd = on_command(
 from nonebot import on_command
 from nonebot.adapters.onebot.v11 import Bot, GroupMessageEvent
 from nonebot.params import CommandArg
-from nonebot.permission import SUPERUSER
 
 from . import permissions  # noqa: F401 — 先注册权限点
 from src.common.permission import permission_checker
 
 ban_cmd = on_command(
     "ban",
-    permission=permission_checker("group_ban:ban") | SUPERUSER,
+    permission=permission_checker("group_ban:ban"),
     priority=5,
     block=True,
 )
@@ -249,38 +256,77 @@ async def handler(event, matcher, args: str = CommandArg()):
 `PermissionChecker._check_internal()` 按以下顺序逐级判断，**前面的规则优先于后面的规则**。
 
 ```
-┌──────────────────────────────────────┐
-│  0. 超级管理员（is_superuser）       │ → ✅ 直接放行（不缓存）
-├──────────────────────────────────────┤
-│  1. 用户黑名单（UserBlacklist）       │ → ❌ 拒绝
-├──────────────────────────────────────┤
-│  2. 群黑名单（GroupBlacklist）        │ → ❌ 拒绝
-├──────────────────────────────────────┤
-│  3. 群白名单（GroupWhitelist）        │ → ✅ 完全放行（跳过后续所有检查）
-├──────────────────────────────────────┤
-│  4. 用户白名单（UserWhitelist）       │ → ✅ 完全放行（跳过后续所有检查）
-├──────────────────────────────────────┤
-│  5. 权限组成员（PermissionGroupMember）│
-│   + 匹配的 perm_key                   │ → ✅ 放行
-│   所属的权限组拥有目标 perm_key       │
-├──────────────────────────────────────┤
-│  6. 群绑定（GroupPermBinding）         │
-│   + 匹配的 perm_key                   │ → ✅ 放行
-│   群绑定的权限组拥有目标 perm_key     │
-├──────────────────────────────────────┤
-│  7. 默认                             │ → ❌ 拒绝
-└──────────────────────────────────────┘
+┌──────────────────────────────────────────────┐
+│  0. 管理员（持有 permission_manager:manage）  │ → ✅ 直接放行
+├──────────────────────────────────────────────┤
+│  1. 用户黑名单（UserBlacklist）               │ → ❌ 拒绝
+├──────────────────────────────────────────────┤
+│  2. 群黑名单（GroupBlacklist）                │ → ❌ 拒绝
+├──────────────────────────────────────────────┤
+│  3. 群白名单（GroupWhitelist）                │ → ✅ 完全放行（跳过后续所有检查）
+├──────────────────────────────────────────────┤
+│  4. 用户白名单（UserWhitelist）               │ → ✅ 完全放行（跳过后续所有检查）
+├──────────────────────────────────────────────┤
+│  5. 权限组成员（PermissionGroupMember）        │
+│   + 匹配的 perm_key                           │ → ✅ 放行
+│   所属的权限组拥有目标 perm_key               │
+├──────────────────────────────────────────────┤
+│  6. 群绑定（GroupPermBinding）                 │
+│   + 匹配的 perm_key                           │ → ✅ 放行
+│   群绑定的权限组拥有目标 perm_key             │
+├──────────────────────────────────────────────┤
+│  7. 默认                                       │ → ❌ 拒绝
+└──────────────────────────────────────────────┘
 ```
+
+> 第 0 步是**在缓存查询之前**执行的，所以它对所有 `perm_key` 都短路放行，
+> 包括黑名单用户。
 
 ### 关键细节
 
-- **超级管理员绕过全部检查**：`is_superuser()` 返回 True 直接返回，且**不经过缓存**。
+- **管理员绕过全部检查**：判据是「持有 `ADMIN_PERM_KEY`（`permission_manager:manage`）」，
+  由 `perm_admin` 权限组授予。不需要 `SUPERUSERS`——这正是为了**改权限不必重启**。
+  判定结果会缓存在 `perm:{uid}:{gid}:permission_manager:manage:bypass`，键刻意复用 `perm:`
+  前缀，这样管理操作里既有的 `clear_pattern("perm:{uid}:")` 能连带失效。
 - **白名单是完全放行**：一旦命中群白名单或用户白名单，**不再检查 perm_key**——该用户/群的所有权限都被放行。
 - **黑名单优先级高于白名单**：如果用户既在黑名单又在白名单，黑名单优先触发拒绝（步骤 1-2 在步骤 3-4 之前）。
 - **权限组成员与群绑定是 OR 关系**：用户只要满足**任意一个**途径——直接是权限组成员 AND 该组拥有目标 perm_key → 通过；或所在群绑定了权限组 AND 该组拥有目标 perm_key → 通过。
 - **必须同时匹配用户/群关系 AND perm_key**：用户属于某个权限组还不够——该权限组还必须**拥有被检查的 perm_key**。
 - **默认拒绝**：不匹配任何规则的请求，最终返回 False。
 - **整个流程使用同一个 session**：`_check_internal` 在单个 SQLAlchemy session 内完成全部查询，避免多次获取连接的开销。
+
+### 管理员 = `perm_admin` 权限组（不再用 SUPERUSERS）
+
+管理员就是「持有 `permission_manager:manage` 这个权限点」的用户，由名为 `perm_admin`
+的权限组授予。启动时 `bootstrap.ensure_admin_group()` 负责：
+
+- 该组**不存在** → 创建它、绑定 `permission_manager:manage`、并把 `.env` 里的
+  `SUPERUSERS` 写进去作为初始成员；
+- 该组**已存在** → 什么都不做。所以把成员清空后重启**不会**被重新灌回来，
+  「撤销」是可靠的。
+
+因此 `.env` 的 `SUPERUSERS` 只是**一次性种子**，改它需要重启；而增删 `perm_admin`
+成员在运行期生效（缓存 TTL 内，管理操作会主动失效）——**这正是不再用 SUPERUSERS 做鉴权的原因**。
+
+> ⚠️ 第 0 步要查库，所以 DB 不可用时管理员也会被判为无权限（fail-closed，与
+> `diting_deploy._allowed` 的既有原则一致）。改造前 `is_superuser` 是纯内存判断，
+> 那条「DB 挂了管理员仍能执行 `/diting restart`」的自救通道**已不存在**。
+
+### 鉴权唯一入口
+
+| 场景 | 用哪个 |
+|---|---|
+| 有 onebot Event（命令处理器、事件回调） | `await check_permission(event, perm_key)` |
+| 只有 user_id（REST API、WebUI、启动脚本） | `await user_has_permission(user_id, perm_key, group_id=None)` |
+| 匹配器级放行 | `permission=permission_checker(perm_key)` |
+| 判断是否管理员 | 上面三种传 `ADMIN_PERM_KEY` 即可 |
+
+**不要**再用 `is_superuser()` 做鉴权：它现在只服务于启动播种。`check_permission` 的第 0 步
+本来就会为管理员短路放行，所以「先 `is_superuser` 再 `check_permission`」那种写法是多余的
+（`permission_manager/guard.py` 里曾有这么一处，已删除）。
+
+`user_has_permission(..., group_id=None)` 表示私聊语境：只统计用户的**直属**权限组成员关系，
+不算群绑定（群绑定天然只在该群生效）。
 
 ---
 
@@ -300,7 +346,7 @@ async def handler(event, matcher, args: str = CommandArg()):
 
 ### 5.A QQ 聊天管理命令
 
-`permission_manager` 插件通过 QQ 聊天提供管理界面，可执行权限由 `permission_manager:manage` 权限点控制——**超级管理员**默认拥有，也可通过权限组授予其他用户。
+`permission_manager` 插件通过 QQ 聊天提供管理界面，可执行权限由 `permission_manager:manage` 权限点控制——`perm_admin` 管理员组成员默认拥有，也可通过任意权限组授予其他用户。
 
 主命令：`权限`（别名 `perm`），帮助面板展示为 `perm`
 
@@ -376,7 +422,7 @@ perm 注册点/points 列表/list [插件名]
 perm 查看/view <QQ号>
 ```
 
-一站式查看指定用户的权限状态：是否超级管理员、是否在黑名单/白名单、所属权限组及每个组拥有的权限点。
+一站式查看指定用户的权限状态：是否管理员（返回字段 `is_admin`）、是否在黑名单/白名单、所属权限组及每个组拥有的权限点。
 
 ### 5.7 登录
 
@@ -479,7 +525,8 @@ from src.common.permission import (
     register_perm_point,     # 声明权限点
     check_permission,        # 命令式检查
     permission_checker,      # Matcher 级适配器
-    is_superuser,            # 超级管理员判断
+    ADMIN_PERM_KEY,          # 管理员权限点（= permission_manager:manage）
+    user_has_permission,     # 无 Event 场景的检查入口
     is_blacklisted,          # 黑名单查询（区分「被拒绝」与「无权限」）
     perm_cache,              # 缓存操作
 )
@@ -569,8 +616,6 @@ register_perm_point("report:export", "导出报表", "导出报表数据为文�
 from nonebot import on_command
 from nonebot.adapters.onebot.v11 import Bot, GroupMessageEvent
 from nonebot.params import CommandArg
-from nonebot.permission import SUPERUSER
-
 # 第一步：注册权限点（import 时触发）
 from . import permissions  # noqa: F401
 
@@ -579,14 +624,14 @@ from src.common.permission import permission_checker
 
 view_cmd = on_command(
     "查看报表",
-    permission=permission_checker("report:view") | SUPERUSER,
+    permission=permission_checker("report:view"),
     priority=5,
     block=True,
 )
 
 export_cmd = on_command(
     "导出报表",
-    permission=permission_checker("report:export") | SUPERUSER,
+    permission=permission_checker("report:export"),
     priority=5,
     block=True,
 )
@@ -648,9 +693,9 @@ check_permission(event, "groupban:ban")    # ❌ 不对应
 check_permission(event, "group_ban:ban")   # ❌ 不对应
 ```
 
-### 9.4 超级管理员的 perm_key 检查总是返回 True
+### 9.4 管理员的 perm_key 检查总是返回 True
 
-`is_superuser` 在 `check()` 的最开始判断，**不检查 perm_key**。超级管理员对所有 `perm_key` 都返回 True——不存在"超级管理员没有某个权限点"的情况。
+第 0 步在缓存查询之前判断「是否持有 `ADMIN_PERM_KEY`」，**不检查被查询的 perm_key**。管理员对所有 `perm_key` 都返回 True——不存在"管理员没有某个权限点"的情况。
 
 ### 9.5 缓存导致修改不立即生效
 
@@ -733,7 +778,7 @@ perm 绑定/bind 群/group 789012 admin
 from src.common.permission import register_perm_point     # 声明权限点
 from src.common.permission import permission_checker       # Matcher 级
 from src.common.permission import check_permission         # 命令式
-from src.common.permission import is_superuser             # 超级管理员判断
+from src.common.permission import ADMIN_PERM_KEY           # 管理员权限点
 from src.common.permission import perm_cache               # 缓存操作
 ```
 
@@ -750,7 +795,7 @@ from . import permissions  # noqa: F401
 
 ### 校验优先级速记
 
-> 超级管理员 > 黑名单(用户/群) > 白名单(群/用户) > 权限组成员 + perm_key > 群绑定 + perm_key > 默认拒绝
+> 管理员 > 黑名单(用户/群) > 白名单(群/用户) > 权限组成员 + perm_key > 群绑定 + perm_key > 默认拒绝
 
 ### 管理命令速记
 

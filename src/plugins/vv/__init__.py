@@ -16,7 +16,6 @@ from nonebot.adapters.onebot.v11 import (
     MessageSegment,
 )
 from nonebot.params import CommandArg
-from nonebot.permission import SUPERUSER
 from nonebot.plugin import PluginMetadata
 from sqlalchemy import delete as sa_delete
 from sqlalchemy import select
@@ -24,7 +23,7 @@ from sqlalchemy import select
 from src.common.database import async_session_factory
 from src.common.plugin_meta import PluginBadgeColor, PluginGroupEnum
 from src.common.models.vv_models import VvGroupBlacklist
-from src.common.permission import perm_cache
+from src.common.permission import ADMIN_PERM_KEY, perm_cache, permission_checker
 
 from . import permissions  # noqa: F401
 from .config import Config
@@ -196,7 +195,7 @@ def _resolve_target_group(event: MessageEvent, args: Message) -> int | None:
     return None
 
 
-vv_blacklist_add = on_command("vv拉黑", permission=SUPERUSER, priority=1, block=True)
+vv_blacklist_add = on_command("vv拉黑", permission=permission_checker(ADMIN_PERM_KEY), priority=1, block=True)
 
 
 @vv_blacklist_add.handle()
@@ -216,7 +215,7 @@ async def handle_bl_add(event: MessageEvent, args: Message = CommandArg()):
     await vv_blacklist_add.finish(f"已将群 {group_id} 加入 vv 黑名单")
 
 
-vv_blacklist_remove = on_command("vv解拉黑", permission=SUPERUSER, priority=1, block=True)
+vv_blacklist_remove = on_command("vv解拉黑", permission=permission_checker(ADMIN_PERM_KEY), priority=1, block=True)
 
 
 @vv_blacklist_remove.handle()
@@ -235,7 +234,7 @@ async def handle_bl_remove(event: MessageEvent, args: Message = CommandArg()):
     await vv_blacklist_remove.finish(f"已将群 {group_id} 移出 vv 黑名单")
 
 
-vv_blacklist_list = on_command("vv黑名单", permission=SUPERUSER, priority=1, block=True)
+vv_blacklist_list = on_command("vv黑名单", permission=permission_checker(ADMIN_PERM_KEY), priority=1, block=True)
 
 
 @vv_blacklist_list.handle()

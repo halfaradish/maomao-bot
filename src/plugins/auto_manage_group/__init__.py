@@ -41,7 +41,7 @@ from src.common.permission.models import (
     GroupPermBinding,
 )
 from src.common.permission.cache import perm_cache
-from src.common.permission.supervisor import is_superuser
+from src.common.permission import ADMIN_PERM_KEY, check_permission
 from .group_checker import is_group_feature_enabled, get_ban_word_log_targets
 from . import permissions  # noqa: F401 — 注册权限点到权限系统
 
@@ -427,7 +427,7 @@ async def _manage_help(bot: Bot, event: MessageEvent, args: Message = CommandArg
       群管理 告警日志目标 移除 <群号> — 移除告警日志接收群
       群管理 告警日志目标 列表       — 查看所有告警日志接收群
     """
-    if not is_superuser(event.user_id):
+    if not await check_permission(event, ADMIN_PERM_KEY):
         await manage_cmd.finish("仅超级管理员可使用群管理命令")
         return
 

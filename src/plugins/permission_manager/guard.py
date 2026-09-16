@@ -1,19 +1,15 @@
-"""命令入口的两道横切关注点：放行判断与权限缓存失效。"""
+"""本插件各子命令共用的辅助：权限缓存失效。
+
+放行判断不再在这里 —— 管理员即「持有 ``ADMIN_PERM_KEY``」，直接调
+``check_permission(event, ADMIN_PERM_KEY)`` 即可（见 ``dispatch.py`` / ``login.py``）。
+之前那个先查 ``is_superuser`` 再查权限点的 ``_ensure_superuser`` 是冗余的：
+``checker.check`` 的第 0 步本来就会为管理员短路放行。
+"""
 from typing import Optional
 
 from nonebot import logger
-from nonebot.adapters.onebot.v11 import MessageEvent
 
-from src.common.permission import check_permission
 from src.common.permission.cache import perm_cache
-from src.common.permission.supervisor import is_superuser
-
-
-async def _ensure_superuser(event: MessageEvent) -> bool:
-    """检查是否有权限管理权限系统"""
-    if is_superuser(event.user_id):
-        return True
-    return await check_permission(event, "permission_manager:manage")
 
 
 def _invalidate_related_cache(user_id: Optional[int] = None, group_id: Optional[int] = None):

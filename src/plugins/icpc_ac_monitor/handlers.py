@@ -46,7 +46,7 @@ logger.info("icpc_ac_monitor 插件加载完成")
 
 @add_at_whitelist.handle()
 async def handle_add_at(event: Event, args: Message = CommandArg()):
-    if not _is_authorized(event):
+    if not await _is_authorized(event):
         await add_at_whitelist.finish("只有白名单成员或管理员可执行此命令。")
     text = args.extract_plain_text().strip()
     mention_qqs = _extract_mentions(args)
@@ -80,7 +80,7 @@ async def handle_add_at(event: Event, args: Message = CommandArg()):
 
 @remove_at_whitelist.handle()
 async def handle_remove_at(event: Event, args: Message = CommandArg()):
-    if not _is_authorized(event):
+    if not await _is_authorized(event):
         await remove_at_whitelist.finish("只有白名单成员或管理员可执行此命令。")
     text = args.extract_plain_text().strip()
     mention_qqs = _extract_mentions(args)
@@ -147,7 +147,7 @@ async def _resolve_group_name(bot: Bot, group_id: int | None) -> str:
 
 @list_at_whitelist.handle()
 async def handle_list_at(bot: Bot, event: Event):
-    if not _is_authorized(event):
+    if not await _is_authorized(event):
         await list_at_whitelist.finish("只有白名单成员或管理员可执行此命令。")
     if not AT_WHITELIST:
         await list_at_whitelist.finish("当前艾特白名单为空，可使用『添加监控』命令添加。")

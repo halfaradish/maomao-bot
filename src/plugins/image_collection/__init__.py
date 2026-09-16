@@ -2,11 +2,12 @@ from nonebot import get_driver, on_command
 from nonebot.adapters.onebot.v11 import Message, MessageEvent
 from nonebot.params import CommandArg
 
-from .commands import execute_command, is_admin
+from .commands import execute_command
 from .config import plugin_config
 from .handlers import save_images_from_message
 from .repository import ImageRepository
 from .storage import ImageStorageService
+from src.common.permission import ADMIN_PERM_KEY, check_permission
 
 repository = ImageRepository(plugin_config.database_path)
 storage = ImageStorageService(plugin_config, repository)
@@ -23,7 +24,7 @@ image_command = on_command("图片", aliases={"图片库"}, priority=5, block=Tr
 
 @image_command.handle()
 async def handle_image_command(event: MessageEvent, argument: Message = CommandArg()) -> None:
-    if not is_admin(event.get_user_id()):
+    if not await check_permission(event, ADMIN_PERM_KEY):
         await image_command.finish("无权限：此图片库仅允许管理员使用。")
 
     action = argument.extract_plain_text().strip()

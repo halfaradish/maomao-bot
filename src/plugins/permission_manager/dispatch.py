@@ -8,7 +8,8 @@ from nonebot.params import CommandArg
 from nonebot.typing import T_State
 from nonebot import logger
 
-from .guard import _ensure_superuser
+from src.common.permission import ADMIN_PERM_KEY, check_permission
+
 from .helpers import _build_help_text, _tokenize_arguments
 from .runtime import perm_cmd
 from .blacklist import _blacklist_add, _blacklist_list, _blacklist_remove
@@ -35,8 +36,8 @@ async def handle_permission_command(
     args: Message = CommandArg(),
     state: T_State = T_State(),
 ):
-    # 需要超级管理员或 permission_manager:manage 权限
-    if not await _ensure_superuser(event):
+    # 需要管理员权限（持有 permission_manager:manage 权限点）
+    if not await check_permission(event, ADMIN_PERM_KEY):
         logger.warning(f"用户 {event.user_id} 尝试执行权限管理命令但权限不足")
         await perm_cmd.finish("你没有权限管理权限系统（仅超级管理员或拥有「权限管理」权限的用户可执行）")
 

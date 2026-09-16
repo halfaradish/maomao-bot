@@ -4,23 +4,23 @@
 import re
 from typing import Dict, List, Optional
 
-from nonebot import get_driver
 from nonebot.adapters.onebot.v11 import Event, Message
 
 from .state import AT_WHITELIST, conf, save_conf
-
-try:
-    SUPERUSERS: set[str] = {str(u) for u in get_driver().config.superusers}
-except Exception:
-    SUPERUSERS = set()
+from src.common.permission import ADMIN_PERM_KEY, check_permission
 
 
-def _is_authorized(event: Event) -> bool:
-    """SUPERUSER 或白名单成员才可管理"""
+async def _is_authorized(event: Event) -> bool:
+    """管理员或本插件的艾特白名单成员才可管理
+
+    管理员判据是权限点（``perm_admin`` 组），不再是 SUPERUSERS —— 之前这里用
+    模块级快照 ``{str(u) for u in config.superusers}`` 加 ``except → set()``，
+    配置读取一异常就静默变成「没有任何超级管理员」，且永久拿的是导入瞬间的快照。
+    """
     user_id = getattr(event, "user_id", None)
     if user_id is None:
         return False
-    if str(user_id) in SUPERUSERS:
+    if await check_permission(event, ADMIN_PERM_KEY):
         return True
     try:
         uid = int(user_id)

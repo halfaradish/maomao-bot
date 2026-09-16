@@ -9,6 +9,7 @@ from nonebot.adapters.onebot.v11 import MessageEvent
 from sqlalchemy import select
 
 from src.common.database import async_session_factory
+from src.common.permission import ADMIN_PERM_KEY, user_has_permission
 from src.common.permission.models import (
     PermissionPoint,
     UserBlacklist,
@@ -17,7 +18,6 @@ from src.common.permission.models import (
     PermissionGroupMember,
     PermissionGroupPerm,
 )
-from src.common.permission.supervisor import is_superuser
 
 from .helpers import ArgToken, _try_parse_qq
 from .runtime import perm_cmd
@@ -64,8 +64,8 @@ async def _view_user_permissions(event: MessageEvent, tokens: List[ArgToken]):
 
     lines = [f"QQ {qq} 的权限状态："]
 
-    # 超级管理员
-    if is_superuser(qq):
+    # 管理员（持有管理员权限点，不限群 → 只看直属成员关系）
+    if await user_has_permission(qq, ADMIN_PERM_KEY):
         lines.append("  ✩ 超级管理员（不受任何限制）")
         await perm_cmd.finish("\n".join(lines))
 

@@ -92,9 +92,9 @@ export default function UserStatusPage() {
               <h2 className="text-lg font-bold text-default-900 dark:text-white">
                 用户 {status.user_id}
               </h2>
-              {status.is_superuser && (
+              {status.is_admin && (
                 <Chip color="warning" size="sm" variant="flat">
-                  超级管理员
+                  管理员
                 </Chip>
               )}
             </CardHeader>

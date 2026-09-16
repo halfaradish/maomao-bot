@@ -4,7 +4,7 @@ import importlib
 from dataclasses import dataclass
 from typing import List, Optional
 
-from nonebot import get_driver, get_plugin_config, on_command
+from nonebot import get_plugin_config, on_command
 from nonebot.adapters.onebot.v11 import Bot, Message, MessageEvent
 from nonebot.params import CommandArg
 from nonebot.plugin import PluginMetadata
@@ -16,6 +16,7 @@ from ...common.database import async_session_factory
 from ...common.models.botdb_models import Group, GroupMember
 from .config import Config
 from src.common.plugin_meta import PluginGroupEnum, PluginBadgeColor
+from src.common.permission import ADMIN_PERM_KEY, check_permission
 
 __plugin_meta__ = PluginMetadata(
     name="分组管理",
@@ -31,11 +32,6 @@ __plugin_meta__ = PluginMetadata(
 
 
 config = get_plugin_config(Config)
-driver = get_driver()
-
-
-class PermissionError(Exception):
-    pass
 
 
 @dataclass
@@ -57,11 +53,6 @@ def _tokenize_arguments(message: Message) -> List[ArgToken]:
             if qq and qq not in ("all", "0"):
                 tokens.append(ArgToken("at", qq))
     return tokens
-
-
-async def _ensure_superuser(event: MessageEvent) -> None:
-    if str(event.user_id) not in driver.config.superusers:
-        raise PermissionError("您没有权限使用该命令")
 
 
 async def _list_all_groups():
@@ -271,10 +262,8 @@ async def handle_group_command(
     event: MessageEvent,
     args: Message = CommandArg(),
 ):
-    try:
-        await _ensure_superuser(event)
-    except PermissionError as exc:
-        await group_cmd.finish(str(exc))
+    if not await check_permission(event, ADMIN_PERM_KEY):
+        await group_cmd.finish("您没有权限使用该命令")
 
     tokens = _tokenize_arguments(args)
     if not tokens:

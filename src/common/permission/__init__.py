@@ -12,9 +12,15 @@
        if not await check_permission(event, "group_ban:ban"):
            await matcher.finish("你没有权限")
 
+   没有 onebot Event 可用的场景（REST API / WebUI / 启动脚本）用
+   ``user_has_permission(user_id, perm_key, group_id=None)``。
+
 3. 注册权限点（插件加载时声明）:
        from src.common.permission import register_perm_point
        register_perm_point("my_plugin:action", "功能名", "功能描述", plugin_name="my_plugin")
+
+鉴权只用权限点，不要用 NoneBot 的 ``SUPERUSERS``：管理员判据是「持有
+``ADMIN_PERM_KEY``」，由 ``perm_admin`` 权限组授予并在启动时播种，改权限无需重启。
 """
 from src.common.permission.registry import (
     perm_registry,
@@ -22,12 +28,14 @@ from src.common.permission.registry import (
     PermissionPointDef,
 )
 from src.common.permission.checker import (
+    ADMIN_PERM_KEY,
     PermissionChecker,
     check_permission,
+    user_has_permission,
     is_blacklisted,
 )
 from src.common.permission.cache import perm_cache, TTLCache
-from src.common.permission.supervisor import is_superuser
+from src.common.permission.supervisor import is_superuser, superuser_ids
 from src.common.permission.permission import permission_checker
 from src.common.permission.queries import get_bound_group_ids
 
@@ -40,12 +48,15 @@ __all__ = [
     "register_perm_point",
     "PermissionPointDef",
     # 校验
+    "ADMIN_PERM_KEY",
     "PermissionChecker",
     "check_permission",
+    "user_has_permission",
     # NoneBot 适配
     "permission_checker",
-    # 超级管理员
+    # SUPERUSERS（仅启动播种与诊断，**不是**鉴权入口）
     "is_superuser",
+    "superuser_ids",
     # 缓存（管理面板需要）
     "perm_cache",
     "TTLCache",

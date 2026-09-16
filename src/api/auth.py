@@ -6,6 +6,7 @@ Provides login (QQ number + temp password → JWT), refresh, and logout.
 from fastapi import APIRouter, Depends, Request, Response, status
 from pydantic import BaseModel
 
+from src.common.permission import ADMIN_PERM_KEY, user_has_permission
 from src.common.permission.cache import perm_cache
 from src.common.jwt_utils import (
     create_token,
@@ -104,17 +105,17 @@ async def login(
 
     is_dev_login = False
     if expected is None and WebUIConfig.WEBUI_DEV_PASSWORD:
-        # Dev bypass: accept dev password for superusers only.
+        # Dev bypass: accept dev password for admins only.
         # Hard gate: NEVER allow dev bypass in production.
         from src.config.local_config import environment
-        if environment != 'prod':
-            from nonebot import get_driver
-            superusers = {str(uid) for uid in get_driver().config.superusers}
-            if (
-                body.qq_number in superusers
-                and body.temp_password == WebUIConfig.WEBUI_DEV_PASSWORD
-            ):
-                is_dev_login = True
+        if (
+            environment != 'prod'
+            and body.qq_number.isascii()
+            and body.qq_number.isdigit()
+            and await user_has_permission(int(body.qq_number), ADMIN_PERM_KEY)
+            and body.temp_password == WebUIConfig.WEBUI_DEV_PASSWORD
+        ):
+            is_dev_login = True
 
     if not is_dev_login and (expected is None or body.temp_password != expected):
         _record_failed_attempt(body.qq_number)

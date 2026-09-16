@@ -81,7 +81,7 @@ export interface PermissionPoint {
 
 export interface UserStatus {
   user_id: number;
-  is_superuser: boolean;
+  is_admin: boolean;
   blacklisted: {
     reason: string;
     created_by: number;

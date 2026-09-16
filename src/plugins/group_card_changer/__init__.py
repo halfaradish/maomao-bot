@@ -1,5 +1,4 @@
 from nonebot import logger, get_plugin_config, get_bot, require, get_driver, on_command
-from nonebot.permission import SUPERUSER
 from nonebot.plugin import PluginMetadata
 from nonebot.adapters.onebot.v11 import MessageEvent
 from nonebot.internal.adapter import Bot
@@ -8,7 +7,7 @@ from datetime import date
 import asyncio
 
 from src.common.plugin_meta import PluginGroupEnum, PluginBadgeColor
-from src.common.permission import get_bound_group_ids
+from src.common.permission import ADMIN_PERM_KEY, get_bound_group_ids, permission_checker
 from .config import Config
 from .holidays import get_holidays
 
@@ -121,11 +120,11 @@ else:
 
 
 # ============================================================
-# /holiday reload — 强制重新加载节假日数据（仅超级用户）
+# /holiday reload — 强制重新加载节假日数据（仅管理员）
 # ============================================================
 holiday_reload_cmd = on_command(
     "holiday",
-    permission=SUPERUSER,
+    permission=permission_checker(ADMIN_PERM_KEY),
     priority=10,
     block=True,
 )

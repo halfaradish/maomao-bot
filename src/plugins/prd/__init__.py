@@ -17,7 +17,6 @@ from nonebot.adapters.onebot.v11 import (
     MessageSegment,
 )
 from nonebot.params import CommandArg
-from nonebot.permission import SUPERUSER
 
 from .config import Config
 from .html_gen import SimpleHTMLImageGenerator
