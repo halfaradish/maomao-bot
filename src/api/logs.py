@@ -7,7 +7,7 @@
 from fastapi import APIRouter, Depends, Query, Request
 
 from src.api.deps import TokenPayload, verify_token
-from src.api.permissions import _build_page_data, _paginate_query
+from src.api.permissions.helpers import _build_page_data, _paginate_query
 from src.common.database import async_session_factory
 from src.common.models.botdb_models import MessageEventLog
 from src.config.response import success

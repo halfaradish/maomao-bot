@@ -21,7 +21,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy import func, select
 
 from src.api.deps import TokenPayload, verify_token
-from src.api.permissions import _build_page_data
+from src.api.permissions.helpers import _build_page_data
 from src.common.database import async_session_factory
 from src.common.models.botdb_models import (
     GroupStatistic,
