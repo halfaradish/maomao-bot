@@ -342,6 +342,9 @@ sudo DITING_DEPLOY_DRY_RUN=1 bash scripts/diting-agent.sh drain   # 只走预检
 下文命令里的 `diting-agent` 是默认实例名；用 `--name dev` 装的第二个实例要把命令里的
 `diting-agent` 换成 `diting-agent-dev`（配置文件名同理）。
 
+> 下面是按现象查的速查表。**定位流程、复现执行器环境的方法、僵尸作业的判定与清理、
+> 以及「别再做这些」的反模式，见 [`docs/diting-deploy-troubleshooting.md`](./diting-deploy-troubleshooting.md)。**
+
 | 现象 | 原因与处理 |
 |---|---|
 | QQ 回「宿主机执行器未就绪（找不到 state.json）」 | 执行器没装或没跑。`systemctl status diting-agent.timer`；装完手动 `bash scripts/diting-agent.sh heartbeat` |
