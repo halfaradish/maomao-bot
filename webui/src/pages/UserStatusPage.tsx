@@ -9,6 +9,7 @@ import { MdSearch, MdSecurity, MdGroup } from "react-icons/md";
 import { motion } from "framer-motion";
 
 import { useUserStatus } from "@/api/hooks";
+import { GLASS_CARD_CLASS } from "@/constants";
 
 export default function UserStatusPage() {
   const [userId, setUserId] = useState("");
@@ -33,9 +34,11 @@ export default function UserStatusPage() {
       transition={{ duration: 0.3 }}
       className="space-y-4"
     >
-      <h1 className="text-2xl font-bold text-default-900">用户权限状态查询</h1>
+      <h1 className="text-2xl font-bold text-default-900 dark:text-white">
+        用户权限状态查询
+      </h1>
 
-      <Card className="bg-white/60 dark:bg-black/40 backdrop-blur-xl border border-white/40 dark:border-white/10 shadow-sm">
+      <Card className={GLASS_CARD_CLASS}>
         <CardBody>
           <form onSubmit={handleSearch} className="flex gap-2">
             <Input
@@ -50,6 +53,9 @@ export default function UserStatusPage() {
             <Button
               type="submit"
               color="primary"
+              radius="full"
+              variant="shadow"
+              className="font-medium"
               startContent={<MdSearch size={18} />}
             >
               查询
@@ -80,10 +86,12 @@ export default function UserStatusPage() {
           className="space-y-4"
         >
           {/* User info */}
-          <Card className="bg-white/60 dark:bg-black/40 backdrop-blur-xl border border-white/40 dark:border-white/10 shadow-sm">
+          <Card className={GLASS_CARD_CLASS}>
             <CardHeader className="flex gap-2 items-center">
               <MdSecurity size={24} className="text-primary" />
-              <h2 className="text-lg font-bold">用户 {status.user_id}</h2>
+              <h2 className="text-lg font-bold text-default-900 dark:text-white">
+                用户 {status.user_id}
+              </h2>
               {status.is_superuser && (
                 <Chip color="warning" size="sm" variant="flat">
                   超级管理员
@@ -122,10 +130,12 @@ export default function UserStatusPage() {
           </Card>
 
           {/* Permission groups */}
-          <Card className="bg-white/60 dark:bg-black/40 backdrop-blur-xl border border-white/40 dark:border-white/10 shadow-sm">
+          <Card className={GLASS_CARD_CLASS}>
             <CardHeader className="flex gap-2 items-center">
               <MdGroup size={24} className="text-primary" />
-              <h2 className="text-lg font-bold">所属权限组</h2>
+              <h2 className="text-lg font-bold text-default-900 dark:text-white">
+                所属权限组
+              </h2>
             </CardHeader>
             <CardBody>
               {status.permission_groups.length === 0 ? (

@@ -1,5 +1,6 @@
 import { Routes, Route, Navigate } from "react-router-dom";
 import { Toaster } from "react-hot-toast";
+import { useTheme } from "@/hooks/useTheme";
 import DefaultLayout from "@/layouts/DefaultLayout";
 import LoginPage from "@/pages/LoginPage";
 import DashboardPage from "@/pages/DashboardPage";
@@ -9,6 +10,11 @@ import BlacklistPage from "@/pages/BlacklistPage";
 import WhitelistPage from "@/pages/WhitelistPage";
 import PointsPage from "@/pages/PointsPage";
 import UserStatusPage from "@/pages/UserStatusPage";
+import BotInfoPage from "@/pages/BotInfoPage";
+import PluginsPage from "@/pages/PluginsPage";
+import QQGroupsPage from "@/pages/QQGroupsPage";
+import GroupFeaturesPage from "@/pages/GroupFeaturesPage";
+import MessageLogsPage from "@/pages/MessageLogsPage";
 import { useAuthStore } from "@/store/authStore";
 
 function AuthChecker({ children }: { children: React.ReactNode }) {
@@ -18,55 +24,44 @@ function AuthChecker({ children }: { children: React.ReactNode }) {
 }
 
 export default function App() {
+  const { isDark } = useTheme();
   return (
     <>
+      {/* NapCat 同款 Toast: 20px 圆角纯色 */}
       <Toaster
         position="top-center"
         toastOptions={{
           duration: 3000,
           style: {
-            background: "hsl(var(--heroui-content1) / 0.8)",
-            color: "hsl(var(--heroui-foreground))",
-            border: "1px solid hsl(var(--heroui-divider) / 0.4)",
-            borderRadius: "16px",
-            fontSize: "14px",
-            fontWeight: 500,
-            padding: "12px 16px",
-            backdropFilter: "blur(16px) saturate(180%)",
-            WebkitBackdropFilter: "blur(16px) saturate(180%)",
-            boxShadow: "0 8px 32px rgba(0, 0, 0, 0.12), 0 2px 8px rgba(0, 0, 0, 0.06)",
-          },
-          success: {
-            iconTheme: {
-              primary: "hsl(var(--heroui-success))",
-              secondary: "white",
-            },
-          },
-          error: {
-            iconTheme: {
-              primary: "hsl(var(--heroui-danger))",
-              secondary: "white",
-            },
+            borderRadius: "20px",
+            background: isDark ? "#333" : "#fff",
+            color: isDark ? "#fff" : "#333",
+            maxWidth: "400px",
+            wordBreak: "break-word",
           },
         }}
       />
       <Routes>
         <Route path="/login" element={<LoginPage />} />
         <Route
-          path="/permissions"
           element={
             <AuthChecker>
               <DefaultLayout />
             </AuthChecker>
           }
         >
-          <Route index element={<DashboardPage />} />
-          <Route path="groups" element={<GroupsPage />} />
-          <Route path="groups/:id" element={<GroupDetailPage />} />
-          <Route path="blacklist" element={<BlacklistPage />} />
-          <Route path="whitelist" element={<WhitelistPage />} />
-          <Route path="points" element={<PointsPage />} />
-          <Route path="user-status" element={<UserStatusPage />} />
+          <Route path="/permissions" element={<DashboardPage />} />
+          <Route path="/permissions/groups" element={<GroupsPage />} />
+          <Route path="/permissions/groups/:id" element={<GroupDetailPage />} />
+          <Route path="/permissions/blacklist" element={<BlacklistPage />} />
+          <Route path="/permissions/whitelist" element={<WhitelistPage />} />
+          <Route path="/permissions/points" element={<PointsPage />} />
+          <Route path="/permissions/user-status" element={<UserStatusPage />} />
+          <Route path="/info" element={<BotInfoPage />} />
+          <Route path="/plugins" element={<PluginsPage />} />
+          <Route path="/groups/list" element={<QQGroupsPage />} />
+          <Route path="/groups/features" element={<GroupFeaturesPage />} />
+          <Route path="/logs" element={<MessageLogsPage />} />
         </Route>
         <Route path="*" element={<Navigate to="/permissions" replace />} />
       </Routes>

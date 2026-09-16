@@ -23,6 +23,7 @@ import {
 } from "@/api/hooks";
 import { useConfirm } from "@/hooks/useConfirm";
 import ConfirmDialog from "@/components/ConfirmDialog";
+import { GLASS_CARD_CLASS, TABLE_CLASS_NAMES, PAGE_SIZE } from "@/constants";
 
 export default function GroupsPage() {
   const [page, setPage] = useState(1);
@@ -39,7 +40,7 @@ export default function GroupsPage() {
 
   const groups = data?.data?.items ?? [];
   const total = data?.data?.total ?? 0;
-  const totalPages = Math.ceil(total / 20);
+  const totalPages = Math.ceil(total / PAGE_SIZE);
 
   const handleCreate = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -62,6 +63,7 @@ export default function GroupsPage() {
       title: "删除权限组",
       message: `确定要删除权限组「${groupName}」吗？此操作不可撤销。`,
       confirmText: "删除",
+      color: "danger",
       onConfirm: () => deleteGroup.mutate(id),
     });
   };
@@ -74,10 +76,14 @@ export default function GroupsPage() {
       className="space-y-4"
     >
       <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold text-default-900">权限组管理</h1>
+        <h1 className="text-2xl font-bold text-default-900 dark:text-white">
+          权限组管理
+        </h1>
         <Button
           color="primary"
           radius="full"
+          variant="shadow"
+          className="font-medium"
           startContent={<MdAdd size={18} />}
           onPress={() => setShowForm(!showForm)}
         >
@@ -87,61 +93,75 @@ export default function GroupsPage() {
 
       {/* Create form */}
       {showForm && (
-        <Card className="bg-white/60 dark:bg-black/40 backdrop-blur-xl border border-white/40 dark:border-white/10 shadow-sm">
-          <CardBody>
-            <form onSubmit={handleCreate} className="flex flex-col gap-3">
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-                <Input
-                  label="标识名（英文）"
-                  placeholder="例如: admin"
-                  value={name}
-                  onValueChange={setName}
-                  isRequired
-                  variant="bordered"
-                  radius="lg"
-                />
-                <Input
-                  label="显示名称"
-                  placeholder="例如: 管理员"
-                  value={displayName}
-                  onValueChange={setDisplayName}
-                  variant="bordered"
-                  radius="lg"
-                />
-                <Input
-                  label="描述"
-                  placeholder="可选描述"
-                  value={description}
-                  onValueChange={setDescription}
-                  variant="bordered"
-                  radius="lg"
-                />
-              </div>
-              <div className="flex justify-end gap-2">
-                <Button variant="light" onPress={() => setShowForm(false)}>
-                  取消
-                </Button>
-                <Button
-                  type="submit"
-                  color="primary"
-                  isLoading={createGroup.isPending}
-                >
-                  创建
-                </Button>
-              </div>
-            </form>
-          </CardBody>
-        </Card>
+        <motion.div
+          initial={{ opacity: 0, height: 0 }}
+          animate={{ opacity: 1, height: "auto" }}
+          exit={{ opacity: 0, height: 0 }}
+          className="overflow-hidden"
+        >
+          <Card className={GLASS_CARD_CLASS}>
+            <CardBody>
+              <form onSubmit={handleCreate} className="flex flex-col gap-3">
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                  <Input
+                    label="标识名（英文）"
+                    placeholder="例如: admin"
+                    value={name}
+                    onValueChange={setName}
+                    isRequired
+                    variant="bordered"
+                    radius="lg"
+                  />
+                  <Input
+                    label="显示名称"
+                    placeholder="例如: 管理员"
+                    value={displayName}
+                    onValueChange={setDisplayName}
+                    variant="bordered"
+                    radius="lg"
+                  />
+                  <Input
+                    label="描述"
+                    placeholder="可选描述"
+                    value={description}
+                    onValueChange={setDescription}
+                    variant="bordered"
+                    radius="lg"
+                  />
+                </div>
+                <div className="flex justify-end gap-2">
+                  <Button
+                    variant="flat"
+                    radius="full"
+                    className="bg-default-100 dark:bg-default-50/50 text-default-600 font-medium"
+                    onPress={() => setShowForm(false)}
+                  >
+                    取消
+                  </Button>
+                  <Button
+                    type="submit"
+                    color="primary"
+                    radius="full"
+                    variant="shadow"
+                    className="font-medium"
+                    isLoading={createGroup.isPending}
+                  >
+                    创建
+                  </Button>
+                </div>
+              </form>
+            </CardBody>
+          </Card>
+        </motion.div>
       )}
 
       {/* Table */}
-      <Card className="bg-white/60 dark:bg-black/40 backdrop-blur-xl border border-white/40 dark:border-white/10 shadow-sm">
+      <Card className={GLASS_CARD_CLASS}>
         <CardBody className="p-0">
           <Table
             radius="sm"
             classNames={{
-              wrapper: "bg-transparent shadow-none",
-              th: "bg-white/40 dark:bg-white/5 backdrop-blur-md text-default-600",
+              ...TABLE_CLASS_NAMES,
               tr: "cursor-pointer hover:bg-default-100 transition-colors",
             }}
             onRowAction={(key) => navigate(`/permissions/groups/${key}`)}
@@ -202,6 +222,7 @@ export default function GroupsPage() {
         title={options?.title ?? ""}
         message={options?.message ?? ""}
         confirmText={options?.confirmText}
+        color={options?.color}
         onConfirm={handleConfirm}
         onCancel={handleCancel}
       />

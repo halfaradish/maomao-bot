@@ -9,7 +9,7 @@ interface SidebarMenusProps {
   items: MenuItem[];
 }
 
-function renderItem(item: MenuItem, isChild = false) {
+function renderItem(item: MenuItem) {
   const navigate = useNavigate();
   const location = useLocation();
   const [open, setOpen] = React.useState(!!item.children?.length);
@@ -93,7 +93,7 @@ function renderItem(item: MenuItem, isChild = false) {
             />
           )
         }
-        variant={isActive ? (isChild ? "solid" : "shadow") : "light"}
+        variant={isActive ? "shadow" : "light"}
         onPress={() => {
           if (item.href) {
             if (!isActive) {
@@ -103,6 +103,7 @@ function renderItem(item: MenuItem, isChild = false) {
             setOpen(!open);
           }
         }}
+        startContent={item.icon}
       >
         {item.label}
       </Button>
@@ -113,7 +114,7 @@ function renderItem(item: MenuItem, isChild = false) {
           height: open ? panelRef.current?.scrollHeight ?? "auto" : 0,
         }}
       >
-        {item.children?.map((child) => renderItem(child, true))}
+        {item.children?.map((child) => renderItem(child))}
       </div>
     </div>
   );

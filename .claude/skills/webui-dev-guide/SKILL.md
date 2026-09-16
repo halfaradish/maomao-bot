@@ -99,17 +99,19 @@ webui/src/
 
 ### 3.2 配色系统
 
-主题定义在 [tailwind.config.js](../../webui/tailwind.config.js)，使用 HeroUI 的 HSL 色彩变量：
+主题定义在 [tailwind.config.js](../../webui/tailwind.config.js)，**色板对齐 NapCatQQ 运行时主题 nc_pink.ts**（NapCat 的构建期 tailwind.config.js 是旧值，不要照抄）。注意：HeroUI 插件不接受裸 HSL 三元组（会静默丢色），色值必须写 hex 或 hsla。
 
 | 语义色 | 亮色模式 | 暗色模式 | 用途 |
 |--------|---------|---------|------|
-| primary | `#FF7FAC` 樱花粉 | `#F33B7C` 深粉 | 主操作按钮、活动状态、链接 |
-| secondary | `#88C0D0` 冰霜蓝 | `#4C8DAE` 深蓝 | 导航徽章、次要信息 |
-| success | `#22C55E` 绿色 | 同 | 成功状态、白名单操作 |
-| warning | `#F59E0B` 琥珀 | 同 | 超级管理员标签 |
+| primary | `#F53D7D` 樱花粉（500: `#F31260`） | `#F31260` | 主操作按钮、活动状态、链接 |
+| secondary | `#7828C8` 紫 | `#9353D3` | 导航徽章、次要信息 |
+| success | `#17C964` 绿 | 同 | 成功状态、白名单操作 |
+| warning | `#F5A524` 琥珀 | 同 | 超级管理员标签 |
 | danger | `#DB3694` 紫粉 | 同 | 删除/危险操作、黑名单操作 |
 
-**使用方式**：始终通过 Tailwind 的语义色类名引用颜色（如 `text-primary`、`bg-danger-50/50`），不要硬编码颜色值。
+其他对齐要点：divider 亮色 `hsla(0,0%,0%,.85)`（实边框）/ 暗色 `hsla(0,0%,100%,.15)`；boxShadow 三档自定义（暗色带 inset 白色 15% 高光，玻璃质感来源）；default 灰阶为 NapCat 自定锌灰（如 -300 `#AFAFB6`）。
+
+**使用方式**：始终通过 Tailwind 的语义色类名引用颜色（如 `text-primary`、`bg-danger-50/50`），不要硬编码颜色值。公共样式常量（玻璃卡片、表格 classNames、分页大小）统一从 `src/constants.ts` 导入。
 
 ### 3.3 表格样式
 
@@ -186,50 +188,54 @@ webui/src/
 
 ### 3.7 页面背景
 
-三个大尺寸模糊彩色圆形装饰，固定在所有内容下方（`-z-10`）：
+三个大尺寸模糊彩色圆形装饰（NapCat 同款呼吸动画），固定在所有内容下方（`-z-10`），用 `motion.div` 以 12/15/18s 无限循环 scale/rotate/opacity：
 
 ```tsx
 <div className="fixed inset-0 -z-10 overflow-hidden
                 bg-gradient-to-br from-indigo-50 via-white to-pink-50
                 dark:from-gray-900 dark:via-gray-800 dark:to-gray-900">
-  {/* 左上 primary */}
-  <div className="absolute top-[-10%] left-[-10%] w-[600px] h-[600px]
-                  rounded-full bg-primary/40 blur-[120px] opacity-30" />
-  {/* 中右 secondary */}
-  <div className="absolute top-[20%] right-[-10%] w-[500px] h-[500px]
-                  rounded-full bg-secondary/40 blur-[100px] opacity-20" />
-  {/* 底部 success */}
-  <div className="absolute bottom-[-10%] left-[30%] w-[400px] h-[400px]
-                  rounded-full bg-success/30 blur-[80px] opacity-25" />
+  {/* 左上 primary-200 — 12s */}
+  <motion.div className="absolute top-[-10%] left-[-10%] w-[500px] h-[500px]
+                rounded-full bg-primary-200/40 blur-[100px]"
+    animate={{ scale: [1, 1.15, 1], rotate: [0, 30, 0], opacity: [0.5, 1, 0.5] }}
+    transition={{ duration: 12, repeat: Infinity, ease: "easeInOut" }} />
+  {/* 中右 secondary-200 — 15s */}
+  <motion.div className="absolute top-[20%] right-[-10%] w-[400px] h-[400px]
+                rounded-full bg-secondary-200/40 blur-[90px]"
+    animate={{ scale: [1, 1.15, 1], rotate: [0, 30, 0], opacity: [0.5, 1, 0.5] }}
+    transition={{ duration: 15, repeat: Infinity, ease: "easeInOut" }} />
+  {/* 底部 pink-200 — 18s */}
+  <motion.div className="absolute bottom-[-10%] left-[20%] w-[600px] h-[600px]
+                rounded-full bg-pink-200/30 blur-[110px]"
+    animate={{ scale: [1, 1.15, 1], rotate: [0, 30, 0], opacity: [0.5, 1, 0.5] }}
+    transition={{ duration: 18, repeat: Infinity, ease: "easeInOut" }} />
 </div>
 ```
 
+要点：光斑用 `-200` 浅色阶 + 透明度后缀（`/40` 等），不再叠加 `opacity-*` 修饰；第三个光斑是 `pink-200`（不是 success 绿）。登录页直接复用 `<PageBackground />`。
+
 ### 3.8 暗色模式切换
 
-暗色模式使用 Tailwind 的 `class` 策略，通过切换 `<html>` 上的 `"dark"` 类来控制：
-
-```tsx
-// DefaultLayout.tsx
-function toggleTheme() {
-  document.documentElement.classList.toggle("dark");
-  setIsDark(!isDark);
-}
-```
+暗色模式使用 Tailwind 的 `class` 策略，通过切换 `<html>` 上的 `"dark"` 类来控制。使用 `src/hooks/useTheme.ts` 的 `useTheme()`（模块级单例 store，Toaster 与布局双实例同步），主题持久化到 localStorage（key `diting_theme`），`index.html` 内联脚本在渲染前设置 html class 防闪烁。侧边栏展开状态同理用 `useLocalStorageState` 持久化（key `diting_sidebar_open`）。
 
 所有颜色必须同时提供亮色和暗色变体：`bg-white/60 dark:bg-black/40`、`text-default-900 dark:text-white` 等。
 
 ### 3.9 滚动条
 
-在 [globals.css](../../webui/src/styles/globals.css) 中定义的自定义滚动条：
+在 [globals.css](../../webui/src/styles/globals.css) 中定义的樱花粉滚动条（NapCat nc_pink 同款）：
 
 ```css
 ::-webkit-scrollbar { width: 6px; height: 6px; }
-::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-track { background: transparent; border-radius: 3px; }
 ::-webkit-scrollbar-thumb {
-  background: hsl(var(--heroui-default-300));
+  background: rgba(255, 182, 193, 0.4);
   border-radius: 3px;
+  transition: all 0.3s;
 }
+::-webkit-scrollbar-thumb:hover { background: rgba(255, 127, 172, 0.6); }
 ```
+
+另含：`::selection` 粉色 `#ffcdba`、正文 `letter-spacing: 0.02em`、`.hide-scrollbar` 工具类。
 
 ## 4. 组件开发模式
 
@@ -335,7 +341,7 @@ async function handleDelete(item: Item) {
 
 ### 4.4 Toast 通知
 
-使用 react-hot-toast（已在 App.tsx 中全局配置）：
+使用 react-hot-toast（已在 App.tsx 中全局配置）。**NapCat 同款样式**：20px 圆角、纯色背景（暗色 `#333` 白字 / 亮色 `#fff` 深字）、`maxWidth: 400px`、`wordBreak: break-word`；`isDark` 取自 `useTheme()`（与主题切换同步）。
 
 ```tsx
 import toast from "react-hot-toast";

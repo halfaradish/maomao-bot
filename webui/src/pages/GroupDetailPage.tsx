@@ -31,6 +31,8 @@ import {
 } from "@/api/hooks";
 import { useConfirm } from "@/hooks/useConfirm";
 import ConfirmDialog from "@/components/ConfirmDialog";
+import EmptyState from "@/components/EmptyState";
+import { GLASS_CARD_CLASS, TABLE_CLASS_NAMES } from "@/constants";
 
 export default function GroupDetailPage() {
   const { id } = useParams<{ id: string }>();
@@ -79,6 +81,7 @@ export default function GroupDetailPage() {
       title: "移除成员",
       message: `确定要移除用户 ${userId} 吗？`,
       confirmText: "移除",
+      color: "danger",
       onConfirm: () => removeMember.mutate(userId),
     });
   };
@@ -99,6 +102,7 @@ export default function GroupDetailPage() {
       title: "移除权限点",
       message: `确定要移除权限点「${permKey}」吗？`,
       confirmText: "移除",
+      color: "danger",
       onConfirm: () => removePerm.mutate(permKey),
     });
   };
@@ -119,6 +123,7 @@ export default function GroupDetailPage() {
       title: "删除绑定",
       message: "确定要删除此群绑定吗？",
       confirmText: "删除",
+      color: "danger",
       onConfirm: () => deleteBinding.mutate(bindingId),
     });
   };
@@ -132,9 +137,7 @@ export default function GroupDetailPage() {
   }
 
   if (!group) {
-    return (
-      <div className="text-center py-20 text-default-500">权限组不存在</div>
-    );
+    return <EmptyState title="权限组不存在" description="该权限组可能已被删除" />;
   }
 
   return (
@@ -154,7 +157,7 @@ export default function GroupDetailPage() {
           <MdArrowBack size={20} />
         </Button>
         <div>
-          <h1 className="text-2xl font-bold text-default-900">
+          <h1 className="text-2xl font-bold text-default-900 dark:text-white">
             {group.display_name || group.name}
           </h1>
           <p className="text-sm text-default-500">
@@ -164,7 +167,7 @@ export default function GroupDetailPage() {
       </div>
 
       {/* Info card */}
-      <Card className="bg-white/60 dark:bg-black/40 backdrop-blur-xl border border-white/40 dark:border-white/10 shadow-sm">
+      <Card className={GLASS_CARD_CLASS}>
         <CardBody>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
             <div>
@@ -191,7 +194,7 @@ export default function GroupDetailPage() {
       <Tabs aria-label="权限组详情">
         {/* QQ成员 tab */}
         <Tab key="members" title="QQ成员">
-          <Card className="bg-white/60 dark:bg-black/40 backdrop-blur-xl border border-white/40 dark:border-white/10 shadow-sm">
+          <Card className={GLASS_CARD_CLASS}>
             <CardBody className="space-y-4">
               <form onSubmit={handleAddMembers} className="flex gap-2">
                 <Input
@@ -205,6 +208,9 @@ export default function GroupDetailPage() {
                 <Button
                   type="submit"
                   color="primary"
+                  radius="full"
+                  variant="shadow"
+                  className="font-medium"
                   isLoading={addMembers.isPending}
                   startContent={<MdAdd size={18} />}
                 >
@@ -214,10 +220,7 @@ export default function GroupDetailPage() {
 
               <Table
                 radius="sm"
-                classNames={{
-                  wrapper: "bg-transparent shadow-none",
-                  th: "bg-white/40 dark:bg-white/5 backdrop-blur-md text-default-600",
-                }}
+                classNames={TABLE_CLASS_NAMES}
               >
                 <TableHeader>
                   <TableColumn>QQ号</TableColumn>
@@ -253,7 +256,7 @@ export default function GroupDetailPage() {
 
         {/* QQ群成员 tab */}
         <Tab key="bindings" title="QQ群成员">
-          <Card className="bg-white/60 dark:bg-black/40 backdrop-blur-xl border border-white/40 dark:border-white/10 shadow-sm">
+          <Card className={GLASS_CARD_CLASS}>
             <CardBody className="space-y-4">
               <form onSubmit={handleCreateBinding} className="flex gap-2">
                 <Input
@@ -267,6 +270,9 @@ export default function GroupDetailPage() {
                 <Button
                   type="submit"
                   color="primary"
+                  radius="full"
+                  variant="shadow"
+                  className="font-medium"
                   isLoading={createBinding.isPending}
                   startContent={<MdAdd size={18} />}
                 >
@@ -276,10 +282,7 @@ export default function GroupDetailPage() {
 
               <Table
                 radius="sm"
-                classNames={{
-                  wrapper: "bg-transparent shadow-none",
-                  th: "bg-white/40 dark:bg-white/5 backdrop-blur-md text-default-600",
-                }}
+                classNames={TABLE_CLASS_NAMES}
               >
                 <TableHeader>
                   <TableColumn>绑定 ID</TableColumn>
@@ -313,7 +316,7 @@ export default function GroupDetailPage() {
 
         {/* 权限点 tab */}
         <Tab key="perms" title="权限点">
-          <Card className="bg-white/60 dark:bg-black/40 backdrop-blur-xl border border-white/40 dark:border-white/10 shadow-sm">
+          <Card className={GLASS_CARD_CLASS}>
             <CardBody className="space-y-4">
               <form onSubmit={handleAddPerms} className="flex gap-2">
                 <Input
@@ -327,6 +330,9 @@ export default function GroupDetailPage() {
                 <Button
                   type="submit"
                   color="primary"
+                  radius="full"
+                  variant="shadow"
+                  className="font-medium"
                   isLoading={addPerms.isPending}
                   startContent={<MdAdd size={18} />}
                 >
@@ -336,10 +342,7 @@ export default function GroupDetailPage() {
 
               <Table
                 radius="sm"
-                classNames={{
-                  wrapper: "bg-transparent shadow-none",
-                  th: "bg-white/40 dark:bg-white/5 backdrop-blur-md text-default-600",
-                }}
+                classNames={TABLE_CLASS_NAMES}
               >
                 <TableHeader>
                   <TableColumn>权限点 Key</TableColumn>
@@ -383,6 +386,7 @@ export default function GroupDetailPage() {
         title={options?.title ?? ""}
         message={options?.message ?? ""}
         confirmText={options?.confirmText}
+        color={options?.color}
         onConfirm={handleConfirm}
         onCancel={handleCancel}
       />
