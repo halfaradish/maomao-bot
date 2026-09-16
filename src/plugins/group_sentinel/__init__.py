@@ -1,5 +1,3 @@
-import os
-
 from nonebot import get_plugin_config, logger, get_driver, on_request
 from nonebot.plugin import PluginMetadata
 from nonebot.adapters.onebot.v11 import Bot, GroupRequestEvent
@@ -10,6 +8,7 @@ from .config import Config
 from . import permissions  # noqa: F401 — 注册权限点到权限系统
 from .auditor import audit_join_request
 from ..auto_manage_group.group_checker import is_group_feature_enabled
+from src.common.plugin_guard import disabled_plugin_metadata, plugin_enabled
 from src.common.plugin_meta import PluginGroupEnum, PluginBadgeColor
 from src.common.database import async_session_factory
 from src.common.permission.models import (
@@ -18,18 +17,15 @@ from src.common.permission.models import (
 )
 
 # ── 插件启停开关 ──
-GROUP_SENTINEL_ENABLED = os.getenv("GROUP_SENTINEL_ENABLED", "true").lower() == "true"
+GROUP_SENTINEL_ENABLED = plugin_enabled("GROUP_SENTINEL_ENABLED")
 
 if not GROUP_SENTINEL_ENABLED:
-    __plugin_meta__ = PluginMetadata(
-        name="群哨兵（已禁用）",
-        description="入群审核插件（当前已禁用，设置 GROUP_SENTINEL_ENABLED=true 启用）",
-        usage="此插件已在环境变量中禁用",
-        supported_adapters={"~onebot.v11"},
-        extra={
-            "group": PluginGroupEnum.GROUP_MANAGE.value,
-            "badge_color": PluginBadgeColor.YELLOW.value,
-        },
+    __plugin_meta__ = disabled_plugin_metadata(
+        "GROUP_SENTINEL_ENABLED",
+        name="群哨兵",
+        description="入群审核插件",
+        group=PluginGroupEnum.GROUP_MANAGE,
+        badge_color=PluginBadgeColor.GREEN,
     )
 else:
     __plugin_meta__ = PluginMetadata(

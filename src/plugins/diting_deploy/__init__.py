@@ -8,29 +8,25 @@
 * 两边通过已经是 bind mount 的 ``data/deploy/`` 目录交换 JSON，契约见 ``protocol.py``；
 * ``pull`` 之后靠 ``bot.py`` 的热重载生效，执行器会用 ``boot.json`` 校验 worker 是否真的起来了。
 """
-import os
-
 from nonebot import get_plugin_config
 from nonebot.plugin import PluginMetadata
 
+from src.common.plugin_guard import disabled_plugin_metadata, plugin_enabled
 from src.common.plugin_meta import PluginBadgeColor, PluginGroupEnum
 
 from . import permissions  # noqa: F401 — 注册权限点到权限系统
 from .config import Config
 
-# 插件启停开关：与 group_sentinel 一致，禁用时只给存根元数据，不注册任何 handler
-DITING_DEPLOY_ENABLED = os.getenv("DITING_DEPLOY_ENABLED", "true").lower() == "true"
+# 插件启停开关：禁用时只给存根元数据，不注册任何 handler
+DITING_DEPLOY_ENABLED = plugin_enabled("DITING_DEPLOY_ENABLED")
 
 if not DITING_DEPLOY_ENABLED:
-    __plugin_meta__ = PluginMetadata(
-        name="谛听部署（已禁用）",
-        description="通过 QQ 命令拉取代码 / 重建服务（当前已禁用，设置 DITING_DEPLOY_ENABLED=true 启用）",
-        usage="此插件已在环境变量中禁用",
-        supported_adapters={"~onebot.v11"},
-        extra={
-            "group": PluginGroupEnum.UTILITY.value,
-            "badge_color": PluginBadgeColor.YELLOW.value,
-        },
+    __plugin_meta__ = disabled_plugin_metadata(
+        "DITING_DEPLOY_ENABLED",
+        name="谛听部署",
+        description="通过 QQ 命令拉取代码 / 重建服务",
+        group=PluginGroupEnum.UTILITY,
+        badge_color=PluginBadgeColor.YELLOW,
     )
 else:
     __plugin_meta__ = PluginMetadata(

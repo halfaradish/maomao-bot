@@ -3,7 +3,6 @@ Todo提醒插件主入口
 注册命令和事件处理器
 """
 
-import os
 from nonebot import on_command
 from nonebot.adapters.onebot.v11 import Bot, Event, GroupMessageEvent, PrivateMessageEvent
 from nonebot.rule import to_me
@@ -11,18 +10,14 @@ from nonebot.params import CommandArg
 from nonebot.adapters.onebot.v11.message import Message
 from nonebot.exception import FinishedException
 from nonebot.log import logger
+from src.common.plugin_guard import plugin_enabled
 from src.common.send_forward_msg import send_forward_msg
 import re
 import time
 from typing import Optional, Dict, List
 
 # 检查插件开关
-_todo_cmd_enabled = os.getenv("TODO_CMD_ENABLE", "true").lower() in (
-    "1",
-    "true",
-    "yes",
-    "on",
-)
+_todo_cmd_enabled = plugin_enabled("TODO_CMD_ENABLE")
 
 from .commands import TodoCommands
 # 从 __init__.py 导入已初始化的组件，避免重复初始化

@@ -1,21 +1,17 @@
-import os
-
 from nonebot import get_plugin_config
 from nonebot.plugin import PluginMetadata
+from src.common.plugin_guard import disabled_plugin_metadata, plugin_enabled
 from src.common.plugin_meta import PluginGroupEnum, PluginBadgeColor
 
-ICPC_AC_MONITOR_ENABLED = os.getenv("ICPC_AC_MONITOR_ENABLED", "true").lower() == "true"
+ICPC_AC_MONITOR_ENABLED = plugin_enabled("ICPC_AC_MONITOR_ENABLED")
 
 if not ICPC_AC_MONITOR_ENABLED:
-    __plugin_meta__ = PluginMetadata(
-        name="AC监控（已禁用）",
-        description="广西大学比赛 AC 监控插件（当前已禁用，设置 ICPC_AC_MONITOR_ENABLED=true 启用）",
-        usage="此插件已在 .env 中禁用",
-        supported_adapters={"~onebot.v11"},
-        extra={
-            "group": PluginGroupEnum.CONTEST.value,
-            "badge_color": PluginBadgeColor.YELLOW.value
-        }
+    __plugin_meta__ = disabled_plugin_metadata(
+        "ICPC_AC_MONITOR_ENABLED",
+        name="AC监控",
+        description="广西大学比赛 AC 监控插件",
+        group=PluginGroupEnum.CONTEST,
+        badge_color=PluginBadgeColor.YELLOW,
     )
 else:
     from .config import Config

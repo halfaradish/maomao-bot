@@ -3,8 +3,6 @@ Todo提醒插件
 支持个人提醒、群组提醒、指定用户提醒等功能
 """
 
-import os
-
 from nonebot import require, logger
 from nonebot.plugin import PluginMetadata
 
@@ -20,6 +18,7 @@ from .database import TodoDatabase
 from .time_parser import TimeParser
 from .reminder_scheduler import ReminderScheduler
 from .commands import TodoCommands
+from src.common.plugin_guard import plugin_enabled
 from src.common.plugin_meta import PluginGroupEnum, PluginBadgeColor
 
 __plugin_meta__ = PluginMetadata(
@@ -39,12 +38,7 @@ __plugin_meta__ = PluginMetadata(
 )
 
 # 通过环境变量控制插件开关
-_todo_cmd_enabled = os.getenv("TODO_CMD_ENABLE", "true").lower() in (
-    "1",
-    "true",
-    "yes",
-    "on",
-)
+_todo_cmd_enabled = plugin_enabled("TODO_CMD_ENABLE")
 
 if _todo_cmd_enabled:
     # 初始化配置

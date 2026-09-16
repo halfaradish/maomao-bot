@@ -747,28 +747,26 @@ if config.clist_schedule_job_enable:
 
 ### 9.1 标准禁用模式
 
-使用环境变量控制插件开关，禁用时提供存根 `__plugin_meta__`（不产生 RuntimeError）：
+统一走 [src/common/plugin_guard.py](../../src/common/plugin_guard.py)——开关解析、存根
+`__plugin_meta__`（不产生 RuntimeError）、禁用日志都在那里：
 
 ```python
-import os
+from nonebot.plugin import PluginMetadata
 
-from nonebot import logger
+from src.common.plugin_guard import disabled_plugin_metadata, plugin_enabled
+from src.common.plugin_meta import PluginGroupEnum, PluginBadgeColor
 
 # 在模块顶层读取环境变量
-MY_PLUGIN_ENABLED = os.getenv("MY_PLUGIN_ENABLED", "true").lower() == "true"
+MY_PLUGIN_ENABLED = plugin_enabled("MY_PLUGIN_ENABLED")
 
 if not MY_PLUGIN_ENABLED:
-    __plugin_meta__ = PluginMetadata(
-        name="我的插件（已禁用）",
-        description="功能描述（当前已禁用，设置 MY_PLUGIN_ENABLED=true 启用）",
-        usage="此插件已在环境变量中禁用",
-        supported_adapters={"~onebot.v11"},
-        extra={
-            "group": PluginGroupEnum.UTILITY.value,
-            "badge_color": PluginBadgeColor.GREEN.value,
-        },
+    __plugin_meta__ = disabled_plugin_metadata(
+        "MY_PLUGIN_ENABLED",
+        name="我的插件",
+        description="功能描述",
+        group=PluginGroupEnum.UTILITY,
+        badge_color=PluginBadgeColor.GREEN,
     )
-    logger.info(f"[my_plugin] 插件已禁用 (MY_PLUGIN_ENABLED=false)")
     # 不注册任何 handler，不加载配置
 else:
     # ===== 正常插件代码 =====
@@ -789,10 +787,11 @@ else:
 ### 9.2 关键规则
 
 - 禁用时必须提供 `__plugin_meta__` 存根（NoneBot 加载器需要）
-- 禁用存根的 name 应带 `（已禁用）` 后缀
-- 禁用存根**不包含** `config=Config`
-- 禁用时应输出日志提示插件已关闭
+- 存根元数据统一由 `disabled_plugin_metadata()` 生成：它负责给 name 加 `（已禁用）` 后缀、给 description 加 `（当前已禁用，设置 <ENV>=true 启用）`、把 usage 统一成 `此插件已在环境变量中禁用`、并打一条 `[<ENV>] 插件已禁用，不注册任何 handler` 日志
+- 传进 `disabled_plugin_metadata()` 的 `description` 是**插件原本的描述**，别自己拼「（当前已禁用…）」后缀
+- 存根**不包含** `config=Config`（也不需要 `supported_adapters`，helper 已给）
 - 正常代码必须在 `else` 分支内（不会执行到）
+- 开关解析统一用 `plugin_enabled(env_var, default=True)`：未设置或空串取 `default`，比较大小写不敏感，`1` / `true` / `yes` / `on` 为开，其余（`false` / `0` / `no` / `off`）为关
 - 环境变量命名：`PLUGIN_NAME_ENABLED`
 
 ### 9.3 实际示例
@@ -800,6 +799,9 @@ else:
 - [group_file_manager/__init__.py](../../src/plugins/group_file_manager/__init__.py) — `GROUP_FILE_MANAGER_ENABLED`
 - [group_sentinel/__init__.py](../../src/plugins/group_sentinel/__init__.py) — `GROUP_SENTINEL_ENABLED`
 - [icpc_ac_monitor/__init__.py](../../src/plugins/icpc_ac_monitor/__init__.py) — `ICPC_AC_MONITOR_ENABLED`
+- [diting_deploy/__init__.py](../../src/plugins/diting_deploy/__init__.py) — `DITING_DEPLOY_ENABLED`
+- [llm_scribe/__init__.py](../../src/plugins/llm_scribe/__init__.py) — `LLM_SCRIBE_ENABLED`
+- [todo_reminder/__init__.py](../../src/plugins/todo_reminder/__init__.py) — `TODO_CMD_ENABLE`（只用 `plugin_enabled()`，元数据不做存根，属于「运行期条件注册」的另一阵营）
 
 ## 10. 导入约定
 
@@ -1099,7 +1101,7 @@ nb run    # 启动 NoneBot（端口 6090）
 - [ ] 数据库操作在 async handler 函数内部使用 `async_session_factory`
 - [ ] 如接入权限：创建 `permissions.py` 注册权限点，handler 中调用 `check_permission()`
 - [ ] 如使用定时任务：正确 `require("nonebot_plugin_apscheduler")`，job ID 全局唯一
-- [ ] 如需启停控制：实现 `_ENABLED` 环境变量检查 + 禁用存根 `__plugin_meta__`
+- [ ] 如需启停控制：用 `src/common/plugin_guard.py` 的 `plugin_enabled()` + `disabled_plugin_metadata()`
 - [ ] 日志使用 `logger.info(f"[plugin_name] ...")` 格式，异常使用 `logger.opt(exception=True)`
 - [ ] 目录命名使用 snake_case
 - [ ] 如插件在 `src/` 下生成运行时文件（缓存、数据记录等），将写入路径改为 `data/` 目录 或 在项目根 `.watchignore` 中添加忽略关键字，避免误触发热重载
