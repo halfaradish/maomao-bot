@@ -142,6 +142,10 @@ if todo_cmd:
                     logger.error("调度器启动失败，无法处理todo命令")
                     await todo_cmd.finish("系统正在初始化，请稍后再试")
                     return
+            except FinishedException:
+                # finish() 靠这个异常收尾（它是 Exception 子类）；吞掉会继续往下
+                # 处理命令，而调度器恰恰还没就绪
+                raise
             except Exception as e:
                 logger.error(f"启动调度器失败: {e}")
                 await todo_cmd.finish("系统初始化失败，请稍后再试")

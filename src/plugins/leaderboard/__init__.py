@@ -9,6 +9,7 @@ from nonebot.adapters.onebot.v11 import (
 from nonebot.params import CommandArg
 from nonebot.plugin import PluginMetadata
 from nonebot.adapters.onebot.v11 import Message
+from nonebot.exception import FinishedException
 
 import aiohttp
 import asyncio
@@ -105,6 +106,10 @@ async def handle_leaderboard(event: GroupMessageEvent, args: Message = CommandAr
             await leaderboard.finish(MessageSegment.image(img_bytes))
         else:
             logger.warning("图片生成失败，返回None")
+    except FinishedException:
+        # finish() 靠这个异常收尾（它是 Exception 子类）；图片已经发出去了，
+        # 不能落进下面的宽 except 再记一条「生成图片失败」
+        raise
     except Exception as e:
         # 如果出现异常，返回错误信息
         logger.error(f"生成图片失败: {e}")

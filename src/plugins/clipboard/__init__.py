@@ -139,6 +139,10 @@ async def _(bot: Bot, event: Union[GroupMessageEvent, PrivateMessageEvent], matc
                                 text_content = file_bytes.decode("gbk")
                             except UnicodeDecodeError:
                                 await matcher.finish("文件编码格式不支持，仅支持 UTF-8 或 GBK 编码的文本文件。")
+            except FinishedException:
+                # finish() 靠这个异常收尾（它是 Exception 子类），不能落进下面的
+                # 宽 except 再报一次；吞掉的话还会往下走到「不包含有效文本」那条
+                raise
             except Exception as e:
                 logger.error(f"下载或读取文件失败: {e}")
                 await matcher.finish(f"读取文件失败: {e}")

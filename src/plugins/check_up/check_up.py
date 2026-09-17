@@ -2,6 +2,7 @@ from nonebot import Bot, on_command, require, get_bot, logger, get_plugin_config
 from nonebot.plugin import PluginMetadata
 from nonebot.adapters.onebot.v11 import MessageEvent, PrivateMessageEvent, GroupMessageEvent
 from nonebot.adapters import Message
+from nonebot.exception import FinishedException
 from nonebot.params import CommandArg
 require("nonebot_plugin_apscheduler")
 from nonebot_plugin_apscheduler import scheduler
@@ -137,6 +138,9 @@ async def check_up(bot: Bot, event: Union[GroupMessageEvent, PrivateMessageEvent
 
         result_msg = await get_working_time(date=date_val, range=range_val)
         await bot.send(event=event, message=result_msg)
+    except FinishedException:
+        # finish() 靠这个异常收尾（它是 Exception 子类），不能当成「响应错误」记下来
+        raise
     except Exception as e:
         logger.opt(exception=True).warning("[考勤]响应错误")
 
