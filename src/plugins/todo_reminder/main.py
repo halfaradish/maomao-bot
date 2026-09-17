@@ -10,6 +10,12 @@ from nonebot.params import CommandArg
 from nonebot.adapters.onebot.v11.message import Message
 from nonebot.exception import FinishedException
 from nonebot.log import logger
+from src.common.permission import (
+    blacklist_guard,
+    check_permission,
+    ensure_perm_group,
+    permission_checker,
+)
 from src.common.plugin_guard import plugin_enabled
 from src.common.send_forward_msg import send_forward_msg
 import re
@@ -85,10 +91,38 @@ async def startup():
         return
     await start_scheduler()
 
+
+@get_driver().on_startup
+async def _ensure_default_perm_groups():
+    """确保本插件的默认权限组存在（幂等，不动已有成员）
+
+    拆成两组：普通用户可创建个人提醒，但 @全体 群提醒会打扰整个群，单独一组授予。
+    ``todo_reminder:clear_cache`` 是调试命令，不随任何组授予，只留给管理员。
+    """
+    if not _todo_cmd_enabled:
+        return
+    await ensure_perm_group(
+        "todo_reminder_users",
+        "创建提醒",
+        ["todo_reminder:use"],
+        description="自动创建：创建/取消/完成/删除个人提醒的权限",
+    )
+    await ensure_perm_group(
+        "todo_reminder_managers",
+        "群提醒 @全体",
+        ["todo_reminder:group_at_all"],
+        description="自动创建：创建 @全体成员 群提醒的权限",
+    )
+
+
+#: 只读子命令：仅受黑名单约束，不受权限点约束
+READ_ONLY_OPS = {"list", "ls", "done", "completed", "info", "detail", "help"}
+
 # 主命令注册 - 参考PRD插件格式
 # 只有在开关开启时才注册命令
 if _todo_cmd_enabled:
-    todo_cmd = on_command("todo", priority=10)
+    # 黑名单模式：普通成员照常可用，只有被拉黑的人用不了
+    todo_cmd = on_command("todo", priority=10, permission=blacklist_guard())
 else:
     # 创建一个空的命令对象，避免后续代码报错
     todo_cmd = None
@@ -110,22 +144,28 @@ if todo_cmd:
         """处理todo命令 - 参考PRD插件格式"""
         raw_args = args.extract_plain_text().strip()
         params = raw_args.split() if raw_args else []
-        
-        # 检查是否是@用户提醒（群聊中且消息包含@）
-        if isinstance(event, GroupMessageEvent):
-            # 检查消息是否包含@用户
-            message = event.get_message()
-            has_at = any(seg.type == "at" for seg in message)
-            if has_at:
-                # 这是@用户提醒，需要特殊处理
-                try:
-                    result = await commands.create_user_mention_todo(bot, event, raw_args)
-                    await safe_finish(result)
-                except FinishedException:
-                    raise
-                except Exception as e:
-                    logger.error(f"创建@用户提醒失败: {e}")
-                    await todo_cmd.finish(f"创建@用户提醒失败: {str(e)}")
+
+        # 群聊里带了 @ 就是「@指定用户提醒」，属于写操作
+        has_at = isinstance(event, GroupMessageEvent) and any(
+            seg.type == "at" for seg in event.get_message()
+        )
+
+        # 只读子命令（列表/详情/帮助）与无参数帮助不受权限点约束；
+        # 其余都是写操作，需要 todo_reminder:use
+        read_only = not has_at and (not params or params[0] in READ_ONLY_OPS)
+        if not read_only and not await check_permission(event, "todo_reminder:use"):
+            await todo_cmd.finish("您没有权限使用此功能")
+
+        if has_at:
+            # @用户提醒需要特殊处理
+            try:
+                result = await commands.create_user_mention_todo(bot, event, raw_args)
+                await safe_finish(result)
+            except FinishedException:
+                raise
+            except Exception as e:
+                logger.error(f"创建@用户提醒失败: {e}")
+                await todo_cmd.finish(f"创建@用户提醒失败: {str(e)}")
         
         # 当没有传入参数时，显示帮助信息
         if not params:
@@ -208,6 +248,8 @@ if todo_cmd:
                 # 群组@全体成员提醒
                 if len(operation_params) < 2:
                     await todo_cmd.finish("请提供时间和内容，例如：todo 群提醒 30分钟后 开会")
+                if not await check_permission(event, "todo_reminder:group_at_all"):
+                    await todo_cmd.finish("您没有权限使用群提醒（@全体）功能")
                 content = f"todo {' '.join(operation_params)}"
                 result = await commands.create_group_at_all_todo(bot, event, content)
                 await safe_finish(result)
@@ -236,8 +278,11 @@ if todo_cmd:
             await todo_cmd.finish(f"处理命令时发生错误: {str(e)}")
 
 
-# 清除缓存命令
-clear_cache_matcher = on_command("清除缓存", priority=1)
+# 清除缓存命令（调试用，仅管理员与授权者；handler 无实际业务）
+clear_cache_matcher = on_command(
+    "清除缓存", priority=1,
+    permission=permission_checker("todo_reminder:clear_cache"),
+)
 
 @clear_cache_matcher.handle()
 async def handle_clear_cache(bot: Bot, event: Event):

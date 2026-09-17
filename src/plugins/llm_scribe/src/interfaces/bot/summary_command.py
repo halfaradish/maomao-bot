@@ -8,6 +8,7 @@ from nonebot.params import CommandArg
 from ...application.services.summary_report_app_service import (
     SummaryReportApplicationService,
 )
+from src.common.permission import check_permission
 
 
 smy_cmd = on_command("sum", aliases={"summary"}, block=True)
@@ -52,6 +53,11 @@ async def _(bot: Bot, event: GroupMessageEvent, args: Message = CommandArg()):
 
     if text.lower() in ["help", "h", "ls", "?", "帮助"]:
         await smy_cmd.send(HELP_TEXT)
+        return
+
+    # 摘要会调用 LLM 消耗额度，需 llm_scribe:sum 权限点；上面的帮助分支保持公开
+    if not await check_permission(event, "llm_scribe:sum"):
+        await smy_cmd.send("您没有权限使用此功能")
         return
 
     if text.lower() in ["day", "d"]:

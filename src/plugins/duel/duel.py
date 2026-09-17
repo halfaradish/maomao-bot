@@ -8,6 +8,7 @@ import re
 from .config import Config
 from . import dao
 from .get_problem import get_one_problem_by_random, get_problem_id_by_rating_tags, get_daily_problem
+from src.common.permission import blacklist_guard, check_permission
 from src.common.plugin_meta import PluginGroupEnum, PluginBadgeColor
 
 plugin_config = get_plugin_config(Config)
@@ -28,7 +29,10 @@ duel_command = on_command(
     "duel",
     aliases={"cf推题", "题目"},
     priority=plugin_config.priority,
-    block=plugin_config.block
+    block=plugin_config.block,
+    # 推题与查看映射都是只读的：只挡黑名单，不设默认拒绝；
+    # 写共享映射的 map add/rm 在 handler 里单独查权限点
+    permission=blacklist_guard(),
 )
 
 
@@ -98,6 +102,10 @@ class CommandHandler:
     @staticmethod
     async def handle_map_add(bot: Bot, event: MessageEvent, params: list[str]):
         """添加映射关系"""
+        if not await check_permission(event, "duel:manage_map"):
+            await bot.send(event=event, message="您没有权限使用此功能")
+            return
+
         if len(params) != 2:
             await bot.send(event=event, message=f"参数个数有误！需要两个参数，实际收到{len(params)}个参数")
             return
@@ -124,6 +132,10 @@ class CommandHandler:
     @staticmethod
     async def handle_map_remove(bot: Bot, event: MessageEvent, params: list[str]):
         """删除映射关系"""
+        if not await check_permission(event, "duel:manage_map"):
+            await bot.send(event=event, message="您没有权限使用此功能")
+            return
+
         if len(params) != 2:
             await bot.send(event=event, message=f"参数个数有误！需要两个参数，实际收到{len(params)}个参数")
             return

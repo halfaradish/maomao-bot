@@ -10,12 +10,18 @@ from nonebot.params import CommandArg
 
 from . import dao
 from .config import plugin_config
+from src.common.permission import permission_checker
 
 RANGE_MAP = {"今天": "today", "昨天": "yesterday", "本周": "week", "本月": "month", "总": "all"}
 RANGE_LABELS = {"today": "今天", "yesterday": "昨天", "week": "本周", "month": "本月", "all": "总计"}
 CROSS_ENV_KEYWORDS = {"全环境", "跨环境"}
 
-stats_cmd = on_command("插件统计", aliases={"usage", "pluginstat"}, priority=5, block=True)
+# handler 没有 event 形参，只能挂 matcher 级权限点；这是汇总运营数据，
+# 默认仅管理员可用（管理员由权限系统第 0 步放行，故不自动创建权限组）
+stats_cmd = on_command(
+    "插件统计", aliases={"usage", "pluginstat"}, priority=5, block=True,
+    permission=permission_checker("plugin_usage_stats:view"),
+)
 
 
 def _resolve_range_key(tokens: list[str]) -> str:

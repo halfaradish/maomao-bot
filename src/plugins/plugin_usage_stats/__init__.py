@@ -21,6 +21,7 @@ from src.common.plugin_meta import PluginBadgeColor, PluginGroupEnum
 
 from . import dao
 from .config import Config, excluded_plugins, plugin_config
+from . import permissions  # noqa: F401 — 注册权限点到权限系统
 
 __plugin_meta__ = PluginMetadata(
     name="插件使用统计",

@@ -18,6 +18,7 @@ from .database import TodoDatabase
 from .time_parser import TimeParser
 from .reminder_scheduler import ReminderScheduler
 from .commands import TodoCommands
+from . import permissions  # noqa: F401 — 注册权限点到权限系统
 from src.common.plugin_guard import plugin_enabled
 from src.common.plugin_meta import PluginGroupEnum, PluginBadgeColor
 
