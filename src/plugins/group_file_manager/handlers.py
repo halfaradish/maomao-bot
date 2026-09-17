@@ -7,6 +7,7 @@ from pathlib import Path
 from nonebot import logger, on_command, on_notice
 from nonebot.adapters import Message
 from nonebot.adapters.onebot.v11 import Bot, GroupMessageEvent, GroupUploadNoticeEvent
+from nonebot.exception import FinishedException
 from nonebot.params import CommandArg
 from sqlalchemy import select
 
@@ -103,6 +104,10 @@ async def handle_crawl(bot: Bot, event: GroupMessageEvent, args: Message = Comma
     try:
         count = await crawl_group_files(bot, event.group_id, full_crawl=full_crawl)
         await crawl_history.finish(f"✅ {mode}完成！共收集 {count} 个新文件")
+    except FinishedException:
+        # finish() 就是靠这个异常收尾的（它是 Exception 子类），
+        # 不能落进下面的宽 except 再报一次「失败: FinishedException()」
+        raise
     except Exception as e:
         await crawl_history.finish(f"❌ {mode}失败: {str(e)}")
 
