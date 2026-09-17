@@ -65,7 +65,7 @@ async def read_only_example():
         ...
 ```
 
-仍可直接使用 `async_session_factory()`（自管 commit/rollback），但**新代码一律走 `get_session()`**；存量裸工厂已清零（只剩工厂定义处与 ICPC 池自用，见 §1.2）。
+仍可直接使用 `async_session_factory()`（自管 commit/rollback，**不再自动提交**），但**新代码一律走 `get_session()`**；存量裸工厂调用点已清零（只剩工厂定义处、ICPC 池、以及 `api/bot.py` 那个刻意参数化的探针，见 §1.2）。
 
 ### 1.1 两条硬规则
 
@@ -102,7 +102,7 @@ await matcher.finish("已添加")            # 退出块时已 commit
 | 已用 `get_session()` | 43 | 146 |
 | 仍用裸 `async_session_factory()` | 0 | 0 |
 
-（口径：`get_session(` 调用点，含 `commit=False`，含 `scripts/`；`commit=False` 共 60 处。）
+（口径：`get_session(` **调用点**，含 `scripts/`；其中 `commit=False` 共 **59** 处——只统计值确实为 `False` 的调用点，另有 1 处显式写 `commit=True`。想复核就按「AST 里 `get_session` 调用 + `commit` 关键字取值为 `False`」来数，别用 `grep commit=False`，那个会把注释和 docstring 一起算进去。）
 
 **裸工厂只剩 3 处引用，都不是待迁移的遗留**：
 - `common/database.py` —— 工厂定义处（`get_session()` 自己就建在它上面）；
@@ -111,14 +111,18 @@ await matcher.finish("已添加")            # 退出块时已 commit
 
 **会话块内 `finish()` 已清零**（全仓库 0 处）。`group_file_manager/handlers.py` 原先那 8 处已按 §1.3 的办法整段重排：块内只查/写并把文案记进 `msg` 变量，`finish()` 一律移到块外。顺带把 `handle_add_monitor` 的 `bot.get_group_info()`（网络调用）也挪出了会话块。
 
-**只剩 2 处「会话块内显式 `commit()`」，都在白名单里、各有独立理由**（静态闸按 `文件::函数` 白名单校验，见下）：
+**会话块内显式 `commit()` 只剩 4 处，都可以留，但理由各不相同**：
 
-| 位置 | 理由 |
-|---|---|
-| `group_file_manager/handlers.py` `handle_group_upload` | 先把新群落库，再下载文件；下载失败回滚时不能连带丢掉群记录 |
-| `group_file_manager/hooks.py` `init_monitored_groups` | 必须在 `auto_crawl` 之前提交，否则其独立会话看不到新群行 |
+| 位置 | 类型 | 理由 |
+|---|---|---|
+| `group_file_manager/handlers.py` `handle_group_upload` | 词法块内 | 先把新群落库，再下载文件；下载失败回滚时不能连带丢掉群记录 |
+| `group_file_manager/hooks.py` `init_monitored_groups` | 词法块内 | 必须在 `auto_crawl` 之前提交，否则其独立会话看不到新群行 |
+| `group_file_manager/service.py` `download_and_save`（由 `handle_group_upload` 传入同一个 session） | 语义块内 | 下载成功后的落库提交；与上一条同一事务 |
+| `auto_manage_group/migrate.py` `_ensure_permission_groups` | 语义块内 | 建权限组后要立刻提交，后续步骤依赖它已可见 |
 
-这两处所在块内**没有** `finish()`，所以不构成 §1.1 规则一那种「写完又被回滚」的风险；要动它们必须同时确认上面那条语义。
+前两处**词法上**落在 `async with get_session()` 里（静态闸按 `文件::函数` 白名单校验）；后两处是**语义上**的块内提交——它们只收到一个 `session` 参数，看不出身边有 `get_session`，静态闸抓不到，改的时候要自己认。四处所在块内都**没有** `finish()`，所以不构成 §1.1 规则一那种「写完又被回滚」的风险；要动它们必须同时确认上面那条语义。
+
+**另外一处**已知违背「块内只做 DB」：`handle_group_upload` 仍在同一个块内调 `bot.get_group_info()` 与 `download_and_save()`（后者本来就是下载 + 落库，块刻意持有事务边界以保证「新群先落库」）。这是**有意保留**的例外，不是遗漏；想拆的话要连着上面第一条语义一起重排。
 
 ### 1.3 改 `finish()` 在块内的 handler：只记标志，出块再提示
 
@@ -475,7 +479,7 @@ async with get_session() as session:
 
 ## 6. 所有模型一览
 
-### 6.1 botdb_models.py（12 个表）
+### 6.1 botdb_models.py（13 个表）
 
 | # | 模型类 | MySQL 表名 | 用途 | 主键 | 关键关系 |
 |---|--------|-----------|------|------|---------|
@@ -491,6 +495,7 @@ async with get_session() as session:
 | 10 | `MonitoredGroup` | `monitored_groups` | QQ 群监控列表 | `id` BigInt PK, `group_id` UNIQUE | → `GroupFile` (cascade) |
 | 11 | `GroupFile` | `group_files` | 群文件记录 | `id` BigInt PK | → `MonitoredGroup` (FK to group_id; unique on `file_id + group_id`) |
 | 12 | `GroupStatistic` | `group_statistics` | 群统计信息 | `id` BigInt PK, `group_id` UNIQUE | 无 |
+| 13 | `CustomHoliday` | `custom_holiday` | 自定义节假日（覆盖 API 数据） | `id` BigInt PK, `date` UNIQUE | 无 |
 
 ### 6.2 like_plugin_models.py（2 个表）
 
@@ -536,7 +541,7 @@ from src.common.models import TodoReminder, LikeRecord
 
 同一 MySQL 库（`diting_qq_bot`）会被多个环境实例共用（prod/dev/local/docker，由 `.env` 的 `ENVIRONMENT` 决定）。`env_tag` 列标记每行数据的归属环境，防止 dev 测试数据混入 prod、或 dev 环境误改 prod 数据。
 
-> 列宽口径：`String(20)`（现有 7 张表一致）。早期设计文档写的 `VARCHAR(32)` 已废弃，以本节为准。
+> 列宽口径：`String(20)`（现有 8 张表一致：duel 3 张 + fakemsg + mass_kick + plugin_usage_stats + prd + shit_transport）。早期设计文档写的 `VARCHAR(32)` 已废弃，以本节为准。
 
 ### 7.1 取值来源 — 只用 `current_env_tag()`
 
@@ -613,7 +618,7 @@ async with get_session() as session:      # 查到才写，用默认 commit=True
 
 **现有豁免清单**（历史表，维持现状，不回溯加列）：
 
-- `botdb_models.py` 全部 12 张、`like_plugin_models.py` 2 张、`vv_models.py`
+- `botdb_models.py` 全部 13 张、`like_plugin_models.py` 2 张、`vv_models.py`
 - ICPC 库整体不适用（独立数据库，不存在同库多环境问题）
 
 ---
@@ -712,6 +717,10 @@ def _ensure_naive_local(dt):
 | `group_statistics` | 直接 SQLAlchemy | GroupStatistic | `session.delete()` 删除；独立 DAO 类；异常静默返回 False |
 | `plugin_usage_stats` | 直接 SQLAlchemy | PluginUsageRecord | DAO 模块级异步函数分层；`env_tag` 环境隔离；热路径异常吞掉不阻断消息 |
 | `mass_kick` / `shit_transport` / `fakemsg` / `duel` / `prd` | 直接 SQLAlchemy | 各自 `*_models.py`（见 6.3） | 由 JSON 存储迁移而来；MySQL upsert（`mysql_insert.on_duplicate_key_update`）做原子计数；DAO 返回 legacy dict 保持旧字段形状 |
+| `group_card_changer` | 直接 SQLAlchemy | CustomHoliday | 只读加载自定义节假日覆盖 API 数据；DB 失败降级为「仅用 API 数据」 |
+| `vv` / `group_sentinel` / `diting_deploy` | 直接 SQLAlchemy | VvGroupBlacklist / PermissionGroup 系列 | 专属黑名单 + 权限组播种；启动钩子里 `add + flush` 后由块退出提交 |
+
+> 这张表是**示例**而非清单——以 `src/plugins/` 目录为准；`api/` 下 9 个模块与 `common/permission/*` 也都走 `get_session()`。
 
 ---
 
@@ -832,7 +841,7 @@ await matcher.finish("已添加")
 | | Bot DB | ICPC DB |
 |---|---|---|
 | **环境变量前缀** | `BOT_DB_*` | `ICPC_DB_*` |
-| **Session 工厂** | `src/common/database.py` → `async_session_factory` | `src/common/icpc_database.py` → `icpc_async_session_factory` |
+| **Session 入口** | `src/common/database.py` → `get_session(*, commit=True)`（裸 `async_session_factory` 仅底层工厂自用） | `src/common/icpc_database.py` → `icpc_async_session_factory` |
 | **Base 类** | `Base` | `IcpcBase` |
 | **Models** | `src/common/models/botdb_models.py` + `like_plugin_models.py` | `src/common/models/icpc_models.py` |
 | **兼容层** | 无 | `src/common/icpc_db_pool.py` → `get_icpc_db_connection()` 提供原始 SQL 查询 |

@@ -8,7 +8,7 @@ description: >
   触发词：插件、plugin、on_command、on_notice、on_request、on_message、
   PluginMetadata、matcher、handler、config、pydantic、BaseModel、
   权限、permission、check_permission、权限点、permission_checker、
-  数据库、database、async_session_factory、CRUD、SQLAlchemy、
+  数据库、database、get_session、async_session_factory、CRUD、SQLAlchemy、
   APScheduler、定时任务、scheduler、require、禁用、ENABLED、
   PluginGroupEnum、PluginBadgeColor、send_forward_msg、JsonUtils、
   rate_limiter、令牌桶、group_ban、like、contest_reminder、group_sentinel、
@@ -30,7 +30,7 @@ description: >
 
 ```
 src/
-├── plugins/                  # 35+ NoneBot 插件（自动发现）
+├── plugins/                  # 38 个 NoneBot 插件（自动发现）
 │   └── <plugin_name>/
 │       ├── __init__.py       # 入口：PluginMetadata + 命令/事件处理器
 │       ├── config.py         # Pydantic 配置类（可选）
@@ -47,7 +47,7 @@ src/
 
 ### 1.2 插件发现机制
 
-[pyproject.toml](../../pyproject.toml) 的 `[tool.nonebot]` 段声明插件发现路径：
+[pyproject.toml](../../../pyproject.toml) 的 `[tool.nonebot]` 段声明插件发现路径：
 
 ```toml
 [tool.nonebot]
@@ -77,7 +77,7 @@ builtin_plugins = ["echo"]
 
 ### 1.4 插件分组与徽章
 
-定义在 [src/common/plugin_meta.py](../../src/common/plugin_meta.py)：
+定义在 [src/common/plugin_meta.py](../../../src/common/plugin_meta.py)：
 
 | 枚举成员 | `.value` | 分类 | 典型插件 |
 |---------|----------|------|---------|
@@ -125,7 +125,7 @@ __plugin_meta__ = PluginMetadata(
 )
 ```
 
-`extra` 字段中的 `group` 和 `badge_color` 是**强制约定**，供 `/help` 菜单系统（[cmd_list 插件](../cmd_list/get_plugin_usage.py)）读取展示。
+`extra` 字段中的 `group` 和 `badge_color` 是**强制约定**，供 `/help` 菜单系统（[cmd_list 插件](../../../src/plugins/cmd_list/get_plugin_usage.py)）读取展示。
 
 ### Step 3: 创建 config.py（如需配置）
 
@@ -230,7 +230,7 @@ async def handle_my_cmd(bot: Bot, event: GroupMessageEvent, args: Message = Comm
 
 ### 3.3 实例对照
 
-**简单版** (from [group_ban/__init__.py](../../src/plugins/group_ban/__init__.py))：
+**简单版** (from [group_ban/__init__.py](../../../src/plugins/group_ban/__init__.py))：
 
 ```python
 __plugin_meta__ = PluginMetadata(
@@ -247,7 +247,7 @@ __plugin_meta__ = PluginMetadata(
 )
 ```
 
-**复杂版** (from [permission_manager/__init__.py](../../src/plugins/permission_manager/__init__.py)，子命令分发见 [dispatch.py](../../src/plugins/permission_manager/dispatch.py))：
+**复杂版** (from [permission_manager/__init__.py](../../../src/plugins/permission_manager/__init__.py)，子命令分发见 [dispatch.py](../../../src/plugins/permission_manager/dispatch.py))：
 
 ```python
 __plugin_meta__ = PluginMetadata(
@@ -305,7 +305,7 @@ config = get_plugin_config(Config)  # 在模块级别调用，不在 handler 内
 
 ### 4.3 示例
 
-**简单配置** (from [group_ban/config.py](../../src/plugins/group_ban/config.py))：
+**简单配置** (from [group_ban/config.py](../../../src/plugins/group_ban/config.py))：
 
 ```python
 class Config(BaseModel):
@@ -315,7 +315,7 @@ class Config(BaseModel):
     group_ban_block: bool = True
 ```
 
-**复杂配置** (from [contest_reminder/config.py](../../src/plugins/contest_reminder/config.py))：
+**复杂配置** (from [contest_reminder/config.py](../../../src/plugins/contest_reminder/config.py))：
 
 ```python
 class Config(BaseModel):
@@ -354,7 +354,7 @@ async def handle(bot: Bot, event: GroupMessageEvent, args: Message = CommandArg(
 
 **优先级约定**：`5`（管理/核心命令）、`10`（常规命令）、`30`（低优先级）。
 
-**多命令插件** (from [like/like.py](../../src/plugins/like/like.py))：
+**多命令插件** (from [like/like.py](../../../src/plugins/like/like.py))：
 
 ```python
 like_me = on_command("赞我", permission=GROUP, priority=plugin_config.priority, block=plugin_config.block)
@@ -363,7 +363,7 @@ like_follow = on_command("订阅赞", aliases={"dev-订阅赞"}, permission=GROU
 like_unfollow = on_command("取消订阅赞", permission=GROUP, priority=plugin_config.priority, block=plugin_config.block)
 ```
 
-**自定义 Rule** (from [group_ban/__init__.py](../../src/plugins/group_ban/__init__.py)) — 确保命令是独立单词而非子串：
+**自定义 Rule** (from [group_ban/__init__.py](../../../src/plugins/group_ban/__init__.py)) — 确保命令是独立单词而非子串：
 
 ```python
 from nonebot.rule import Rule
@@ -415,7 +415,7 @@ async def handle_member_join(bot: Bot, event: GroupIncreaseNoticeEvent):
 
 ### 5.3 on_request — 请求处理
 
-用于处理加群请求等 (from [group_sentinel/__init__.py](../../src/plugins/group_sentinel/__init__.py))：
+用于处理加群请求等 (from [group_sentinel/__init__.py](../../../src/plugins/group_sentinel/__init__.py))：
 
 ```python
 from nonebot import on_request
@@ -489,39 +489,36 @@ await bot.call_api("set_group_card", group_id=group_id, user_id=user_id, card="�
 
 ### 6.1 Bot DB — SQLAlchemy 异步操作
 
-Bot DB 通过 `async_session_factory` 访问：
+Bot DB 统一通过 `get_session()` 访问（退出块时自动 commit、异常时 rollback 并重抛）。完整约定见 [diting-db-guide 第 1 节](../diting-db-guide/SKILL.md)：
 
 ```python
 from sqlalchemy import select
-from src.common.database import async_session_factory
+from src.common.database import get_session
 from src.common.models.botdb_models import Group
 
-async with async_session_factory() as session:
-    # 查询
+async with get_session() as session:                 # 只读用 get_session(commit=False)
+    # 查询（Group 的字段是 name / display_name / description，没有 group_id）
     result = await session.execute(
-        select(Group).where(Group.group_id == group_id).limit(1)
+        select(Group).where(Group.name == "测试组").limit(1)
     )
     group = result.scalars().first()
 
     # 创建
-    new_group = Group(group_id=123, group_name="群名")
-    session.add(new_group)
-    await session.commit()
-
+    session.add(Group(name="测试组", display_name="测试分组", description=""))
     # 更新
-    group.group_name = "新群名"
-    await session.commit()
-
+    group.description = "新描述"
     # 删除 (from sqlalchemy import delete as sa_delete)
-    result = await session.execute(sa_delete(Group).where(Group.group_id == group_id))
-    await session.commit()
+    await session.execute(sa_delete(Group).where(Group.name == "测试组"))
+# 提交在退出 with 时自动发生；要拿到自增主键需显式 await session.flush()
 ```
+
+⚠️ **不要**在 bot DB 代码里用裸 `async_session_factory()`（它不再自动 commit），也**不要**把 `matcher.finish()` 写在块内——`FinishedException` 会触发 rollback，数据静默丢失。详见 [diting-db-guide §1.1 两条硬规则](../diting-db-guide/SKILL.md)。
 
 > **新建表必读**：Bot DB 新表**默认必加 `env_tag` 列**（同库多环境数据隔离），DAO 读写统一用 `src.common.database.current_env_tag()` 过滤。标准列定义、按 id 校验写法与豁免清单见 [diting-db-guide 第 7 节「env_tag 环境隔离约定」](../diting-db-guide/SKILL.md)。
 
 ### 6.2 CRUD 包装器
 
-来自 [src/common/crud.py](../../src/common/crud.py) 的 5 个便捷函数，支持**Django 风格过滤器**：
+来自 [src/common/crud.py](../../../src/common/crud.py) 的 5 个便捷函数，支持**Django 风格过滤器**：
 
 | 函数 | 签名 | 用途 |
 |------|------|------|
@@ -548,9 +545,12 @@ async with async_session_factory() as session:
 from src.common.crud import async_create_record, async_get_many
 from src.common.models.botdb_models import MessageEventLog
 
-# 创建
+# 创建（self_id / user_id / message_type / sub_type / time / raw_message /
+#       message_json / sender_nickname 都是无默认值的 NOT NULL 列，必须给全）
 record = await async_create_record(MessageEventLog,
-    message_id=123, user_id=456, raw_message="hello")
+    message_id=123, self_id=1000, user_id=456, message_type="group",
+    sub_type="normal", time=1700000000, raw_message="hello",
+    message_json={}, sender_nickname="甲")
 
 # 多条查询（含过滤器 + 排序 + 限制）
 logs = await async_get_many(
@@ -580,9 +580,9 @@ from src.common.icpc_db_pool import get_icpc_db_connection
 
 | 文件 | 基类 | 表数量 | 用途 |
 |------|------|-------|------|
-| [models/botdb_models.py](../../src/common/models/botdb_models.py) | `Base` (from database.py) | 13 | Bot 主数据库 |
-| [models/icpc_models.py](../../src/common/models/icpc_models.py) | `IcpcBase` (from icpc_database.py) | 6 | 竞赛数据库 |
-| [models/like_plugin_models.py](../../src/common/models/like_plugin_models.py) | `Base` | 2 | 点赞插件 |
+| [models/botdb_models.py](../../../src/common/models/botdb_models.py) | `Base` (from database.py) | 13 | Bot 主数据库 |
+| [models/icpc_models.py](../../../src/common/models/icpc_models.py) | `IcpcBase` (from icpc_database.py) | 7 | 竞赛数据库 |
+| [models/like_plugin_models.py](../../../src/common/models/like_plugin_models.py) | `Base` | 2 | 点赞插件 |
 
 ## 7. 权限系统接入
 
@@ -591,15 +591,16 @@ from src.common.icpc_db_pool import get_icpc_db_connection
 **方式 A：Matcher 级权限（推荐）**
 
 ```python
-from nonebot.permission import SUPERUSER
 from src.common.permission import permission_checker
 
 my_cmd = on_command(
     "cmd",
-    permission=permission_checker("my_plugin:action") | SUPERUSER,
+    permission=permission_checker("my_plugin:action"),
     priority=5, block=True,
 )
 ```
+
+> **不要写 `| SUPERUSER`**：本项目的管理员判据是「持有 `permission_manager:manage` 权限点」（`perm_admin` 权限组，启动时由 `SUPERUSERS` 播种一次），`SUPERUSERS` 本身不再作为放行条件。详见 [perm-system-guide §2.1](../perm-system-guide/SKILL.md)。
 
 **方式 B：命令式检查（handler 内）**
 
@@ -639,9 +640,9 @@ from . import permissions  # noqa: F401
 
 ### 7.2 检查优先级
 
-权限检查按以下 8 级优先级执行（在 [checker.py](../../src/common/permission/checker.py) 中实现）：
+权限检查按以下 8 级优先级执行（在 [checker.py](../../../src/common/permission/checker.py) 中实现）：
 
-1. **超级管理员** → 直接放行
+1. **管理员** → 持有 `permission_manager:manage`（`perm_admin` 组）直接放行
 2. **用户黑名单** → 拒绝
 3. **群黑名单** → 拒绝
 4. **群白名单** → 完全放行
@@ -652,7 +653,7 @@ from . import permissions  # noqa: F401
 
 ### 7.3 实际示例
 
-完整例子参见 [group_sentinel/permissions.py](../../src/plugins/group_sentinel/permissions.py)：
+完整例子参见 [group_sentinel/permissions.py](../../../src/plugins/group_sentinel/permissions.py)：
 
 ```python
 from src.common.permission import register_perm_point
@@ -665,7 +666,7 @@ register_perm_point(
 )
 ```
 
-群级功能检查使用 `is_group_feature_enabled()`（来自 [auto_manage_group/group_checker.py](../../src/plugins/auto_manage_group/group_checker.py)），它实现了一条轻量级的检查链（仅群白名单 + GroupPermBinding）：
+群级功能检查使用 `is_group_feature_enabled()`（来自 [auto_manage_group/group_checker.py](../../../src/plugins/auto_manage_group/group_checker.py)），它实现了一条轻量级的检查链（仅群白名单 + GroupPermBinding）：
 
 ```python
 from ..auto_manage_group.group_checker import is_group_feature_enabled
@@ -726,7 +727,7 @@ scheduler.add_job(
 
 ### 8.3 完整示例
 
-From [contest_reminder/__init__.py](../../src/plugins/contest_reminder/__init__.py)：
+From [contest_reminder/__init__.py](../../../src/plugins/contest_reminder/__init__.py)：
 
 ```python
 from nonebot import require, get_bot
@@ -758,7 +759,7 @@ if config.clist_schedule_job_enable:
 
 ### 9.1 标准禁用模式
 
-统一走 [src/common/plugin_guard.py](../../src/common/plugin_guard.py)——开关解析、存根
+统一走 [src/common/plugin_guard.py](../../../src/common/plugin_guard.py)——开关解析、存根
 `__plugin_meta__`（不产生 RuntimeError）、禁用日志都在那里：
 
 ```python
@@ -807,12 +808,12 @@ else:
 
 ### 9.3 实际示例
 
-- [group_file_manager/__init__.py](../../src/plugins/group_file_manager/__init__.py) — `GROUP_FILE_MANAGER_ENABLED`
-- [group_sentinel/__init__.py](../../src/plugins/group_sentinel/__init__.py) — `GROUP_SENTINEL_ENABLED`
-- [icpc_ac_monitor/__init__.py](../../src/plugins/icpc_ac_monitor/__init__.py) — `ICPC_AC_MONITOR_ENABLED`
-- [diting_deploy/__init__.py](../../src/plugins/diting_deploy/__init__.py) — `DITING_DEPLOY_ENABLED`
-- [llm_scribe/__init__.py](../../src/plugins/llm_scribe/__init__.py) — `LLM_SCRIBE_ENABLED`
-- [todo_reminder/__init__.py](../../src/plugins/todo_reminder/__init__.py) — `TODO_CMD_ENABLE`（只用 `plugin_enabled()`，元数据不做存根，属于「运行期条件注册」的另一阵营）
+- [group_file_manager/__init__.py](../../../src/plugins/group_file_manager/__init__.py) — `GROUP_FILE_MANAGER_ENABLED`
+- [group_sentinel/__init__.py](../../../src/plugins/group_sentinel/__init__.py) — `GROUP_SENTINEL_ENABLED`
+- [icpc_ac_monitor/__init__.py](../../../src/plugins/icpc_ac_monitor/__init__.py) — `ICPC_AC_MONITOR_ENABLED`
+- [diting_deploy/__init__.py](../../../src/plugins/diting_deploy/__init__.py) — `DITING_DEPLOY_ENABLED`
+- [llm_scribe/__init__.py](../../../src/plugins/llm_scribe/__init__.py) — `LLM_SCRIBE_ENABLED`
+- [todo_reminder/__init__.py](../../../src/plugins/todo_reminder/__init__.py) — `TODO_CMD_ENABLE`（只用 `plugin_enabled()`，元数据不做存根，属于「运行期条件注册」的另一阵营）
 
 ## 10. 导入约定
 
@@ -823,7 +824,7 @@ else:
 ```python
 # 风格 A：相对导入（插件深处较常用）
 from .config import Config
-from ...common.database import async_session_factory
+from ...common.database import get_session
 from ...common.models.botdb_models import MonitoredGroup
 
 # 风格 B：绝对导入（核心类型建议使用）
@@ -866,7 +867,7 @@ from pydantic import BaseModel, Field
 from typing import List, Optional
 
 # ── 数据库 ──
-from src.common.database import async_session_factory
+from src.common.database import get_session
 from sqlalchemy import select, delete as sa_delete, func
 
 # ── 权限 ──
@@ -881,7 +882,7 @@ from src.common.send_forward_msg import send_forward_msg
 
 | 模块 | 导入 | 用途 |
 |------|------|------|
-| `database.py` | `from ...common.database import async_session_factory` | Bot DB SQLAlchemy 异步会话 |
+| `database.py` | `from ...common.database import get_session` | Bot DB 会话入口（裸 `async_session_factory()` 仅底层工厂自用） |
 | `crud.py` | `from src.common.crud import async_create_record, async_get_many` | Django 风格 CRUD 包装器 |
 | `send_forward_msg.py` | `from ...common.send_forward_msg import send_forward_msg` | 合并转发消息（群聊+私聊） |
 | `utils.py` | `from ...common.utils import BuildUri, QQAvatarLoader` | NapCat 文件 URI、QQ 头像 |
@@ -954,7 +955,7 @@ logger.warning(f"[my_plugin] 已禁用 (MY_PLUGIN_ENABLED=false)")
 logger.opt(exception=True).error(f"[my_plugin] 处理失败: {e}")
 ```
 
-文件日志在 [bot.py](../../bot.py) 中配置：每日轮转，保留 7 天，压缩为 zip。
+文件日志在 [bot.py](../../../bot.py) 中配置：每日轮转，保留 7 天，压缩为 zip。
 
 **注意**：Docker 环境中 `print()` 作为日志兜底（`logger` 输出可能被缓冲）。
 
@@ -987,12 +988,13 @@ async def handle(bot: Bot, event: GroupMessageEvent, args: Message = CommandArg(
 **DB 操作错误处理**：
 
 ```python
-async with async_session_factory() as session:
+from src.common.database import get_session
+
+async with get_session() as session:      # 异常时 get_session 已代为 rollback 并重抛
     try:
         session.add(record)
-        await session.commit()
     except Exception as e:
-        await session.rollback()
+        # 这里只补业务语义的日志；不需要再写 rollback
         logger.opt(exception=True).error(f"[my_plugin] DB 写入失败: {e}")
         raise
 ```
@@ -1057,16 +1059,18 @@ async def _(bot: Bot):
 
 | 插件 | 展示的模式 | 适用场景 |
 |------|-----------|---------|
-| [group_ban](../../src/plugins/group_ban/) | on_command, 自定义 Rule, FinishedException 处理 | 纯命令插件参考 |
-| [like](../../src/plugins/like/) | 多命令+别名, 数据库直接访问, APScheduler | DB + 调度器模式 |
-| [contest_reminder](../../src/plugins/contest_reminder/) | on_command + add_job cron/date, 合并转发 | 定时任务密集型 |
-| [group_sentinel](../../src/plugins/group_sentinel/) | 权限点注册, 禁用模式, on_request, 启动钩子 | 生产级多模式插件 |
-| [permission_manager](../../src/plugins/permission_manager/) | 多模块包拆分（runtime 共享 matcher / dispatch 子命令分发 / 完整 DB CRUD / 缓存失效 / matcher.got 二次确认） | 权限系统集成 |
-| [logging_info](../../src/plugins/logging_info/) | on_message 监听, DAO 模式, 事件序列化 | 消息日志机器人 |
-| [todo_reminder](../../src/plugins/todo_reminder/) | 多模块插件, 自然语言解析, 调度器集成 | 复杂业务逻辑 |
-| [group_file_manager](../../src/plugins/group_file_manager/) | 禁用模式, on_notice (upload), 条件导入, FK 迁移 | 文件管理 + 条件加载 |
-| [auto_manage_group](../../src/plugins/auto_manage_group/) | 权限集成, on_notice (join/leave), 多特性 | 功能完整的群管理 |
-| [cmd_list](../../src/plugins/cmd_list/) | /help 菜单, 模板渲染 | 标准 BASE 组插件参考 |
+| [group_ban](../../../src/plugins/group_ban) | on_command, 自定义 Rule, FinishedException 处理 | 纯命令插件参考 |
+| [like](../../../src/plugins/like) | 多命令+别名, 数据库直接访问, APScheduler | DB + 调度器模式 |
+| [contest_reminder](../../../src/plugins/contest_reminder) | on_command + add_job cron/date, 合并转发 | 定时任务密集型 |
+| [group_sentinel](../../../src/plugins/group_sentinel) | 权限点注册, 禁用模式, on_request, 启动钩子 | 生产级多模式插件 |
+| [permission_manager](../../../src/plugins/permission_manager) | 多模块包拆分（runtime 共享 matcher / dispatch 子命令分发 / 完整 DB CRUD / 缓存失效 / matcher.got 二次确认） | 权限系统集成 |
+| [logging_info](../../../src/plugins/logging_info) | on_message 监听, DAO 模式, 事件序列化 | 消息日志机器人 |
+| [todo_reminder](../../../src/plugins/todo_reminder) | 多模块插件, 自然语言解析, 调度器集成 | 复杂业务逻辑 |
+| [group_file_manager](../../../src/plugins/group_file_manager) | 禁用模式, on_notice (upload), 条件导入, FK 迁移 | 文件管理 + 条件加载 |
+| [auto_manage_group](../../../src/plugins/auto_manage_group) | 权限集成, on_notice (join/leave), 多特性 | 功能完整的群管理 |
+| [rate_limiter_middleware](../../../src/plugins/rate_limiter_middleware) | bot.send/call_api 挂钩, 双权限点(manage/view)闸 | 全局开关类插件参考 |
+| [cmd_list](../../../src/plugins/cmd_list) | /help 菜单, 模板渲染 | 标准 BASE 组插件参考 |
+| [clipboard](../../../src/plugins/clipboard) | 引用消息解析, 文件下载, FinishedException 分流 | 多命令共用同一 handler |
 
 ## 15. 测试与调试
 
@@ -1088,13 +1092,13 @@ nb run    # 启动 NoneBot（端口 6090）
 
 | 错误现象 | 可能原因 | 解决方法 |
 |---------|---------|---------|
-| 插件未加载 | 目录不在 plugin_dirs 中 | 检查 [pyproject.toml](../../pyproject.toml) → `plugin_dirs = ["src/plugins"]` |
+| 插件未加载 | 目录不在 plugin_dirs 中 | 检查 [pyproject.toml](../../../pyproject.toml) → `plugin_dirs = ["src/plugins"]` |
 | 配置未加载 | 环境变量名与字段名不匹配 | 检查 config.py 字段名，环境变量自动为大写 |
 | FinishedException 被吞 | `except Exception` 捕获了 `FinishedException` | 在所有 handler 中添加 `except FinishedException: raise` |
 | 数据库查询在加载时失败 | 模块级代码中创建了 session | 将数据库操作移到 async handler 函数内部 |
 | 权限总是拒绝 | `permissions.py` 未被导入 | 在 `__init__.py` 中添加 `from . import permissions  # noqa: F401` |
 | APScheduler 不可用 | `require` 调用在 NoneBot 初始化之前 | 使用 `try/except (ValueError, RuntimeError)` 包裹 |
-| 日志不输出 | 日志级别设置过高 | 检查 [bot.py](../../bot.py) 中 `logger.add` 的 `level` 参数 |
+| 日志不输出 | 日志级别设置过高 | 检查 [bot.py](../../../bot.py) 中 `logger.add` 的 `level` 参数 |
 | 插件生成的文件误触发热重载 | 运行时缓存/数据文件写入 `src/`，被 watcher 检测到变更 | 将写入路径改为 `data/` 目录，或在项目根目录的 `.watchignore` 中添加忽略关键字 |
 
 ## 16. 新插件检查清单
@@ -1109,7 +1113,7 @@ nb run    # 启动 NoneBot（端口 6090）
 - [ ] 命令处理器使用 `on_command()` 注册，设置合适的优先级
 - [ ] 事件处理器使用 `on_notice()` / `on_request()` 注册
 - [ ] 所有 handler 正确处理 `FinishedException`（单独的 `except` 子句，重新抛出）
-- [ ] 数据库操作在 async handler 函数内部使用 `async_session_factory`
+- [ ] 数据库操作在 async handler 函数内部使用 `get_session()`（只读用 `get_session(commit=False)`），不在块内调 `finish()`
 - [ ] 如接入权限：创建 `permissions.py` 注册权限点，handler 中调用 `check_permission()`
 - [ ] 如使用定时任务：正确 `require("nonebot_plugin_apscheduler")`，job ID 全局唯一
 - [ ] 如需启停控制：用 `src/common/plugin_guard.py` 的 `plugin_enabled()` + `disabled_plugin_metadata()`

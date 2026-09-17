@@ -47,16 +47,20 @@ webui/src/
 ├── components/
 │   ├── Sidebar.tsx              # 侧边栏外壳（可折叠，弹簧动画）
 │   ├── SidebarMenus.tsx         # 递归菜单渲染器
+│   ├── BrandIcon.tsx            # 品牌图标
 │   ├── BreadcrumbBar.tsx        # 顶部粘性面包屑栏
 │   ├── PageBackground.tsx       # 装饰性模糊光斑背景
+│   ├── PageLoading.tsx          # 页面级加载态
 │   ├── ConfirmDialog.tsx        # 确认弹窗（HeroUI Modal 封装）
 │   ├── EmptyState.tsx           # 空状态占位组件
 │   └── ErrorFallback.tsx        # ErrorBoundary 回退 UI
 ├── config/
-│   └── site.ts                  # 菜单配置 + MenuItem 类型
+│   └── site.tsx                 # 菜单配置 + MenuItem 类型（.tsx：icon 是 ReactNode）
+├── constants.ts                 # 站点级常量
 ├── hooks/
 │   ├── useConfirm.ts            # 确认对话框状态管理
-│   └── useListManager.ts        # 黑/白名单泛型 CRUD 管理器
+│   ├── useListManager.ts        # 黑/白名单泛型 CRUD 管理器
+│   └── useTheme.ts              # 主题（diting_theme）切换
 ├── layouts/
 │   └── DefaultLayout.tsx        # 认证后布局：侧边栏 + 内容区
 ├── pages/
@@ -67,13 +71,20 @@ webui/src/
 │   ├── BlacklistPage.tsx        # 黑名单（用户/群 双标签页）
 │   ├── WhitelistPage.tsx        # 白名单（用户/群 双标签页）
 │   ├── PointsPage.tsx           # 权限点目录
-│   └── UserStatusPage.tsx       # 用户权限状态查询
+│   ├── UserStatusPage.tsx       # 用户权限状态查询
+│   ├── BotInfoPage.tsx          # 基础信息（/info）
+│   ├── PluginsPage.tsx          # 插件管理（/plugins）
+│   ├── QQGroupsPage.tsx         # 群列表（/groups/list）
+│   ├── GroupFeaturesPage.tsx    # 群功能开关（/groups/features）
+│   └── MessageLogsPage.tsx      # 消息日志（/logs）
 ├── store/
 │   └── authStore.ts             # Zustand 认证 store（持久化到 localStorage）
 ├── styles/
 │   └── globals.css              # Tailwind 指令 + 滚动条样式 + 全局重置
-└── types/
-    └── api.ts                   # API 响应/实体 TypeScript 类型
+├── types/
+│   └── api.ts                   # API 响应/实体 TypeScript 类型
+└── utils/
+    └── format.ts                # 日期/数字格式化
 ```
 
 ## 3. 视觉风格规范（对齐 NapCatQQ）
@@ -99,7 +110,7 @@ webui/src/
 
 ### 3.2 配色系统
 
-主题定义在 [tailwind.config.js](../../webui/tailwind.config.js)，**色板对齐 NapCatQQ 运行时主题 nc_pink.ts**（NapCat 的构建期 tailwind.config.js 是旧值，不要照抄）。注意：HeroUI 插件不接受裸 HSL 三元组（会静默丢色），色值必须写 hex 或 hsla。
+主题定义在 [tailwind.config.js](../../../webui/tailwind.config.js)，**色板对齐 NapCatQQ 运行时主题 nc_pink.ts**（NapCat 的构建期 tailwind.config.js 是旧值，不要照抄）。注意：HeroUI 插件不接受裸 HSL 三元组（会静默丢色），色值必须写 hex 或 hsla。
 
 | 语义色 | 亮色模式 | 暗色模式 | 用途 |
 |--------|---------|---------|------|
@@ -222,7 +233,7 @@ webui/src/
 
 ### 3.9 滚动条
 
-在 [globals.css](../../webui/src/styles/globals.css) 中定义的樱花粉滚动条（NapCat nc_pink 同款）：
+在 [globals.css](../../../webui/src/styles/globals.css) 中定义的樱花粉滚动条（NapCat nc_pink 同款）：
 
 ```css
 ::-webkit-scrollbar { width: 6px; height: 6px; }
@@ -420,14 +431,14 @@ if (error) {
 
 **Step 1**：在 `src/pages/` 下创建页面组件，使用与现有页面相同的结构模式。
 
-**Step 2**：在 [App.tsx](../../webui/src/App.tsx) 中添加路由：
+**Step 2**：在 [App.tsx](../../../webui/src/App.tsx) 中添加路由：
 
 ```tsx
 // 在 DefaultLayout 的 children 路由中添加
 <Route path="new-feature" element={<NewFeaturePage />} />
 ```
 
-**Step 3**：在 [config/site.ts](../../webui/src/config/site.ts) 的 `navItems` 中添加菜单项：
+**Step 3**：在 [config/site.tsx](../../../webui/src/config/site.tsx) 的 `navItems` 中添加菜单项：
 
 ```tsx
 { key: "new-feature", label: "新功能", href: "/permissions/new-feature" }
@@ -437,7 +448,7 @@ if (error) {
 
 ### 5.2 添加新 API Hook
 
-**Step 1**：在 [endpoints.ts](../../webui/src/api/endpoints.ts) 中添加 API 端点工厂：
+**Step 1**：在 [endpoints.ts](../../../webui/src/api/endpoints.ts) 中添加 API 端点工厂：
 
 ```tsx
 // 添加新的路径方法
@@ -446,7 +457,7 @@ newFeatureList: (page: number, size: number) =>
   `/permissions/new-feature?page=${page}&size=${size}`,
 ```
 
-**Step 2**：在 [hooks.ts](../../webui/src/api/hooks.ts) 中添加 React Query hook：
+**Step 2**：在 [hooks.ts](../../../webui/src/api/hooks.ts) 中添加 React Query hook：
 
 ```tsx
 export function useNewFeatureList(page: number, size: number = 20) {
@@ -470,17 +481,17 @@ export function useCreateNewFeature() {
 }
 ```
 
-**Step 3**：在 [types/api.ts](../../webui/src/types/api.ts) 中添加 TypeScript 类型。
+**Step 3**：在 [types/api.ts](../../../webui/src/types/api.ts) 中添加 TypeScript 类型。
 
 ### 5.3 添加新菜单项
 
-菜单配置在 [config/site.ts](../../webui/src/config/site.ts)：
+菜单配置在 [config/site.tsx](../../../webui/src/config/site.tsx)：
 
-```ts
+```tsx
 export type MenuItem = {
   key: string;
   label: string;
-  icon?: string;        // 当前未使用，预留扩展
+  icon?: ReactNode;      // 已启用：HeroUI 图标组件（如 MdGroup）
   href?: string;        // 叶子节点：导航目标
   children?: MenuItem[]; // 父节点：子菜单列表
 };
@@ -492,11 +503,11 @@ export const siteConfig = {
       key: "permissions",          // 一级菜单 key（唯一标识）
       label: "权限管理",            // 显示文本
       children: [                  // 二级菜单项
-        { key: "groups", label: "权限组", href: "/permissions/groups" },
+        { key: "groups", label: "权限组", href: "/permissions/groups", icon: MdGroup },
         // ... 添加新项
       ],
     },
-    // 未来：添加新的一级菜单
+    // 现有 5 个一级菜单：基础信息 / 权限管理 / 插件管理 / 群管理 / 消息日志
   ],
 };
 ```
@@ -518,7 +529,7 @@ NapCatQQ 前端源码位于：`D:\Project\technical_group\diting\NapCatQQ\packag
 | `components/modal.tsx` | `components/ConfirmDialog.tsx` | Modal 样式和回调模式 |
 | `components/toaster.tsx` | (App.tsx 中的 Toaster) | Toast 配置 |
 | `const/themes/nc_pink.ts` | `tailwind.config.js` | 主题色板 HSL 值 |
-| `config/site.tsx` | `config/site.ts` | 菜单数据结构 |
+| `config/site.tsx` | `config/site.tsx` | 菜单数据结构 |
 | `styles/globals.css` | `styles/globals.css` | 滚动条样式、字体声明 |
 
 ### 6.3 对齐检查清单
@@ -564,7 +575,7 @@ await apiDelete(`/permissions/groups/${id}`);
 
 ### 7.2 端点速查
 
-所有端点定义在 [endpoints.ts](../../webui/src/api/endpoints.ts) 中，通过 `API` 对象访问：
+所有端点定义在 [endpoints.ts](../../../webui/src/api/endpoints.ts) 中，通过 `API` 对象访问：
 
 ```
 认证:     API.auth.login
@@ -581,6 +592,10 @@ await apiDelete(`/permissions/groups/${id}`);
          API.points.plugins
 用户状态: API.userStatus.get
 缓存:     API.cache.clear
+基础信息: API.bot.info
+插件:     API.plugins.list
+QQ 群:    API.qqGroups.list/stats/features/toggleFeature
+日志:     API.logs.messages
 ```
 
 ### 7.3 响应格式
@@ -622,7 +637,7 @@ const mutation = useMutation({
 
 ### Zustand Auth Store
 
-[store/authStore.ts](../../webui/src/store/authStore.ts) 使用 Zustand + `persist` 中间件：
+[store/authStore.ts](../../../webui/src/store/authStore.ts) 使用 Zustand + `persist` 中间件：
 
 - Token 持久化到 `localStorage` key `diting_jwt`
 - `login(token, qq)` — 存储 token 和用户信息
@@ -637,7 +652,7 @@ App.tsx 中的 `AuthChecker` 组件检查 `token` 是否存在。未认证时自
 
 LoginPage 提交 QQ 号 + 临时密码到 `POST /api/v1/auth/login`，成功后调用 `authStore.login()` 并导航到 `/permissions`。
 
-**前提**：用户在 QQ 群中发送「权限 登录」获取 6 位临时密码。本地开发可使用 `WEBUI_DEV_PASSWORD` 环境变量绕过（具体配置见旧版 perm-webui-guide 或后端 auth.py）。
+**前提**：用户在 QQ 群中发送「权限 登录」获取 6 位临时密码。本地开发可使用 `WEBUI_DEV_PASSWORD` 环境变量绕过（实现见后端 [src/api/auth.py](../../../src/api/auth.py)）。
 
 ## 9. 开发工作流
 

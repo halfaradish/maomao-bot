@@ -44,10 +44,13 @@ src/common/models/icpc_models.py   ← **ORM 模型仅供文档参考，查询�
   ├─ CfOfficialProblem
   ├─ IcpcUser (+ OjAccount)
   ├─ CfAllSubmission
-  └─ LuoguAllSubmission
+  ├─ LuoguAllSubmission
+  └─ GxuMajor（专业信息，group_sentinel 入群审核用）
        │
        ▼
-data/sql/read/*.sql                 ← 5 个 SQL 文件，使用 %s 占位符
+data/sql/read/*.sql                 ← 目录下 9 个 .sql：本项目在用的 5 个（%s 占位符）
+                                       + 4 个 legacy `perm_ctrl_*`（旧的 Siqi 权限系统遗留，
+                                       当前 src/ 无任何引用，见 §5）
 ```
 
 | 组件 | 说明 |
@@ -347,6 +350,8 @@ SQL 目录的基路径由 `DiTingData` 配置控制（环境变量 `SQL_DIR`）�
 
 ICPC DB 共有 **5 个活跃的 SQL 文件**，覆盖了从简单到极其复杂的查询模式。
 
+> 目录里另外还有 4 个 `perm_ctrl_select_*.sql`——旧版 Siqi 权限系统的遗留，`src/` 下已无任何引用（唯一的使用者 `test/perm.py` 本身就导入不到已删除的模块）。本节只讲那 5 个活跃文件。
+
 ### 5.1 `get_ding_range_checkup.sql` — 简单二参数查询
 
 **路径**：`data/sql/read/get_ding_range_checkup.sql`
@@ -592,7 +597,7 @@ ICPC DB 的参数传递有多种风格，理解每个模式很重要：
 
 ## 7. ORM 模型（仅供参考）
 
-`src/common/models/icpc_models.py` 定义了 6 个 ORM 模型，均继承 `IcpcBase`。
+`src/common/models/icpc_models.py` 定义了 7 个 ORM 模型，均继承 `IcpcBase`。
 
 > **重要**：这些模型**仅用于文档参考和代码补全**。实际查询不使用 ORM，而是直接使用原始 SQL。列类型和约束仅供参考——它们只覆盖了插件查询中用到的列，不保证与 MySQL 表结构完全匹配。
 
@@ -606,6 +611,7 @@ ICPC DB 的参数传递有多种风格，理解每个模式很重要：
 | 4 | `OjAccount` | `oj_account` | OJ 账号映射 | `user_id` |
 | 5 | `CfAllSubmission` | `cf_all_submissions` | Codeforces 全部提交记录 | `sub_id` |
 | 6 | `LuoguAllSubmission` | `luogu_all_submissions` | 洛谷全部提交记录 | `sub_id` |
+| 7 | `GxuMajor` | `gxu_major` | 专业信息（`code` UNIQUE，`status` 1=有效） | `id` |
 
 ### 7.2 模型详情
 
@@ -1006,7 +1012,7 @@ class DingCheckup(Base):      # ❌ 错误：会在 Bot DB 中建表
 | | Bot DB | ICPC DB |
 |---|---|---|
 | **环境变量前缀** | `BOT_DB_*` | `ICPC_DB_*` |
-| **Session 工厂** | `src/common/database.py` → `async_session_factory` | `src/common/icpc_database.py` → `icpc_async_session_factory` |
+| **Session 入口** | `src/common/database.py` → `get_session()`（裸 `async_session_factory` 仅底层工厂自用） | `src/common/icpc_database.py` → `icpc_async_session_factory` |
 | **Base 类** | `Base` | `IcpcBase` |
 | **ORM 模型** | `src/common/models/botdb_models.py` + `like_plugin_models.py` | `src/common/models/icpc_models.py`（仅供文档参考） |
 | **查询方式** | **ORM 查询**（`select()` + CRUD 包装器） | **原始 SQL**（`text()` + 自动 `%s` 适配） |

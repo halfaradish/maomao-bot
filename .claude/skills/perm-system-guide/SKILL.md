@@ -7,7 +7,7 @@ description: >
   触发词：permission、权限、perm_key、check_permission、permission_checker、
   register_perm_point、PermissionChecker、perm_cache、TTLCache、
   白名单、黑名单、权限组、权限系统、permission_manager、
-  WebUI、web管理面板、管理面板、SPA、Vue、npm run build、前端构建。
+  WebUI、web管理面板、管理面板、SPA、React、npm run build、前端构建。
 ---
 
 # DiTing 权限系统使用指南
@@ -66,8 +66,8 @@ src/api/
             │
             ▼
 webui/
-  Vue 3 + Vite SPA
-  └─ 9 个管理视图
+  React 19 + HeroUI 2 + TailwindCSS（webui/dist 由 Vite 构建后由 FastAPI 托管）
+  └─ 12 个管理页面
 ```
 
 | 组件 | 说明 |
@@ -80,11 +80,11 @@ webui/
 | 管理面板 | `permission_manager` 插件（`src/plugins/permission_manager/`，12 模块的包），通过 QQ 聊天命令管理全部权限配置 |
 
 **核心约束**：
-- 权限 key 格式：`plugin_name:action`（例如 `group_ban:ban`）
+- 权限 key 格式：`plugin_name:action`（例如 `group_ban:use`、`rate_limiter:manage`）
 - 管理操作（含 QQ 面板与 WebUI 登录）由持有 `permission_manager:manage` 权限点的用户执行 ——
   管理员判据就是这一个权限点，**不再看 `SUPERUSERS`**
 - 缓存默认 60 秒过期，管理操作（增删改黑白名单/权限组/绑定）自动失效相关缓存
-- 同步依赖 `async_session_factory`（Bot DB 的 SQLAlchemy session）
+- 同步走 `get_session()`（Bot DB 的 SQLAlchemy 会话入口）
 
 ---
 
@@ -98,9 +98,9 @@ webui/
 from src.common.permission import register_perm_point
 
 register_perm_point(
-    "group_ban:ban",           # perm_key — 全局唯一，格式: plugin_name:action
-    "禁言",                    # name — 功能名称（中文）
-    "将指定成员禁言",          # description — 功能描述
+    "group_ban:use",           # perm_key — 全局唯一，格式: plugin_name:action
+    "群禁言使用",              # name — 功能名称（中文）
+    "允许使用 ban/unban/kick 命令",   # description — 功能描述
     plugin_name="group_ban",   # 所属插件名（用于管理面板分组）
 )
 ```
@@ -115,8 +115,9 @@ register_perm_point(
 # src/plugins/group_ban/permissions.py
 from src.common.permission import register_perm_point
 
-register_perm_point("group_ban:ban", "禁言", "将指定成员禁言", plugin_name="group_ban")
-register_perm_point("group_ban:unban", "解禁", "解除成员禁言", plugin_name="group_ban")
+register_perm_point("group_ban:use", "群禁言使用",
+                    "允许使用 ban/unban/kick 命令", plugin_name="group_ban")
+# 注：group_ban 的 ban/unban/kick 共用同一个权限点（见其 permissions.py）
 ```
 
 ```python
@@ -157,11 +158,11 @@ from src.common.permission import permission_checker
 
 ban_cmd = on_command(
     "ban",
-    permission=permission_checker("group_ban:ban"),
+    permission=permission_checker("group_ban:use"),
 )
 ```
 
-`permission_checker("group_ban:ban")` 返回一个 `Permission` 对象，**持有 `group_ban:ban` 权限点的用户**（以及管理员，见第 4 节第 0 步）都能触发该命令。
+`permission_checker("group_ban:use")` 返回一个 `Permission` 对象，**持有 `group_ban:use` 权限点的用户**（以及管理员，见第 4 节第 0 步）都能触发该命令。
 
 > 不要再写 `| SUPERUSER`：管理员判据已经是权限点（`ADMIN_PERM_KEY`），而
 > `SUPERUSER` 来自 `.env`，改它必须重启。历史上 `permission_checker` 的形参没有类型注解
@@ -195,7 +196,7 @@ from src.common.permission import permission_checker
 
 ban_cmd = on_command(
     "ban",
-    permission=permission_checker("group_ban:ban"),
+    permission=permission_checker("group_ban:use"),
     priority=5,
     block=True,
 )
@@ -223,7 +224,7 @@ async def handle_ban(bot: Bot, event: GroupMessageEvent, args: str = CommandArg(
 from src.common.permission import check_permission
 
 async def some_handler(event):
-    if not await check_permission(event, "group_ban:ban"):
+    if not await check_permission(event, "group_ban:use"):
         await matcher.finish("你没有权限执行此操作")
     # 执行受保护的操作...
 ```
@@ -294,7 +295,7 @@ async def handler(event, matcher, args: str = CommandArg()):
 - **权限组成员与群绑定是 OR 关系**：用户只要满足**任意一个**途径——直接是权限组成员 AND 该组拥有目标 perm_key → 通过；或所在群绑定了权限组 AND 该组拥有目标 perm_key → 通过。
 - **必须同时匹配用户/群关系 AND perm_key**：用户属于某个权限组还不够——该权限组还必须**拥有被检查的 perm_key**。
 - **默认拒绝**：不匹配任何规则的请求，最终返回 False。
-- **整个流程使用同一个 session**：`_check_internal` 在单个 SQLAlchemy session 内完成全部查询，避免多次获取连接的开销。
+- **业务检查使用同一个 session**：第 1 步之后的完整流程（`_check_internal`）在单个 SQLAlchemy session 内完成全部查询，避免多次获取连接的开销。第 0 步的管理员判定是独立的 `get_session(commit=False)` 块（`_is_admin`），不在这一个 session 里。
 
 ### 管理员 = `perm_admin` 权限组（不再用 SUPERUSERS）
 
@@ -343,7 +344,7 @@ async def handler(event, matcher, args: str = CommandArg()):
 | 认证 | QQ 号 + 群内发言 | JWT（通过 QQ 获取临时密码登录） |
 | 操作方式 | 文本命令 + 参数 | 图形表单 + 表格 + 分页 |
 | 适合场景 | 快速操作、移动端 | 批量管理、数据浏览 |
-| 文档 | 本节（5.1-5.8） | 参见 **[perm-webui-guide](../perm-webui-guide/SKILL.md)** |
+| 文档 | 本节（5.1-5.8） | 参见 **[webui-dev-guide](../webui-dev-guide/SKILL.md)** |
 
 ### 5.A QQ 聊天管理命令
 
@@ -423,7 +424,7 @@ perm 注册点/points 列表/list [插件名]
 perm 查看/view <QQ号>
 ```
 
-一站式查看指定用户的权限状态：是否管理员（返回字段 `is_admin`）、是否在黑名单/白名单、所属权限组及每个组拥有的权限点。
+一站式查看指定用户的权限状态：是否管理员（QQ 侧打印「✩ 超级管理员（不受任何限制）」，REST 端点 `/api/v1/permissions/status` 返回的 JSON 字段名是 `is_admin`）、是否在黑名单/白名单、所属权限组及每个组拥有的权限点。
 
 ### 5.7 登录
 
@@ -441,7 +442,7 @@ perm 登录/login
 
 ### 5.8 参数解析说明
 
-命令参数支持 `@提及` 和纯文本两种形式。解析函数 `tokenize_arguments()`（在 `src/common/arg_parser.py`，与 `group_manager` 共用同一份）将消息段拆分为 `ArgToken` 列表：`at` 类型的 token 取其 `qq` 属性，`text` 类型的 token 按空格分词；`try_parse_qq()` 再把 token 解析成 QQ 号（`text` 形式允许带前缀 `@`）。
+命令参数支持 `@提及` 和纯文本两种形式。解析函数 `tokenize_arguments()`（在 `src/common/arg_parser.py`，与 `group_manager` 共用同一份）将消息段拆分为 `ArgToken` 列表：`ArgToken` 只有两个字段 `kind`（`"text"`/`"at"`）与 `value`；`at` 段取源消息段 `data["qq"]` 存进 `value`，`text` 段按空格分词；`try_parse_qq()` 再把 token 解析成 QQ 号（`text` 形式允许带一个前缀 `@`）。
 
 注意 `at` 段的 `qq` 会被原样存入 token，因此**只对 str 安全**——适配器的 `MessageSegment.at()` 自身会 `str()` 归一，手工塞 int 会抛 `AttributeError`（既有缺陷，未修）。
 
@@ -455,7 +456,7 @@ perm 登录/login
 | 群黑名单添加/移除 | `clear_pattern("perm::{group_id}:")` | 失效该群的所有缓存 |
 | 用户白名单添加/移除 | `clear_pattern("perm:{user_id}:")` | 失效该用户的所有缓存 |
 | 群白名单添加/移除 | `clear_pattern("perm::{group_id}:")` | 失效该群的所有缓存 |
-| 权限组成员变更 | `clear_pattern("perm:{user_id}:")` | 失效该用户的所有缓存 |
+| 权限组成员变更 | **添加**用 `clear_all()`（无参调用 `_invalidate_related_cache()`，因为组内成员变化影响面不可精确预测）；**移除**用 `clear_pattern("perm:{user_id}:")` | 见 `groups.py` 的 `_perm_group_add_member` / `_perm_group_remove_member` |
 | 权限组权限点变更 | `clear_all()` | 全局失效（影响范围不可预测） |
 | 群绑定变更 | `clear_pattern("perm::{group_id}:")` | 失效该群的所有缓存 |
 
@@ -463,21 +464,23 @@ perm 登录/login
 
 ### 5.B WebUI 管理面板
 
-WebUI 提供基于浏览器的图形化管理界面，包含 9 个管理视图，覆盖所有 QQ 命令的功能：
+WebUI 提供基于浏览器的图形化管理界面，包含 12 个页面（另加登录页），覆盖所有 QQ 命令的功能：
 
 | 视图 | 路由 | 功能 |
 |------|------|------|
-| 仪表盘 | `/` | 6 张功能导航卡片 |
-| 权限组 | `/groups` | 权限组 CRUD + 成员/权限点管理 |
-| 群绑定 | `/bindings` | 群-权限组绑定管理 |
-| 黑名单 | `/blacklist` | 用户/群黑名单（双标签页） |
-| 白名单 | `/whitelist` | 用户/群白名单（双标签页） |
-| 权限点 | `/points` | 已注册权限点列表（只读） |
-| 用户状态 | `/user-status` | 聚合查看用户完整权限状态 |
+| 仪表盘 | `/permissions` | 5 张功能导航卡片（权限组/黑名单/白名单/权限点/用户状态） |
+| 权限组 | `/permissions/groups` | 权限组 CRUD + 成员/权限点管理 |
+| 权限组详情 | `/permissions/groups/:id` | 单个权限组的成员、权限点与**群绑定**管理 |
+| 黑名单 | `/permissions/blacklist` | 用户/群黑名单（双标签页） |
+| 白名单 | `/permissions/whitelist` | 用户/群白名单（双标签页） |
+| 权限点 | `/permissions/points` | 已注册权限点列表（只读） |
+| 用户状态 | `/permissions/user-status` | 聚合查看用户完整权限状态 |
 
-技术栈：Vue 3 + Vite + Pico.css，通过 JWT 认证调用 `/api/v1/permissions/` 下的 REST API。
+（另有 5 个非权限页面：`/info` 基础信息、`/plugins` 插件管理、`/groups/list` 群列表、`/groups/features` 群功能、`/logs` 消息日志；共 12 页 + 登录页。群绑定没有独立路由，在「权限组详情」页内管理。）
 
-开发工作流和详细文档 → 参见 **[perm-webui-guide](../perm-webui-guide/SKILL.md)**。
+技术栈：React 19 + HeroUI 2 + TailwindCSS（Vite 构建），通过 JWT 认证调用 `/api/v1/permissions/` 下的 REST API。
+
+开发工作流和详细文档 → 参见 **[webui-dev-guide](../webui-dev-guide/SKILL.md)**。
 
 ---
 
@@ -510,7 +513,7 @@ PermissionGroup 1 ── N PermissionGroupMember
      │
      ├── N PermissionGroupPerm
      │       │ (FK group_id, ON DELETE CASCADE)
-     │       └ perm_key → 如 "group_ban:ban"
+     │       └ perm_key → 如 "group_ban:use"
      │
      └── N GroupPermBinding
              │ (FK permission_group_id, ON DELETE CASCADE)
@@ -563,11 +566,11 @@ from src.common.permission import perm_cache
 # 值: True / False（校验结果）
 
 # 查询缓存
-cached = perm_cache.get("perm:123456:789012:group_ban:ban")
+cached = perm_cache.get("perm:123456:789012:group_ban:use")
 # → True / False / None（不存在或已过期）
 
 # 手动设置缓存
-perm_cache.set("perm:123456:789012:group_ban:ban", True, ttl=120)
+perm_cache.set("perm:123456:789012:group_ban:use", True, ttl=120)
 
 # 按子串失效
 perm_cache.clear_pattern("perm:123456:")   # 失效某个用户的所有缓存
@@ -688,12 +691,12 @@ async def handler(event):
 
 ```python
 # 注册
-register_perm_point("GroupBan:Ban", "禁言", ...)
+register_perm_point("group_ban:use", "群禁言使用", ...)
 
-# 检查时必须完全一致
-check_permission(event, "GroupBan:Ban")    # ✅ 正确
-check_permission(event, "groupban:ban")    # ❌ 不对应
-check_permission(event, "group_ban:ban")   # ❌ 不对应
+# 检查时必须完全一致（大小写敏感）
+check_permission(event, "group_ban:use")   # ✅ 正确
+check_permission(event, "GroupBan:Use")    # ❌ 大小写不对应
+check_permission(event, "group_ban:ban")   # ❌ key 不存在（group_ban 只注册了 :use）
 ```
 
 ### 9.4 管理员的 perm_key 检查总是返回 True
@@ -704,9 +707,10 @@ check_permission(event, "group_ban:ban")   # ❌ 不对应
 
 ```python
 # 某处手动修改了数据库
-async with async_session_factory() as session:
+from src.common.database import get_session
+
+async with get_session() as session:
     session.add(UserBlacklist(user_id=123, reason="test", created_by=1))
-    await session.commit()
 
 # 下次校验可能仍然通过（旧缓存未失效）
 # 因为绕过了管理面板，没有调用 perm_cache.clear_pattern()
@@ -755,7 +759,7 @@ perm 绑定/bind 群/group 789012 admin
 
 ### 10.1 与 Bot DB 的关系
 
-权限系统的所有数据（8 张表）存储在 Bot DB 中，使用 `src/common.database.async_session_factory` 获取会话。参见 **[DiTing Bot DB 操作指南](../diting-db-guide/SKILL.md)**。
+权限系统的所有数据（8 张表）存储在 Bot DB 中，统一用 `src/common.database.get_session()` 取会话。参见 **[DiTing Bot DB 操作指南](../diting-db-guide/SKILL.md)**。
 
 ### 10.2 与旧版权限系统
 
@@ -814,4 +818,4 @@ perm 登录/login
 
 ### WebUI 管理面板
 
-> 浏览器图形化管理界面（9 个视图、JWT 认证、REST API）→ 参见 **[perm-webui-guide](../perm-webui-guide/SKILL.md)**
+> 浏览器图形化管理界面（12 个页面、JWT 认证、REST API）→ 参见 **[webui-dev-guide](../webui-dev-guide/SKILL.md)**
