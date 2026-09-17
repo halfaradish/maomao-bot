@@ -9,7 +9,7 @@ from nonebot.adapters.onebot.v11 import MessageEvent
 from sqlalchemy import select
 
 from src.common.arg_parser import ArgToken, try_parse_qq
-from src.common.database import async_session_factory
+from src.common.database import get_session
 from src.common.permission import ADMIN_PERM_KEY, user_has_permission
 from src.common.permission.models import (
     PermissionPoint,
@@ -25,7 +25,7 @@ from .runtime import perm_cmd
 
 async def _list_permission_points(event: MessageEvent, tokens: List[ArgToken]):
     plugin_filter = tokens[0].value if tokens else None
-    async with async_session_factory() as session:
+    async with get_session(commit=False) as session:
         if plugin_filter:
             result = await session.execute(
                 select(PermissionPoint)
@@ -69,40 +69,43 @@ async def _view_user_permissions(event: MessageEvent, tokens: List[ArgToken]):
         lines.append("  ✩ 超级管理员（不受任何限制）")
         await perm_cmd.finish("\n".join(lines))
 
-    async with async_session_factory() as session:
+    blacklisted = False
+    async with get_session(commit=False) as session:
         # 黑名单
         bl = (await session.execute(
             select(UserBlacklist).where(UserBlacklist.user_id == qq).limit(1)
         )).scalars().first()
         if bl:
             lines.append(f"  ⛒ 黑名单中" + (f"（原因: {bl.reason}）" if bl.reason else ""))
-            await perm_cmd.finish("\n".join(lines))
+            blacklisted = True
 
-        # 白名单
-        wl = (await session.execute(
-            select(UserWhitelist).where(UserWhitelist.user_id == qq).limit(1)
-        )).scalars().first()
-        if wl:
-            lines.append("  √ 用户白名单（完全放行）")
+        # 命中黑名单就不再查白名单/权限组（与改造前一致）
+        if not blacklisted:
+            # 白名单
+            wl = (await session.execute(
+                select(UserWhitelist).where(UserWhitelist.user_id == qq).limit(1)
+            )).scalars().first()
+            if wl:
+                lines.append("  √ 用户白名单（完全放行）")
 
-        # 权限组
-        pg_result = await session.execute(
-            select(PermissionGroupMember, PermissionGroup).join(
-                PermissionGroup, PermissionGroupMember.group_id == PermissionGroup.id
-            ).where(PermissionGroupMember.user_id == qq)
-        )
-        memberships = pg_result.all()
-        if memberships:
-            lines.append("  所属权限组：")
-            for member, pg in memberships:
-                perms_result = await session.execute(
-                    select(PermissionGroupPerm.perm_key).where(
-                        PermissionGroupPerm.group_id == pg.id
+            # 权限组
+            pg_result = await session.execute(
+                select(PermissionGroupMember, PermissionGroup).join(
+                    PermissionGroup, PermissionGroupMember.group_id == PermissionGroup.id
+                ).where(PermissionGroupMember.user_id == qq)
+            )
+            memberships = pg_result.all()
+            if memberships:
+                lines.append("  所属权限组：")
+                for member, pg in memberships:
+                    perms_result = await session.execute(
+                        select(PermissionGroupPerm.perm_key).where(
+                            PermissionGroupPerm.group_id == pg.id
+                        )
                     )
-                )
-                perm_keys = [row[0] for row in perms_result.all()]
-                lines.append(f"    - {pg.name}: {', '.join(perm_keys) if perm_keys else '（无权限点）'}")
-        else:
-            lines.append("  ⚠ 无任何权限（默认拒绝）")
+                    perm_keys = [row[0] for row in perms_result.all()]
+                    lines.append(f"    - {pg.name}: {', '.join(perm_keys) if perm_keys else '（无权限点）'}")
+            else:
+                lines.append("  ⚠ 无任何权限（默认拒绝）")
 
     await perm_cmd.finish("\n".join(lines))

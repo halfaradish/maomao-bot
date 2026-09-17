@@ -20,7 +20,7 @@ from nonebot.plugin import PluginMetadata
 from sqlalchemy import delete as sa_delete
 from sqlalchemy import select
 
-from src.common.database import async_session_factory
+from src.common.database import get_session
 from src.common.plugin_meta import PluginBadgeColor, PluginGroupEnum
 from src.common.models.vv_models import VvGroupBlacklist
 from src.common.permission import ADMIN_PERM_KEY, perm_cache, permission_checker
@@ -111,7 +111,7 @@ async def is_group_blocked(group_id: int | None) -> bool:
     cached = perm_cache.get(cache_key)
     if cached is not None:
         return cached
-    async with async_session_factory() as session:
+    async with get_session(commit=False) as session:
         stmt = select(VvGroupBlacklist.id).where(
             VvGroupBlacklist.group_id == group_id
         ).limit(1)
@@ -203,13 +203,18 @@ async def handle_bl_add(event: MessageEvent, args: Message = CommandArg()):
     group_id = _resolve_target_group(event, args)
     if group_id is None:
         await vv_blacklist_add.finish("用法：vv拉黑 [群号]（在目标群内发送可省略群号）")
-    async with async_session_factory() as session:
+    # finish() 在块内会抛 FinishedException → get_session 回滚并重抛，
+    # 所以「已在黑名单中」只记标志，提示一律放到块外。
+    already = False
+    async with get_session() as session:
         stmt = select(VvGroupBlacklist.id).where(
             VvGroupBlacklist.group_id == group_id).limit(1)
         if (await session.execute(stmt)).first() is not None:
-            await vv_blacklist_add.finish(f"群 {group_id} 已在黑名单中")
-        session.add(VvGroupBlacklist(group_id=group_id, created_by=event.user_id))
-        await session.commit()
+            already = True
+        else:
+            session.add(VvGroupBlacklist(group_id=group_id, created_by=event.user_id))
+    if already:
+        await vv_blacklist_add.finish(f"群 {group_id} 已在黑名单中")
     perm_cache.clear_pattern("vv:bl:")
     logger.info(f"[vv] 用户 {event.user_id} 将群 {group_id} 加入黑名单")
     await vv_blacklist_add.finish(f"已将群 {group_id} 加入 vv 黑名单")
@@ -223,10 +228,9 @@ async def handle_bl_remove(event: MessageEvent, args: Message = CommandArg()):
     group_id = _resolve_target_group(event, args)
     if group_id is None:
         await vv_blacklist_remove.finish("用法：vv解拉黑 [群号]（在目标群内发送可省略群号）")
-    async with async_session_factory() as session:
+    async with get_session() as session:
         result = await session.execute(
             sa_delete(VvGroupBlacklist).where(VvGroupBlacklist.group_id == group_id))
-        await session.commit()
     perm_cache.clear_pattern("vv:bl:")
     if result.rowcount == 0:
         await vv_blacklist_remove.finish(f"群 {group_id} 不在黑名单中")
@@ -239,7 +243,7 @@ vv_blacklist_list = on_command("vv黑名单", permission=permission_checker(ADMI
 
 @vv_blacklist_list.handle()
 async def handle_bl_list():
-    async with async_session_factory() as session:
+    async with get_session(commit=False) as session:
         rows = (await session.execute(
             select(VvGroupBlacklist).order_by(VvGroupBlacklist.created_at.desc())
         )).scalars().all()

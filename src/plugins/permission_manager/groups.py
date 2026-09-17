@@ -8,7 +8,7 @@ from sqlalchemy import select, delete as sa_delete
 from sqlalchemy.orm import selectinload
 
 from src.common.arg_parser import ArgToken, try_parse_qq
-from src.common.database import async_session_factory
+from src.common.database import get_session
 from src.common.permission.models import (
     PermissionGroup,
     PermissionGroupMember,
@@ -26,19 +26,24 @@ async def _perm_group_create(event: MessageEvent, tokens: List[ArgToken]):
     display_name = tokens[1].value if len(tokens) >= 2 else ""
     description = " ".join(t.value for t in tokens[2:]) if len(tokens) >= 3 else ""
     try:
-        async with async_session_factory() as session:
+        # finish() 在块内会抛 FinishedException → get_session 回滚并重抛，
+        # 所以「已存在」只记标志，提示一律放到块外。
+        exists = False
+        async with get_session() as session:
             existing = (await session.execute(
                 select(PermissionGroup.id).where(PermissionGroup.name == name).limit(1)
             )).first()
             if existing:
-                await perm_cmd.finish(f"权限组 {name} 已存在")
-            session.add(PermissionGroup(
-                name=name,
-                display_name=display_name,
-                description=description,
-                created_by=event.user_id,
-            ))
-            await session.commit()
+                exists = True
+            else:
+                session.add(PermissionGroup(
+                    name=name,
+                    display_name=display_name,
+                    description=description,
+                    created_by=event.user_id,
+                ))
+        if exists:
+            await perm_cmd.finish(f"权限组 {name} 已存在")
         _invalidate_related_cache()
         logger.info(f"用户 {event.user_id} 创建权限组 {name}")
         await perm_cmd.finish(f"权限组 {name} 创建成功")
@@ -53,21 +58,20 @@ async def _perm_group_delete(event: MessageEvent, tokens: List[ArgToken]):
     if not tokens:
         await perm_cmd.finish("用法: 权限 权限组 删除 <名称>")
     name = tokens[0].value
-    async with async_session_factory() as session:
+    async with get_session() as session:
         result = await session.execute(
             sa_delete(PermissionGroup).where(PermissionGroup.name == name)
         )
-        await session.commit()
-        if result.rowcount == 0:
-            logger.warning(f"用户 {event.user_id} 尝试删除权限组 {name}，但该权限组不存在")
-            await perm_cmd.finish(f"权限组 {name} 不存在")
+    if result.rowcount == 0:
+        logger.warning(f"用户 {event.user_id} 尝试删除权限组 {name}，但该权限组不存在")
+        await perm_cmd.finish(f"权限组 {name} 不存在")
     _invalidate_related_cache()
     logger.info(f"用户 {event.user_id} 已删除权限组 {name}")
     await perm_cmd.finish(f"权限组 {name} 已删除")
 
 
 async def _perm_group_list(event: MessageEvent):
-    async with async_session_factory() as session:
+    async with get_session(commit=False) as session:
         result = await session.execute(
             select(PermissionGroup).order_by(PermissionGroup.name)
         )
@@ -87,7 +91,7 @@ async def _perm_group_detail(event: MessageEvent, tokens: List[ArgToken]):
     if not tokens:
         await perm_cmd.finish("用法: 权限 权限组 详情 <名称>")
     name = tokens[0].value
-    async with async_session_factory() as session:
+    async with get_session(commit=False) as session:
         result = await session.execute(
             select(PermissionGroup)
             .where(PermissionGroup.name == name)
@@ -121,35 +125,36 @@ async def _perm_group_add_member(event: MessageEvent, tokens: List[ArgToken]):
     if len(tokens) < 2:
         await perm_cmd.finish("用法: 权限 权限组 添加成员 <名称> <QQ> [QQ...]")
     group_name = tokens[0].value
-    async with async_session_factory() as session:
+    added, skipped = [], []
+    not_found = False
+    async with get_session() as session:
         # 验证权限组存在
         pg_result = await session.execute(
             select(PermissionGroup.id).where(PermissionGroup.name == group_name).limit(1)
         )
         pg_row = pg_result.first()
         if not pg_row:
-            await perm_cmd.finish(f"权限组 {group_name} 不存在")
-        pg_id = pg_row[0]
+            not_found = True
+        else:
+            pg_id = pg_row[0]
+            for token in tokens[1:]:
+                qq = try_parse_qq(token)
+                if qq is None:
+                    continue
+                existing = (await session.execute(
+                    select(PermissionGroupMember.id).where(
+                        PermissionGroupMember.group_id == pg_id,
+                        PermissionGroupMember.user_id == qq,
+                    ).limit(1)
+                )).first()
+                if existing:
+                    skipped.append(str(qq))
+                else:
+                    session.add(PermissionGroupMember(group_id=pg_id, user_id=qq))
+                    added.append(str(qq))
 
-        added, skipped = [], []
-        for token in tokens[1:]:
-            qq = try_parse_qq(token)
-            if qq is None:
-                continue
-            existing = (await session.execute(
-                select(PermissionGroupMember.id).where(
-                    PermissionGroupMember.group_id == pg_id,
-                    PermissionGroupMember.user_id == qq,
-                ).limit(1)
-            )).first()
-            if existing:
-                skipped.append(str(qq))
-            else:
-                session.add(PermissionGroupMember(group_id=pg_id, user_id=qq))
-                added.append(str(qq))
-
-        if added:
-            await session.commit()
+    if not_found:
+        await perm_cmd.finish(f"权限组 {group_name} 不存在")
 
     _invalidate_related_cache()
     logger.info(f"用户 {event.user_id} 向权限组 {group_name} 添加成员: {', '.join(added) if added else '无'}" + (f"，跳过（已在组内）: {', '.join(skipped)}" if skipped else ""))
@@ -171,25 +176,29 @@ async def _perm_group_remove_member(event: MessageEvent, tokens: List[ArgToken])
     if qq is None:
         await perm_cmd.finish("请提供有效的 QQ 号")
 
-    async with async_session_factory() as session:
+    not_found, removed = False, 0
+    async with get_session() as session:
         pg_result = await session.execute(
             select(PermissionGroup.id).where(PermissionGroup.name == group_name).limit(1)
         )
         pg_row = pg_result.first()
         if not pg_row:
-            await perm_cmd.finish(f"权限组 {group_name} 不存在")
-        pg_id = pg_row[0]
-
-        result = await session.execute(
-            sa_delete(PermissionGroupMember).where(
-                PermissionGroupMember.group_id == pg_id,
-                PermissionGroupMember.user_id == qq,
+            not_found = True
+        else:
+            pg_id = pg_row[0]
+            result = await session.execute(
+                sa_delete(PermissionGroupMember).where(
+                    PermissionGroupMember.group_id == pg_id,
+                    PermissionGroupMember.user_id == qq,
+                )
             )
-        )
-        await session.commit()
-        if result.rowcount == 0:
-            logger.warning(f"用户 {event.user_id} 尝试从权限组 {group_name} 移除 QQ {qq}，但该用户不在组内")
-            await perm_cmd.finish(f"QQ {qq} 不在权限组 {group_name} 中")
+            removed = result.rowcount
+
+    if not_found:
+        await perm_cmd.finish(f"权限组 {group_name} 不存在")
+    if removed == 0:
+        logger.warning(f"用户 {event.user_id} 尝试从权限组 {group_name} 移除 QQ {qq}，但该用户不在组内")
+        await perm_cmd.finish(f"QQ {qq} 不在权限组 {group_name} 中")
 
     _invalidate_related_cache(user_id=qq)
     logger.info(f"用户 {event.user_id} 已将 QQ {qq} 从权限组 {group_name} 移除")
@@ -200,32 +209,33 @@ async def _perm_group_add_perm(event: MessageEvent, tokens: List[ArgToken]):
     if len(tokens) < 2:
         await perm_cmd.finish("用法: 权限 权限组 添加权限 <名称> <perm_key> [perm_key...]")
     group_name = tokens[0].value
-    async with async_session_factory() as session:
+    added, skipped = [], []
+    not_found = False
+    async with get_session() as session:
         pg_result = await session.execute(
             select(PermissionGroup.id).where(PermissionGroup.name == group_name).limit(1)
         )
         pg_row = pg_result.first()
         if not pg_row:
-            await perm_cmd.finish(f"权限组 {group_name} 不存在")
-        pg_id = pg_row[0]
+            not_found = True
+        else:
+            pg_id = pg_row[0]
+            for token in tokens[1:]:
+                perm_key = token.value
+                existing = (await session.execute(
+                    select(PermissionGroupPerm.id).where(
+                        PermissionGroupPerm.group_id == pg_id,
+                        PermissionGroupPerm.perm_key == perm_key,
+                    ).limit(1)
+                )).first()
+                if existing:
+                    skipped.append(perm_key)
+                else:
+                    session.add(PermissionGroupPerm(group_id=pg_id, perm_key=perm_key))
+                    added.append(perm_key)
 
-        added, skipped = [], []
-        for token in tokens[1:]:
-            perm_key = token.value
-            existing = (await session.execute(
-                select(PermissionGroupPerm.id).where(
-                    PermissionGroupPerm.group_id == pg_id,
-                    PermissionGroupPerm.perm_key == perm_key,
-                ).limit(1)
-            )).first()
-            if existing:
-                skipped.append(perm_key)
-            else:
-                session.add(PermissionGroupPerm(group_id=pg_id, perm_key=perm_key))
-                added.append(perm_key)
-
-        if added:
-            await session.commit()
+    if not_found:
+        await perm_cmd.finish(f"权限组 {group_name} 不存在")
 
     _invalidate_related_cache()
     logger.info(f"用户 {event.user_id} 为权限组 {group_name} 添加权限点: {', '.join(added) if added else '无'}" + (f"，跳过（已有）: {', '.join(skipped)}" if skipped else ""))
@@ -243,25 +253,29 @@ async def _perm_group_remove_perm(event: MessageEvent, tokens: List[ArgToken]):
     group_name = tokens[0].value
     perm_key = tokens[1].value
 
-    async with async_session_factory() as session:
+    not_found, removed = False, 0
+    async with get_session() as session:
         pg_result = await session.execute(
             select(PermissionGroup.id).where(PermissionGroup.name == group_name).limit(1)
         )
         pg_row = pg_result.first()
         if not pg_row:
-            await perm_cmd.finish(f"权限组 {group_name} 不存在")
-        pg_id = pg_row[0]
-
-        result = await session.execute(
-            sa_delete(PermissionGroupPerm).where(
-                PermissionGroupPerm.group_id == pg_id,
-                PermissionGroupPerm.perm_key == perm_key,
+            not_found = True
+        else:
+            pg_id = pg_row[0]
+            result = await session.execute(
+                sa_delete(PermissionGroupPerm).where(
+                    PermissionGroupPerm.group_id == pg_id,
+                    PermissionGroupPerm.perm_key == perm_key,
+                )
             )
-        )
-        await session.commit()
-        if result.rowcount == 0:
-            logger.warning(f"用户 {event.user_id} 尝试从权限组 {group_name} 移除权限点 {perm_key}，但该权限点不在组内")
-            await perm_cmd.finish(f"权限点 {perm_key} 不在权限组 {group_name} 中")
+            removed = result.rowcount
+
+    if not_found:
+        await perm_cmd.finish(f"权限组 {group_name} 不存在")
+    if removed == 0:
+        logger.warning(f"用户 {event.user_id} 尝试从权限组 {group_name} 移除权限点 {perm_key}，但该权限点不在组内")
+        await perm_cmd.finish(f"权限点 {perm_key} 不在权限组 {group_name} 中")
 
     _invalidate_related_cache()
     logger.info(f"用户 {event.user_id} 已将权限点 {perm_key} 从权限组 {group_name} 移除")

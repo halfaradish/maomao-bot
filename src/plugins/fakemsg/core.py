@@ -7,7 +7,7 @@ from sqlalchemy import select
 from ...common.send_forward_msg import SenderInfo
 from ...common.permission import check_permission
 from ...common.permission.cache import perm_cache
-from ...common.database import async_session_factory
+from ...common.database import get_session
 from ...common.permission.models import (
     PermissionGroup,
     PermissionGroupMember,
@@ -38,7 +38,7 @@ async def process_command(event: GroupMessageEvent) -> Optional[str]:
     ls_pattern = r"(?:^|\b|\s)(-ls|-list)\b"
 
     if re.search(ls_pattern, raw_message):
-        async with async_session_factory() as session:
+        async with get_session(commit=False) as session:
             result = await session.execute(
                 select(PermissionGroup).where(PermissionGroup.name == DEFAULT_PG_NAME).limit(1)
             )
@@ -57,7 +57,7 @@ async def process_command(event: GroupMessageEvent) -> Optional[str]:
 
     if add_match := re.search(add_pattern, raw_message):
         qq_number = add_match.group(1)
-        async with async_session_factory() as session:
+        async with get_session() as session:
             # 确保权限组存在
             result = await session.execute(
                 select(PermissionGroup).where(PermissionGroup.name == DEFAULT_PG_NAME).limit(1)
@@ -86,7 +86,6 @@ async def process_command(event: GroupMessageEvent) -> Optional[str]:
                 return f"QQ {qq_number} 已在伪消息白名单中"
 
             session.add(PermissionGroupMember(group_id=pg.id, user_id=int(qq_number)))
-            await session.commit()
 
             # 清除该用户的权限缓存
             perm_cache.clear_pattern(f"perm:{qq_number}:")
@@ -94,7 +93,7 @@ async def process_command(event: GroupMessageEvent) -> Optional[str]:
 
     if rm_match := re.search(rm_pattern, raw_message):
         qq_number = rm_match.group(1)
-        async with async_session_factory() as session:
+        async with get_session() as session:
             result = await session.execute(
                 select(PermissionGroup).where(PermissionGroup.name == DEFAULT_PG_NAME).limit(1)
             )
@@ -114,7 +113,6 @@ async def process_command(event: GroupMessageEvent) -> Optional[str]:
 
             for member in members:
                 await session.delete(member)
-            await session.commit()
 
             # 清除该用户的权限缓存
             perm_cache.clear_pattern(f"perm:{qq_number}:")

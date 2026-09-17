@@ -7,7 +7,7 @@ from nonebot.exception import FinishedException
 from sqlalchemy import select, delete as sa_delete
 
 from src.common.arg_parser import ArgToken, try_parse_qq
-from src.common.database import async_session_factory
+from src.common.database import get_session
 from src.common.permission.models import UserWhitelist, GroupWhitelist
 
 from .guard import _invalidate_related_cache
@@ -25,16 +25,21 @@ async def _whitelist_add(event: MessageEvent, tokens: List[ArgToken], scope: str
     id_col = UserWhitelist.user_id if scope == "用户" else GroupWhitelist.group_id
     id_label = "QQ" if scope == "用户" else "群"
     try:
-        async with async_session_factory() as session:
+        # finish() 在块内会抛 FinishedException → get_session 回滚并重抛，
+        # 所以「已在名单中」只记标志，提示一律放到块外。
+        exists = False
+        async with get_session() as session:
             existing = (await session.execute(
                 select(model_cls.id).where(id_col == qq).limit(1)
             )).first()
             if existing:
-                await perm_cmd.finish(f"{id_label} {qq} 已在白名单中")
-            kwargs = {("user_id" if scope == "用户" else "group_id"): qq,
-                       "reason": reason, "created_by": event.user_id}
-            session.add(model_cls(**kwargs))
-            await session.commit()
+                exists = True
+            else:
+                kwargs = {("user_id" if scope == "用户" else "group_id"): qq,
+                           "reason": reason, "created_by": event.user_id}
+                session.add(model_cls(**kwargs))
+        if exists:
+            await perm_cmd.finish(f"{id_label} {qq} 已在白名单中")
         if scope == "用户":
             _invalidate_related_cache(user_id=qq)
         else:
@@ -57,14 +62,13 @@ async def _whitelist_remove(event: MessageEvent, tokens: List[ArgToken], scope: 
     model_cls = UserWhitelist if scope == "用户" else GroupWhitelist
     id_col = UserWhitelist.user_id if scope == "用户" else GroupWhitelist.group_id
     id_label = "QQ" if scope == "用户" else "群"
-    async with async_session_factory() as session:
+    async with get_session() as session:
         result = await session.execute(
             sa_delete(model_cls).where(id_col == qq)
         )
-        await session.commit()
-        if result.rowcount == 0:
-            logger.warning(f"用户 {event.user_id} 尝试移除{scope}白名单 {id_label} {qq}，但不在白名单中")
-            await perm_cmd.finish(f"{id_label} {qq} 不在白名单中")
+    if result.rowcount == 0:
+        logger.warning(f"用户 {event.user_id} 尝试移除{scope}白名单 {id_label} {qq}，但不在白名单中")
+        await perm_cmd.finish(f"{id_label} {qq} 不在白名单中")
     if scope == "用户":
         _invalidate_related_cache(user_id=qq)
     else:
@@ -77,7 +81,7 @@ async def _whitelist_list(event: MessageEvent, scope: str):
     model_cls = UserWhitelist if scope == "用户" else GroupWhitelist
     id_col = UserWhitelist.user_id if scope == "用户" else GroupWhitelist.group_id
     label = "QQ" if scope == "用户" else "群号"
-    async with async_session_factory() as session:
+    async with get_session(commit=False) as session:
         result = await session.execute(
             select(model_cls).order_by(model_cls.created_at.desc())
         )

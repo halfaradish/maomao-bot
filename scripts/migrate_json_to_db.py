@@ -47,7 +47,7 @@ nonebot.init()
 from sqlalchemy import select
 from sqlalchemy.dialects.mysql import insert as mysql_insert
 
-from src.common.database import Base, engine, async_session_factory, current_env_tag
+from src.common.database import Base, engine, get_session, current_env_tag
 from src.common.models.duel_models import DuelDailyProblemState, DuelStandardTag, DuelTagAlias
 from src.common.models.fakemsg_models import FakemsgDailyUsage
 from src.common.models.mass_kick_models import MassKickManagedGroup
@@ -94,7 +94,7 @@ async def migrate_duel(stats: dict) -> None:
     tag_map: dict = data.get("map") or {}
     daily: dict = data.get("daily_problems") or {}
 
-    async with async_session_factory() as session:
+    async with get_session() as session:
         # 标准标签词表（含空别名列表的键）
         for tag in tag_map:
             exists = await session.scalar(
@@ -152,8 +152,6 @@ async def migrate_duel(stats: dict) -> None:
                 session.add(DuelDailyProblemState(**state_values))
                 stats["migrated"] += 1
 
-        await session.commit()
-
 
 # ============================================================
 # fakemsg
@@ -168,7 +166,7 @@ async def migrate_fakemsg(stats: dict) -> None:
     daily_times_log: dict = data.get("daily_times_log") or {}
     usage_date = _parse_date(data.get("last_refresh_date")) or date.today()
 
-    async with async_session_factory() as session:
+    async with get_session() as session:
         for user_id, count in daily_times_log.items():
             exists = await session.scalar(
                 select(FakemsgDailyUsage.id).where(
@@ -185,7 +183,6 @@ async def migrate_fakemsg(stats: dict) -> None:
                 usage_date=usage_date, count=int(count),
             ))
             stats["migrated"] += 1
-        await session.commit()
 
 
 # ============================================================
@@ -200,7 +197,7 @@ async def migrate_mass_kick(stats: dict) -> None:
     env_tag = current_env_tag()
     managed_groups: list = data.get("managed_groups") or []
 
-    async with async_session_factory() as session:
+    async with get_session() as session:
         for group_id in managed_groups:
             gid = int(group_id)
             exists = await session.scalar(
@@ -214,7 +211,6 @@ async def migrate_mass_kick(stats: dict) -> None:
                 continue
             session.add(MassKickManagedGroup(env_tag=env_tag, group_id=gid))
             stats["migrated"] += 1
-        await session.commit()
 
 
 # ============================================================
@@ -237,7 +233,7 @@ async def migrate_prd(stats: dict) -> None:
             f"请在 .env.{_env} 设置 PRD_EXIST_GROUPS='[{','.join(repr(g) for g in exist_groups)}]'"
         )
 
-    async with async_session_factory() as session:
+    async with get_session() as session:
         for item in to_do:
             todo_id = int(item["id"])
             exists = await session.get(PrdTodo, todo_id)
@@ -267,7 +263,6 @@ async def migrate_prd(stats: dict) -> None:
                 assign_by=item.get("assign_by") or None,
             ))
             stats["migrated"] += 1
-        await session.commit()
 
 
 # ============================================================
@@ -285,7 +280,7 @@ async def migrate_shit_transport(stats: dict) -> None:
         "postshi_frequency_statistics": "postshi",
     }
 
-    async with async_session_factory() as session:
+    async with get_session() as session:
         for json_key, kind in kind_map.items():
             for user_id, info in (data.get(json_key) or {}).items():
                 exists = await session.scalar(
@@ -306,7 +301,6 @@ async def migrate_shit_transport(stats: dict) -> None:
                     nickname=info.get("nickname", "") or "",
                 ))
                 stats["migrated"] += 1
-        await session.commit()
 
 
 # ============================================================

@@ -32,7 +32,7 @@ from nonebot.adapters.onebot.v11 import (
 from nonebot.params import CommandArg
 from sqlalchemy import select
 
-from src.common.database import async_session_factory
+from src.common.database import get_session
 from src.common.permission import check_permission
 from src.common.permission.models import PermissionGroup, PermissionGroupPerm
 from src.common.send_forward_msg import SendForwardMsg
@@ -714,7 +714,7 @@ async def _ensure_default_perm_group() -> None:
     group_name = plugin_config.diting_deploy_perm_group.strip() or "diting_deploy"
     perm_keys = sorted({spec.perm for spec in SUBCOMMANDS.values()})
 
-    async with async_session_factory() as session:
+    async with get_session() as session:
         existing = (
             await session.execute(select(PermissionGroup).where(PermissionGroup.name == group_name))
         ).scalars().first()
@@ -730,7 +730,6 @@ async def _ensure_default_perm_group() -> None:
             await session.flush()
             for key in perm_keys:
                 session.add(PermissionGroupPerm(group_id=group.id, perm_key=key))
-            await session.commit()
             logger.info(f"[diting_deploy] 自动创建权限组 {group_name}，绑定 {len(perm_keys)} 个权限点")
             return
 
@@ -747,7 +746,6 @@ async def _ensure_default_perm_group() -> None:
         if missing:
             for key in missing:
                 session.add(PermissionGroupPerm(group_id=existing.id, perm_key=key))
-            await session.commit()
             logger.info(f"[diting_deploy] 权限组 {group_name} 补绑权限点 {missing}")
 
 

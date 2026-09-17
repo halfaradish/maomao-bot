@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import importlib
 from typing import List, Optional
 
 from nonebot import get_plugin_config, on_command
@@ -12,7 +11,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import selectinload
 
 from ...common.arg_parser import ArgToken, tokenize_arguments, try_parse_qq
-from ...common.database import async_session_factory
+from ...common.database import get_session
 from ...common.models.botdb_models import Group, GroupMember
 from .config import Config
 from src.common.plugin_meta import PluginGroupEnum, PluginBadgeColor
@@ -35,7 +34,7 @@ config = get_plugin_config(Config)
 
 
 async def _list_all_groups():
-    async with async_session_factory() as session:
+    async with get_session(commit=False) as session:
         stmt = (
             select(
                 Group.name,
@@ -61,19 +60,18 @@ async def _list_all_groups():
 
 
 async def _create_group_record(name: str, display_name: str = "", description: str = ""):
-    async with async_session_factory() as session:
+    async with get_session() as session:
         stmt = select(Group.id).where(Group.name == name).limit(1)
         result = await session.execute(stmt)
         if result.first() is not None:
             return False
         group = Group(name=name, display_name=display_name or "", description=description or "")
         session.add(group)
-        await session.commit()
         return True
 
 
 async def _get_group_detail(name: str):
-    async with async_session_factory() as session:
+    async with get_session(commit=False) as session:
         stmt = select(Group).where(Group.name == name).options(selectinload(Group.members))
         result = await session.execute(stmt)
         group = result.scalars().first()
@@ -88,7 +86,7 @@ async def _get_group_detail(name: str):
 
 
 async def _add_member(group_name: str, qq_id: int, nickname: str = ""):
-    async with async_session_factory() as session:
+    async with get_session() as session:
         stmt = select(Group).where(Group.name == group_name).limit(1)
         result = await session.execute(stmt)
         group = result.scalars().first()
@@ -105,28 +103,25 @@ async def _add_member(group_name: str, qq_id: int, nickname: str = ""):
         if member:
             if nickname and nickname != member.qq_nickname:
                 member.qq_nickname = nickname
-                await session.commit()
                 return True, "成员已存在，昵称已更新"
             return False, "成员已在该分组中"
 
         member = GroupMember(group_name=group_name, qq_id=qq_id, qq_nickname=nickname)
         session.add(member)
-        await session.commit()
         return True, "成员已加入分组"
 
 
 async def _delete_group(name: str) -> int:
     from sqlalchemy import delete as sa_delete
-    async with async_session_factory() as session:
+    async with get_session() as session:
         stmt = sa_delete(Group).where(Group.name == name)
         result = await session.execute(stmt)
-        await session.commit()
         return result.rowcount
 
 
 async def _remove_member(qq_id: int, group_name: Optional[str] = None) -> int:
     from sqlalchemy import delete as sa_delete
-    async with async_session_factory() as session:
+    async with get_session() as session:
         if group_name:
             stmt = sa_delete(GroupMember).where(
                 GroupMember.qq_id == qq_id,
@@ -135,7 +130,6 @@ async def _remove_member(qq_id: int, group_name: Optional[str] = None) -> int:
         else:
             stmt = sa_delete(GroupMember).where(GroupMember.qq_id == qq_id)
         result = await session.execute(stmt)
-        await session.commit()
         return result.rowcount
 
 

@@ -7,7 +7,7 @@ from nonebot.exception import FinishedException
 from sqlalchemy import select, delete as sa_delete
 
 from src.common.arg_parser import ArgToken, try_parse_qq
-from src.common.database import async_session_factory
+from src.common.database import get_session
 from src.common.permission.models import PermissionGroup, GroupPermBinding
 
 from .guard import _invalidate_related_cache
@@ -23,26 +23,32 @@ async def _binding_add(event: MessageEvent, tokens: List[ArgToken]):
     pg_name = tokens[1].value
 
     try:
-        async with async_session_factory() as session:
+        # finish() 在块内会抛 FinishedException → get_session 回滚并重抛，
+        # 所以两个提前返回分支都只记标志，提示一律放到块外。
+        not_found = already = False
+        async with get_session() as session:
             pg_result = await session.execute(
                 select(PermissionGroup.id).where(PermissionGroup.name == pg_name).limit(1)
             )
             pg_row = pg_result.first()
             if not pg_row:
-                await perm_cmd.finish(f"权限组 {pg_name} 不存在")
-            pg_id = pg_row[0]
-
-            existing = (await session.execute(
-                select(GroupPermBinding.id).where(
-                    GroupPermBinding.qq_group_id == qq,
-                    GroupPermBinding.permission_group_id == pg_id,
-                ).limit(1)
-            )).first()
-            if existing:
-                await perm_cmd.finish(f"群 {qq} 已绑定权限组 {pg_name}")
-
-            session.add(GroupPermBinding(qq_group_id=qq, permission_group_id=pg_id))
-            await session.commit()
+                not_found = True
+            else:
+                pg_id = pg_row[0]
+                existing = (await session.execute(
+                    select(GroupPermBinding.id).where(
+                        GroupPermBinding.qq_group_id == qq,
+                        GroupPermBinding.permission_group_id == pg_id,
+                    ).limit(1)
+                )).first()
+                if existing:
+                    already = True
+                else:
+                    session.add(GroupPermBinding(qq_group_id=qq, permission_group_id=pg_id))
+        if not_found:
+            await perm_cmd.finish(f"权限组 {pg_name} 不存在")
+        if already:
+            await perm_cmd.finish(f"群 {qq} 已绑定权限组 {pg_name}")
         _invalidate_related_cache(group_id=qq)
         logger.info(f"用户 {event.user_id} 将群 {qq} 绑定到权限组 {pg_name}")
         await perm_cmd.finish(f"群 {qq} 已绑定权限组 {pg_name}")
@@ -60,14 +66,13 @@ async def _binding_remove(event: MessageEvent, tokens: List[ArgToken]):
     if qq is None:
         await perm_cmd.finish("请提供有效的群号")
 
-    async with async_session_factory() as session:
+    async with get_session() as session:
         result = await session.execute(
             sa_delete(GroupPermBinding).where(GroupPermBinding.qq_group_id == qq)
         )
-        await session.commit()
-        if result.rowcount == 0:
-            logger.warning(f"用户 {event.user_id} 尝试解除群 {qq} 的绑定，但该群没有绑定记录")
-            await perm_cmd.finish(f"群 {qq} 没有绑定任何权限组")
+    if result.rowcount == 0:
+        logger.warning(f"用户 {event.user_id} 尝试解除群 {qq} 的绑定，但该群没有绑定记录")
+        await perm_cmd.finish(f"群 {qq} 没有绑定任何权限组")
     _invalidate_related_cache(group_id=qq)
     logger.info(f"用户 {event.user_id} 已解除群 {qq} 的 {result.rowcount} 条权限组绑定")
     await perm_cmd.finish(f"已解除群 {qq} 的所有权限组绑定（共 {result.rowcount} 条）")
@@ -78,7 +83,7 @@ async def _binding_list(event: MessageEvent, tokens: List[ArgToken]):
     if tokens:
         qq_filter = try_parse_qq(tokens[0])
 
-    async with async_session_factory() as session:
+    async with get_session(commit=False) as session:
         if qq_filter:
             result = await session.execute(
                 select(GroupPermBinding).where(GroupPermBinding.qq_group_id == qq_filter)
@@ -99,7 +104,7 @@ async def _binding_list(event: MessageEvent, tokens: List[ArgToken]):
     lines = ["群绑定列表："]
     for qq_gid, blist in sorted(groups_map.items()):
         # 加载权限组名
-        async with async_session_factory() as session:
+        async with get_session(commit=False) as session:
             pg_ids = [b.permission_group_id for b in blist]
             pg_result = await session.execute(
                 select(PermissionGroup.id, PermissionGroup.name).where(

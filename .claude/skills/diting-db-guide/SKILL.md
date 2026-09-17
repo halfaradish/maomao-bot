@@ -65,7 +65,7 @@ async def read_only_example():
         ...
 ```
 
-仍可直接使用 `async_session_factory()`（自管 commit/rollback），但**新代码一律走 `get_session()`**；存量裸工厂属待迁移遗留，清单见 §1.2。
+仍可直接使用 `async_session_factory()`（自管 commit/rollback），但**新代码一律走 `get_session()`**；存量裸工厂已清零（只剩工厂定义处与 ICPC 池自用，见 §1.2）。
 
 ### 1.1 两条硬规则
 
@@ -97,16 +97,48 @@ await matcher.finish("已添加")            # 退出块时已 commit
 
 | 状态 | 文件数 | 站点数 |
 |---|---|---|
-| 已用 `get_session()` | 28 | 97 |
-| 仍用裸 `async_session_factory()` | 14 | 44 |
+| 已用 `get_session()` | 43 | 146 |
+| 仍用裸 `async_session_factory()` | 0 | 0 |
 
-（另 `scripts/migrate_json_to_db.py` 5 处未迁移。不计入：`common/database.py` 是工厂定义处、`common/icpc_db_pool.py` 属 ICPC 库；`api/bot.py` 的 `_ping_mysql(session_factory)` 刻意收工厂当参数以同时服务两个库，有意不改。）
+（口径：`get_session(` 调用点，含 `commit=False`，含 `scripts/`；`commit=False` 共 62 处。）
 
-已迁移：`api/` 全部 9 个、`common/permission/{checker,queries,bootstrap}.py`、`group_statistics/database.py`、`todo_reminder/database.py`、`auto_manage_group/{__init__,group_checker,migrate}.py`，以及 `common/crud.py`、`common/permission/auto_register.py` 和 `{duel,prd,fakemsg,mass_kick,plugin_usage_stats,shit_transport}/dao.py`、`group_file_manager/{handlers,hooks,service}.py`。
+**裸工厂只剩 3 处引用，都不是待迁移的遗留**：
+- `common/database.py` —— 工厂定义处（`get_session()` 自己就建在它上面）；
+- `common/icpc_db_pool.py` —— ICPC 库的连接池，与 bot_db 无关；
+- `api/bot.py` 的 `_ping_mysql(session_factory)` —— 刻意收工厂当参数，好让同一个探针同时服务 bot_db 与 ICPC 库。
 
-仍待迁移（14 个文件）：`plugins/permission_manager/` 下 5 个（共 20 处，**这里有 18 处 `finish()` 写在会话块内，是下一轮的主要风险区**）、`plugins/group_manager`（6）、`plugins/like`（5）、`plugins/vv`（4）、`plugins/fakemsg`（2 个文件共 4）、`plugins/shit_transport/transport.py`（2）、`plugins/diting_deploy/commands.py`、`plugins/group_card_changer/holidays.py`、`plugins/group_sentinel`。
+**残留的「会话块内 `finish()`」债务：8 处**，全部在 `group_file_manager/handlers.py`（另有 5 处块内 `commit()`，分布见下）：
 
-### 1.3 改 「`add` + `commit`」时当心主键
+`handlers.py` 的 8 处是**有意为之**——`finish()` 之前已经写过数据，所以必须先在块内显式 `commit()` 再 `finish()`，代码里也留了注释。它们行为正确（没有静默回滚），只是没走「DB 全收进块内、`finish` 全移到块外」那套写法；要改就整段重排（把提示文案记进变量、`finish` 移出块），别只删 commit。同文件的另外 4 处块内 `commit()` 就是为它们服务的。
+
+`hooks.py:66` 的那处 `commit()` 是另一回事：注释写明「必须在 `auto_crawl` 之前提交，否则其独立会话看不到新群行」——**跨会话可见性**要求的提前提交，与 `finish()` 无关，不要动。
+
+### 1.3 改 `finish()` 在块内的 handler：只记标志，出块再提示
+
+`permission_manager` / `vv` / `fakemsg` 这类「先查重、重复就提示、否则写入」的 handler，原先把 `finish()` 写在块内。改造时把提前返回的分支改成**记一个布尔标志**，提示统一挪到块外：
+
+```python
+# ❌ finish() 在块内：判重分支会把块里刚 add 的数据一起回滚掉
+async with get_session() as session:
+    if (await session.execute(...)).first() is not None:
+        await matcher.finish("已存在")
+
+# ✅ 标志 + 出块提示
+exists = False
+async with get_session() as session:
+    if (await session.execute(...)).first() is not None:
+        exists = True
+    else:
+        session.add(obj)
+if exists:
+    await matcher.finish("已存在")
+```
+
+一个必须守住的细节：**「命中重复」这个提前返回分支上不能有已 staged 的写**。绝大多数站点天然满足（判重在写之前），但也有反例——`fakemsg/core.py` 的 `-add` 会在判重之前先建权限组+flush，只是「组刚建好就已是成员」在数据上不可能发生，才没暴露。搬 `finish` 时顺手确认一下这点。
+
+另有一处控制流细节：`view.py` 的「黑名单命中就跳过白名单/权限组查询」是靠 `if bl: ... finish()` 提前返回实现的，`finish` 外提后必须补成 `if not blacklisted:` 把后半段包起来，否则黑名单用户的消息里会多出一行「无任何权限（默认拒绝）」。
+
+### 1.4 改 「`add` + `commit`」时当心主键
 
 `session.commit()` 会顺带 flush，所以 `session.add(obj)` → `commit()` → `obj.id` 这种写法里，**`commit()` 同时承担了「拿到自增主键」的职责**。只把 commit 换成块退出的自动提交、却不补 flush，`obj.id` 就会是 `None`，接口静默返回 `"id": null`：
 
@@ -122,6 +154,16 @@ group_id = group.id
 ```
 
 既有正例：`api/groups.py` 的 toggle 分支、`common/permission/bootstrap.py` 本来就是这个写法。
+
+### 1.5 删「行尾 commit」时的两个顺序变化
+
+块**中间/trailing** 的 `await session.commit()` 删掉后，提交时点从「那一行」挪到「出块时」，于是它后面的非 DB 代码会提前到提交之前执行。两种常见情形都无害，但要知道自己在做什么：
+
+1. **先清缓存、再提交**：如 `vv`、`fakemsg`、`shit_transport` 的 `perm_cache.clear_pattern()/clear_all()`。提前清缓存是安全方向（宁可多失效一次），提交失败时也只是多清一次。
+2. **先记日志、再提交**：日志会比落库早一点点出现。`_ensure_*_perm_group` 这类启动钩子里会看到日志打了但（极端情况下）没落库。
+
+判断标准：这段代码**读不读刚写的数据**。读就得保留显式 commit（或至少 flush），不读就可以交给块退出。
+
 
 **绝对不要**在模块顶层（插件导入时）创建会话：
 

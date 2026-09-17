@@ -101,11 +101,11 @@ async def _reload_holidays_info():
 
     if _plugin_config.custom_holiday_enabled:
         try:
-            from ...common.database import async_session_factory
+            from ...common.database import get_session
             from ...common.models import CustomHoliday
             from sqlalchemy import select
 
-            async with async_session_factory() as session:
+            async with get_session(commit=False) as session:
                 result = await session.execute(
                     select(CustomHoliday).where(CustomHoliday.is_enabled)
                 )

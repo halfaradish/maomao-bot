@@ -11,7 +11,7 @@ from nonebot.exception import FinishedException
 from sqlalchemy import select, delete as sa_delete
 
 from src.common.arg_parser import ArgToken, try_parse_qq
-from src.common.database import async_session_factory
+from src.common.database import get_session
 from src.common.permission.models import UserBlacklist
 
 from .guard import _invalidate_related_cache
@@ -26,14 +26,19 @@ async def _blacklist_add(event: MessageEvent, tokens: List[ArgToken], _scope: st
         await perm_cmd.finish("请提供有效的 QQ 号")
     reason = " ".join(t.value for t in tokens[1:]) if len(tokens) > 1 else ""
     try:
-        async with async_session_factory() as session:
+        # finish() 在块内会抛 FinishedException → get_session 回滚并重抛，
+        # 所以「已在名单中」只记标志，提示一律放到块外。
+        exists = False
+        async with get_session() as session:
             existing = (await session.execute(
                 select(UserBlacklist.id).where(UserBlacklist.user_id == qq).limit(1)
             )).first()
             if existing:
-                await perm_cmd.finish(f"QQ {qq} 已在黑名单中")
-            session.add(UserBlacklist(user_id=qq, reason=reason, created_by=event.user_id))
-            await session.commit()
+                exists = True
+            else:
+                session.add(UserBlacklist(user_id=qq, reason=reason, created_by=event.user_id))
+        if exists:
+            await perm_cmd.finish(f"QQ {qq} 已在黑名单中")
         _invalidate_related_cache(user_id=qq)
         logger.info(f"用户 {event.user_id} 将 QQ {qq} 加入黑名单（原因: {reason or '未填写'}）")
         await perm_cmd.finish(f"已将 QQ {qq} 加入黑名单" + (f"（原因: {reason}）" if reason else ""))
@@ -50,21 +55,20 @@ async def _blacklist_remove(event: MessageEvent, tokens: List[ArgToken], _scope:
     qq = try_parse_qq(tokens[0])
     if qq is None:
         await perm_cmd.finish("请提供有效的 QQ 号")
-    async with async_session_factory() as session:
+    async with get_session() as session:
         result = await session.execute(
             sa_delete(UserBlacklist).where(UserBlacklist.user_id == qq)
         )
-        await session.commit()
-        if result.rowcount == 0:
-            logger.warning(f"用户 {event.user_id} 尝试移除黑名单 QQ {qq}，但该用户不在黑名单中")
-            await perm_cmd.finish(f"QQ {qq} 不在黑名单中")
+    if result.rowcount == 0:
+        logger.warning(f"用户 {event.user_id} 尝试移除黑名单 QQ {qq}，但该用户不在黑名单中")
+        await perm_cmd.finish(f"QQ {qq} 不在黑名单中")
     _invalidate_related_cache(user_id=qq)
     logger.info(f"用户 {event.user_id} 已将 QQ {qq} 从黑名单移除")
     await perm_cmd.finish(f"已将 QQ {qq} 从黑名单移除")
 
 
 async def _blacklist_list(event: MessageEvent, _scope: str):
-    async with async_session_factory() as session:
+    async with get_session(commit=False) as session:
         result = await session.execute(
             select(UserBlacklist).order_by(UserBlacklist.created_at.desc())
         )

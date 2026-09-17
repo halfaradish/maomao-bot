@@ -27,7 +27,7 @@ from ...config import QQControlConfig
 from src.common.plugin_meta import PluginGroupEnum, PluginBadgeColor
 from src.common.permission import ADMIN_PERM_KEY, check_permission, get_bound_group_ids
 from src.common.permission.cache import perm_cache
-from src.common.database import async_session_factory, ensure_tables
+from src.common.database import ensure_tables, get_session
 from src.common.models.shit_transport_models import ShitTransportStats
 from src.common.permission.models import PermissionGroup, GroupPermBinding
 
@@ -109,7 +109,7 @@ class TransportService:
     @staticmethod
     async def add_group_binding(pg_name: str, group_id: int) -> Optional[str]:
         """添加群绑定到指定权限组"""
-        async with async_session_factory() as session:
+        async with get_session() as session:
             result = await session.execute(
                 select(PermissionGroup).where(PermissionGroup.name == pg_name).limit(1)
             )
@@ -128,14 +128,13 @@ class TransportService:
                 return f"群 {group_id} 已经在列表中"
 
             session.add(GroupPermBinding(permission_group_id=pg.id, qq_group_id=group_id))
-            await session.commit()
             perm_cache.clear_all()
             return None
 
     @staticmethod
     async def remove_group_binding(pg_name: str, group_id: int) -> Optional[str]:
         """从指定权限组移除群绑定"""
-        async with async_session_factory() as session:
+        async with get_session() as session:
             result = await session.execute(
                 select(PermissionGroup).where(PermissionGroup.name == pg_name).limit(1)
             )
@@ -155,7 +154,6 @@ class TransportService:
 
             for binding in bindings:
                 await session.delete(binding)
-            await session.commit()
             perm_cache.clear_all()
             return None
 

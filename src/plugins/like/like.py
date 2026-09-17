@@ -10,7 +10,7 @@ from datetime import datetime, timedelta
 
 from sqlalchemy import select, update as sa_update
 
-from ...common.database import async_session_factory
+from ...common.database import get_session
 from ...common.models.like_plugin_models import LikeRecord
 from .config import Config
 from .subscription import (
@@ -86,7 +86,7 @@ async def follow_or_not(
         is_trial: 是否为试用订阅（True=7天有效期, False=永久）
     """
     try:
-        async with async_session_factory() as session:
+        async with get_session() as session:
             stmt = select(LikeRecord).where(LikeRecord.user_id == user_id)
             result = await session.execute(stmt)
             obj = result.scalars().first()
@@ -122,7 +122,6 @@ async def follow_or_not(
                 was_following = obj.is_following
                 for key, value in defaults.items():
                     setattr(obj, key, value)
-                await session.commit()
                 if follow:
                     if is_trial:
                         return f"试用订阅成功，有效期 {TRIAL_DAYS} 天（至 {expires_str}）"
@@ -133,7 +132,6 @@ async def follow_or_not(
             else:
                 obj = LikeRecord(user_id=user_id, **defaults)
                 session.add(obj)
-                await session.commit()
                 if follow:
                     if is_trial:
                         return f"试用订阅成功，有效期 {TRIAL_DAYS} 天（至 {expires_str}）"
@@ -148,7 +146,7 @@ async def follow_or_not(
 
 async def count_liked_times(user_id, count: int, nickname, group_id: str | None = None):
     """点赞次数计数"""
-    async with async_session_factory() as session:
+    async with get_session() as session:
         stmt = select(LikeRecord).where(LikeRecord.user_id == user_id)
         result = await session.execute(stmt)
         obj = result.scalars().first()
@@ -172,7 +170,6 @@ async def count_liked_times(user_id, count: int, nickname, group_id: str | None 
             )
         )
         await session.execute(stmt)
-        await session.commit()
 
 async def send_like(bot: Bot, user_id) -> tuple[int, any]:
     """点赞函数"""
@@ -198,7 +195,7 @@ async def send_like(bot: Bot, user_id) -> tuple[int, any]:
 async def _expire_trial_subscriptions():
     """将过期的试用订阅标记为取消"""
     now = datetime.now()
-    async with async_session_factory() as session:
+    async with get_session() as session:
         stmt = (
             sa_update(LikeRecord)
             .where(
@@ -209,7 +206,6 @@ async def _expire_trial_subscriptions():
             .values(is_following=False)
         )
         result = await session.execute(stmt)
-        await session.commit()
         expired_count = result.rowcount
         if expired_count > 0:
             logger.info(f"[点赞] 清理 {expired_count} 个过期试用订阅")
@@ -359,7 +355,7 @@ async def _():
     # 清理过期试用订阅
     await _expire_trial_subscriptions()
 
-    async with async_session_factory() as session:
+    async with get_session(commit=False) as session:
         stmt = select(LikeRecord).where(LikeRecord.is_following == True)
         result = await session.execute(stmt)
         subscribed_users = list(result.scalars().all())
@@ -370,7 +366,7 @@ async def _():
             if count > 0:
                 user_info = await bot.get_stranger_info(user_id=int(user.user_id))
                 nickname = user_info["nickname"]
-                async with async_session_factory() as session:
+                async with get_session() as session:
                     stmt = (
                         sa_update(LikeRecord)
                         .where(LikeRecord.user_id == user.user_id)
@@ -380,7 +376,6 @@ async def _():
                         )
                     )
                     await session.execute(stmt)
-                    await session.commit()
             else:
                 logger.error(err_msg)
         except Exception as e:

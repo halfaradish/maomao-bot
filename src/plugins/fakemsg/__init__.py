@@ -5,7 +5,7 @@ from nonebot.adapters.onebot.v11 import GroupMessageEvent, Message, MessageSegme
 from sqlalchemy import select
 
 from ...common.send_forward_msg import send_forward_msg
-from ...common.database import async_session_factory
+from ...common.database import get_session
 from ...common.permission import check_permission
 from ...common.permission.models import PermissionGroup, PermissionGroupPerm
 from .config import config
@@ -134,7 +134,7 @@ async def _ensure_default_perm_group():
     自动创建 fakemsg_users 权限组，包含 fakemsg:use 和 fakemsg:manage 权限点。
     -add/-rm 命令操作此组的成员。已存在的权限组和权限点不会重复创建。
     """
-    async with async_session_factory() as session:
+    async with get_session() as session:
         result = await session.execute(
             select(PermissionGroup).where(PermissionGroup.name == core.DEFAULT_PG_NAME)
         )
@@ -161,5 +161,3 @@ async def _ensure_default_perm_group():
             if existing is None:
                 session.add(PermissionGroupPerm(group_id=pg.id, perm_key=perm_key))
                 logger.info(f"[fakemsg] 权限组 {core.DEFAULT_PG_NAME} 添加权限点: {perm_key}")
-
-        await session.commit()

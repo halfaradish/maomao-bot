@@ -11,7 +11,7 @@ from .notifier import notify_pending_review, email_status_text
 from ..auto_manage_group.group_checker import is_group_feature_enabled
 from src.common.plugin_guard import disabled_plugin_metadata, plugin_enabled
 from src.common.plugin_meta import PluginGroupEnum, PluginBadgeColor
-from src.common.database import async_session_factory
+from src.common.database import get_session
 from src.common.permission.models import (
     PermissionGroup,
     PermissionGroupPerm,
@@ -128,7 +128,7 @@ else:
         perm_key = "group_sentinel:audit"
         display_name = "入群审核"
 
-        async with async_session_factory() as session:
+        async with get_session() as session:
             existing = (await session.execute(
                 select(PermissionGroup).where(PermissionGroup.name == group_name)
             )).scalars().first()
@@ -143,7 +143,6 @@ else:
                 session.add(pg)
                 await session.flush()
                 session.add(PermissionGroupPerm(group_id=pg.id, perm_key=perm_key))
-                await session.commit()
                 logger.info(
                     f"[group_sentinel] 自动创建权限组: {group_name} "
                     f"(perm_key={perm_key})"
