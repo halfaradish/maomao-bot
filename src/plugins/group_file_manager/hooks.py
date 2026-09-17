@@ -8,6 +8,7 @@ from sqlalchemy import select
 from .db import MonitoredGroup, get_session
 from .migrations import _ensure_fk_migration, _ensure_last_crawled_at_column
 from .service import auto_crawl_all_groups
+from src.common.permission import ensure_perm_group
 
 driver = get_driver()
 
@@ -22,6 +23,23 @@ async def _startup_fk_migration():
     """启动时最早执行：自动修复 group_files 表外键约束 + 添加 last_crawled_at 列"""
     await _ensure_last_crawled_at_column()
     await _ensure_fk_migration()
+
+
+# ========== 权限组播种 ==========
+
+@driver.on_startup
+async def _ensure_default_perm_group():
+    """确保本插件的默认权限组存在（幂等，不动已有成员）
+
+    刻意不含 ``group_file_manager:fix_fk``：那条是调试/迁移命令，只留给管理员
+    （管理员由权限系统第 0 步自动放行），不随本组一起授予。
+    """
+    await ensure_perm_group(
+        "group_file_manager_users",
+        "群文件管理",
+        ["group_file_manager:crawl", "group_file_manager:monitor"],
+        description="自动创建：历史文件爬取与监控群管理权限（修复FK 仅管理员）",
+    )
 
 
 # ========== bot 连接初始化 ==========

@@ -3,6 +3,8 @@ from nonebot.plugin import PluginMetadata
 from src.common.plugin_guard import disabled_plugin_metadata, plugin_enabled
 from src.common.plugin_meta import PluginGroupEnum, PluginBadgeColor
 
+from . import permissions  # noqa: F401 — 注册权限点到权限系统
+
 ICPC_AC_MONITOR_ENABLED = plugin_enabled("ICPC_AC_MONITOR_ENABLED")
 
 if not ICPC_AC_MONITOR_ENABLED:

@@ -14,11 +14,16 @@ from sqlalchemy import select
 from .db import GroupFile, MonitoredGroup, get_session
 from .migrations import _ensure_fk_migration
 from .service import DATA_DIR, crawl_group_files, download_and_save
+from src.common.permission import blacklist_guard, check_permission, permission_checker
 
 # ========== 指令部分 ==========
 
 # 指令：手动触发 FK 迁移（调试/修复用）
-fix_fk = on_command("修复FK", aliases={"修复外键", "fixfk"}, priority=1, block=True)
+# handler 没有 event 形参，只能在 matcher 级挂权限点（默认拒绝，仅管理员与授权者可用）
+fix_fk = on_command(
+    "修复FK", aliases={"修复外键", "fixfk"}, priority=1, block=True,
+    permission=permission_checker("group_file_manager:fix_fk"),
+)
 
 @fix_fk.handle()
 async def handle_fix_fk():
@@ -27,7 +32,11 @@ async def handle_fix_fk():
     await fix_fk.finish("FK 迁移检查已完成，请查看日志")
 
 # 指令：查看今日新文件（优化格式）
-today_files = on_command("今日文件", aliases={"今天文件", "新文件"}, priority=10)
+# 只读 -> 黑名单模式，普通群友照常可用
+today_files = on_command(
+    "今日文件", aliases={"今天文件", "新文件"}, priority=10,
+    permission=blacklist_guard(),
+)
 
 @today_files.handle()
 async def handle_today_files(bot: Bot, event: GroupMessageEvent):
@@ -68,7 +77,11 @@ async def handle_today_files(bot: Bot, event: GroupMessageEvent):
 
 
 # 指令：查看文件存储位置
-file_location = on_command("文件位置", aliases={"文件在哪", "存储路径"}, priority=10)
+# 只读 -> 黑名单模式
+file_location = on_command(
+    "文件位置", aliases={"文件在哪", "存储路径"}, priority=10,
+    permission=blacklist_guard(),
+)
 
 @file_location.handle()
 async def handle_file_location(bot: Bot, event: GroupMessageEvent):
@@ -95,6 +108,9 @@ crawl_history = on_command("爬取历史文件", aliases={"同步历史"}, prior
 @crawl_history.handle()
 async def handle_crawl(bot: Bot, event: GroupMessageEvent, args: Message = CommandArg()):
     """手动触发爬取历史群文件，支持 --full 全量"""
+    if not await check_permission(event, "group_file_manager:crawl"):
+        await crawl_history.finish("您没有权限使用此功能")
+
     raw_args = args.extract_plain_text().strip()
     full_crawl = "--full" in raw_args or "全量" in raw_args
 
@@ -118,6 +134,9 @@ add_monitor = on_command("添加监控群", aliases={"监控群", "加入监控"
 @add_monitor.handle()
 async def handle_add_monitor(bot: Bot, event: GroupMessageEvent):
     """将当前群添加到监控列表"""
+    if not await check_permission(event, "group_file_manager:monitor"):
+        await add_monitor.finish("您没有权限使用此功能")
+
     group_id = event.group_id
 
     # 群信息是网络调用，放在会话块外：不要跨网络调用持有 session
@@ -154,6 +173,9 @@ remove_monitor = on_command("移除监控群", aliases={"取消监控", "删除�
 @remove_monitor.handle()
 async def handle_remove_monitor(bot: Bot, event: GroupMessageEvent):
     """将当前群从监控列表移除"""
+    if not await check_permission(event, "group_file_manager:monitor"):
+        await remove_monitor.finish("您没有权限使用此功能")
+
     group_id = event.group_id
     # 查到就写、查不到不写 → 用默认 commit=True，未命中分支走一次空提交
     async with get_session() as session:
@@ -169,7 +191,11 @@ async def handle_remove_monitor(bot: Bot, event: GroupMessageEvent):
 
 
 # 指令：查看监控群列表（新增）
-list_monitor = on_command("监控群列表", aliases={"监控列表", "查看监控"}, priority=10)
+# 会列出全站监控群（跨群信息），跟着监控管理权限走
+list_monitor = on_command(
+    "监控群列表", aliases={"监控列表", "查看监控"}, priority=10,
+    permission=permission_checker("group_file_manager:monitor"),
+)
 
 @list_monitor.handle()
 async def handle_list_monitor(bot: Bot, event: GroupMessageEvent):

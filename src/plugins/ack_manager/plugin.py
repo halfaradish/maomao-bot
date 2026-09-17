@@ -21,6 +21,7 @@ from nonebot.params import RegexGroup
 
 from . import database
 from .config import Config
+from src.common.permission import blacklist_guard, permission_checker
 
 plugin_config = Config.parse_obj(get_driver().config.dict())
 if not plugin_config.enabled:
@@ -103,9 +104,19 @@ ACK_HELP_PATTERN = rf"^ack$"
 ACK_PATTERN = rf"^{re.escape(plugin_config.ack_command_prefix)}\s+(.+)"
 ANN_PATTERN = rf"^{re.escape(plugin_config.ann_command_prefix)}\s+(.+)"
 
-ack_help_command = on_regex(ACK_HELP_PATTERN, flags=re.IGNORECASE, priority=8, block=True)
-ack_command = on_regex(ACK_PATTERN, flags=re.IGNORECASE, priority=8, block=True)
-ann_command = on_regex(ANN_PATTERN, flags=re.IGNORECASE, priority=8, block=True)
+# 帮助只读 -> 黑名单模式；@全体与公告会打扰全群 -> 权限点 + 默认拒绝
+ack_help_command = on_regex(
+    ACK_HELP_PATTERN, flags=re.IGNORECASE, priority=8, block=True,
+    permission=blacklist_guard(),
+)
+ack_command = on_regex(
+    ACK_PATTERN, flags=re.IGNORECASE, priority=8, block=True,
+    permission=permission_checker("ack_manager:ack"),
+)
+ann_command = on_regex(
+    ANN_PATTERN, flags=re.IGNORECASE, priority=8, block=True,
+    permission=permission_checker("ack_manager:announce"),
+)
 reaction_notice = on_notice(priority=50, block=False)
 
 

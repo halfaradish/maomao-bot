@@ -3,6 +3,8 @@ from nonebot.plugin import PluginMetadata
 from src.common.plugin_guard import disabled_plugin_metadata, plugin_enabled
 from src.common.plugin_meta import PluginGroupEnum, PluginBadgeColor
 
+from . import permissions  # noqa: F401 — 注册权限点到权限系统
+
 # 插件启停开关：禁用时只给存根元数据，不注册任何 handler
 GROUP_FILE_MANAGER_ENABLED = plugin_enabled("GROUP_FILE_MANAGER_ENABLED")
 

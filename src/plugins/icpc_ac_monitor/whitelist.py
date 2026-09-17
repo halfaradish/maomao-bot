@@ -7,20 +7,27 @@ from typing import Dict, List, Optional
 from nonebot.adapters.onebot.v11 import Event, Message
 
 from .state import AT_WHITELIST, conf, save_conf
-from src.common.permission import ADMIN_PERM_KEY, check_permission
+from src.common.permission import check_permission
+
+#: 名单管理沿用「管理员或本插件操作者」的语义，但现在操作者可以是权限组成员
+WHITELIST_PERM_KEY = "icpc_ac_monitor:whitelist"
 
 
 async def _is_authorized(event: Event) -> bool:
-    """管理员或本插件的艾特白名单成员才可管理
+    """持有 ``icpc_ac_monitor:whitelist`` 权限点、或在本插件艾特白名单里的用户才可管理
 
     管理员判据是权限点（``perm_admin`` 组），不再是 SUPERUSERS —— 之前这里用
     模块级快照 ``{str(u) for u in config.superusers}`` 加 ``except → set()``，
     配置读取一异常就静默变成「没有任何超级管理员」，且永久拿的是导入瞬间的快照。
+    管理员由权限系统第 0 步对所有权限点短路放行，所以这里不必单独判断 ADMIN_PERM_KEY。
+
+    ``AT_WHITELIST`` 是插件自己维护并落盘的操作者名单，作为过渡期的兼容兜底保留：
+    已在名单里的人不会被这次接入挡在门外，之后可改用 ``icpc_ac_monitor_users`` 权限组管理。
     """
     user_id = getattr(event, "user_id", None)
     if user_id is None:
         return False
-    if await check_permission(event, ADMIN_PERM_KEY):
+    if await check_permission(event, WHITELIST_PERM_KEY):
         return True
     try:
         uid = int(user_id)

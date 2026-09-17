@@ -27,8 +27,11 @@ description: >
   │                    └─ 在任意 async 函数内直接调用，返回 bool
   │                    └─ 没有 Event 的场景用 await user_has_permission(user_id, key)
   │
-  └─ C) 注册点:      register_perm_point("plugin:action", "名称", "描述", plugin_name="p")
-                       └─ 插件 import 时调用，启动时自动同步到数据库
+  ├─ C) 注册点:      register_perm_point("plugin:action", "名称", "描述", plugin_name="p")
+  │                    └─ 插件 import 时调用，启动时自动同步到数据库
+  │
+  └─ D) 黑名单模式:  on_command(..., permission=blacklist_guard())
+                       └─ 只读低风险命令：默认放行，只拦黑名单用户/群
        │
        ▼
 src/common/permission/
@@ -144,6 +147,40 @@ perm 注册点/points 列表/list
 perm 注册点/points 列表/list group_ban    # 按插件名筛选
 ```
 
+### 1.5 自动创建插件的默认权限组
+
+新接入的权限点如果**默认拒绝**，管理员得先手工建组、加权限点、再加成员。插件可以在
+启动钩子里调 `ensure_perm_group()` 把「建组 + 绑权限点」这两步自动做掉，管理员打开
+管理面板就能直接往组里加人/绑群：
+
+```python
+from nonebot import get_driver
+from src.common.permission import ensure_perm_group
+
+@get_driver().on_startup
+async def _ensure_default_perm_group():
+    await ensure_perm_group(
+        "group_file_manager_ops",        # 组名（唯一，管理面板里显示的就是它）
+        "群文件管理",                     # 展示名
+        ["group_file_manager:crawl",     # 该组拥有的权限点
+         "group_file_manager:monitor"],
+        description="自动创建：历史文件爬取与监控群管理权限",
+    )
+```
+
+语义（幂等）：
+
+| 情况 | 行为 |
+|---|---|
+| 组不存在 | 创建组并绑定全部 perm_key |
+| 组已存在 | **只补缺失的 perm_key**，已有权限点不动 |
+| 成员 | **永不修改** —— 管理员增删的成员不会在重启后被覆盖 |
+| 执行失败 | 只记 warning 并返回，不影响插件启动 |
+
+约定：**一个插件一组**，组名沿用既有惯例 —— `<plugin>_users`（谁能用这个插件的功能）、
+`<plugin>_managers`（更高危的管理动作，如 `group_statistics_managers`）。若同一插件里存在
+「能存图」与「能清库」这类高低危混杂的权限，就拆成两组，避免授权时顺带放大能力。
+
 ---
 
 ## 2. 接入方式一：Matcher 级权限（推荐）
@@ -250,6 +287,36 @@ async def handler(event, matcher, args: str = CommandArg()):
 | 消息事件、定时任务等非命令场景 | 命令式（方式二） | Matcher 级只能用于 on_command/on_message |
 | 需要自定义拒绝消息 | 命令式（方式二） | 可以自由给出具体提示 |
 | 多个权限点组合（AND 关系） | 命令式（方式二） | 多个 `check_permission` 串联检查 |
+
+---
+
+## 3.5 接入方式三：黑名单模式（只读低风险命令）
+
+有些命令（查看文件列表、随机图片、积分榜、过题情况……）本来对所有人开放，强行改成
+默认拒绝只会让升级后一堆功能「突然不可用」。这类**只读低风险命令**用 `blacklist_guard()`：
+不声明权限点、不做默认拒绝，只拦黑名单里的用户/群。
+
+```python
+from nonebot import on_command
+from src.common.permission import blacklist_guard
+
+today_files = on_command("今日文件", priority=10, permission=blacklist_guard())
+```
+
+它只调 `is_blacklisted(user_id, group_id)`，因此**只认全局黑名单**
+（`perm 黑名单 添加`），与权限组、白名单无关。
+
+| | `permission_checker(key)` | `blacklist_guard()` |
+|---|---|---|
+| 未配置时 | **拒绝**（默认拒绝） | **放行** |
+| 判定依据 | 管理员 / 黑白名单 / 权限组 / 群绑定 | 仅黑名单 |
+| 数据库异常 | 异常向上抛（等价于拒绝） | 记 warning 后**放行**（fail-open） |
+| 适用 | 管理、写操作、破坏性操作 | 只读、低风险 |
+
+> ⚠️ fail-open 是刻意的：只读命令不该因为 DB 抖动对所有人失效。要 fail-closed 的场景
+> （部署、踢人、清库）继续用 `permission_checker()` 或内联 `check_permission`。
+
+**选型速记**：会改动数据/打扰全群/花钱 → 权限点 + 默认拒绝；只是「看一眼」→ 黑名单模式。
 
 ---
 
@@ -784,10 +851,22 @@ perm 绑定/bind 群/group 789012 admin
 ```python
 from src.common.permission import register_perm_point     # 声明权限点
 from src.common.permission import permission_checker       # Matcher 级
+from src.common.permission import blacklist_guard          # Matcher 级：只挡黑名单（只读命令）
 from src.common.permission import check_permission         # 命令式
+from src.common.permission import is_blacklisted           # 单独判断是否被拉黑
+from src.common.permission import ensure_perm_group        # 启动时自动建权限组
 from src.common.permission import ADMIN_PERM_KEY           # 管理员权限点
 from src.common.permission import perm_cache               # 缓存操作
 ```
+
+### 三种接入方式怎么选
+
+| 场景 | 用哪个 |
+|---|---|
+| 命令整体受管，管理员/授权者才可用（管理、写、破坏性） | `on_command(..., permission=permission_checker(key))` — 静默拒绝 |
+| 面向普通成员但要给拒绝提示 | 内联 `await check_permission(event, key)` + `finish("您没有权限…")` |
+| 只读低风险，只挡黑名单用户 | `on_command(..., permission=blacklist_guard())` |
+| handler 没有 event 形参 | 只能挂 matcher 级（`permission=`） |
 
 ### 标准权限点注册模板
 

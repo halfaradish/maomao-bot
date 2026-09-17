@@ -25,12 +25,21 @@ from .whitelist import (
     _parse_qq_numbers,
     _persist_at_whitelist,
 )
+from src.common.permission import blacklist_guard, permission_checker
 
 # ==============================================================================
 # 命令注册
 # ==============================================================================
-start_monitor = on_command("开始监控", aliases={"monitor"}, priority=5)
-stop_monitor = on_command("取消监控", aliases={"stop"}, priority=5)
+# 开始/取消监控会启停全局监控线程并影响所有目标群 -> 权限点 + 默认拒绝；
+# 名单管理走 _is_authorized（权限点或插件自己的艾特白名单）；赛时过题只读 -> 黑名单模式。
+start_monitor = on_command(
+    "开始监控", aliases={"monitor"}, priority=5,
+    permission=permission_checker("icpc_ac_monitor:control"),
+)
+stop_monitor = on_command(
+    "取消监控", aliases={"stop"}, priority=5,
+    permission=permission_checker("icpc_ac_monitor:control"),
+)
 add_at_whitelist = on_command(
     "添加监控", aliases={"添加监控名单", "添加监控指令", "添加监控艾特", "添加监控提醒", "添加ac艾特"}, priority=5, block=True
 )
@@ -290,7 +299,11 @@ async def handle_stop_monitor(bot: Bot, event: Event, args: Message = CommandArg
     await stop_monitor.finish(f"已完全停止监控：{_ensure_comp_display(meta)}")
 
 # -------------------- 新增指令：赛时过题（按队输出） --------------------
-query_status = on_command("赛时过题", aliases={"过题情况"}, priority=5)
+# 只读查询 -> 黑名单模式
+query_status = on_command(
+    "赛时过题", aliases={"过题情况"}, priority=5,
+    permission=blacklist_guard(),
+)
 
 
 def fetch_ac_status(base_url: str, schools: list[str]) -> dict:

@@ -316,3 +316,16 @@ async def startup_restore():
     """在 bot 启动时恢复监控任务"""
     push._main_event_loop = push._get_main_loop()
     restore_on_startup()
+
+
+@get_driver().on_startup
+async def _ensure_default_perm_group():
+    """确保本插件的默认权限组存在（幂等，不动已有成员）"""
+    from src.common.permission import ensure_perm_group
+
+    await ensure_perm_group(
+        "icpc_ac_monitor_users",
+        "AC监控操作",
+        ["icpc_ac_monitor:control", "icpc_ac_monitor:whitelist"],
+        description="自动创建：比赛监控开关与艾特名单管理权限",
+    )

@@ -19,6 +19,11 @@
        from src.common.permission import register_perm_point
        register_perm_point("my_plugin:action", "功能名", "功能描述", plugin_name="my_plugin")
 
+4. 黑名单模式（只读低风险命令）:
+       from src.common.permission import blacklist_guard
+       today_files = on_command("今日文件", permission=blacklist_guard())
+   不声明权限点、默认放行，只拦黑名单用户/群。
+
 鉴权只用权限点，不要用 NoneBot 的 ``SUPERUSERS``：管理员判据是「持有
 ``ADMIN_PERM_KEY``」，由 ``perm_admin`` 权限组授予并在启动时播种，改权限无需重启。
 """
@@ -36,7 +41,8 @@ from src.common.permission.checker import (
 )
 from src.common.permission.cache import perm_cache, TTLCache
 from src.common.permission.supervisor import is_superuser, superuser_ids
-from src.common.permission.permission import permission_checker
+from src.common.permission.permission import blacklist_guard, permission_checker
+from src.common.permission.bootstrap import ensure_perm_group
 from src.common.permission.queries import get_bound_group_ids
 
 # 触发 startup hook 注册
@@ -54,6 +60,9 @@ __all__ = [
     "user_has_permission",
     # NoneBot 适配
     "permission_checker",
+    "blacklist_guard",
+    # 权限组播种（插件启动钩子用）
+    "ensure_perm_group",
     # SUPERUSERS（仅启动播种与诊断，**不是**鉴权入口）
     "is_superuser",
     "superuser_ids",

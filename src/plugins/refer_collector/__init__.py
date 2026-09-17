@@ -10,13 +10,21 @@ from pathlib import Path
 from typing import Any
 from urllib.request import urlopen
 
-from nonebot import on_command
+from nonebot import get_driver, on_command
 from nonebot.adapters.onebot.v11 import Bot, Message, MessageEvent, MessageSegment
 from nonebot.exception import FinishedException
 from nonebot.params import CommandArg
 from nonebot.plugin import PluginMetadata
 
+from src.common.permission import (
+    blacklist_guard,
+    check_permission,
+    ensure_perm_group,
+    permission_checker,
+)
 from src.common.plugin_meta import PluginBadgeColor, PluginGroupEnum
+
+from . import permissions  # noqa: F401 — 注册权限点到权限系统
 
 __plugin_meta__ = PluginMetadata(
     name="内推码收集器",
@@ -49,15 +57,52 @@ IMAGE_DIR = DATA_DIR / "images"
 DATA_FILE = DATA_DIR / "records.json"
 IMAGE_DIR.mkdir(parents=True, exist_ok=True)
 
+# 存图是日常命令 -> 权限点 + 内联提示；清空图片是破坏性操作 -> matcher 级默认拒绝；
+# 三条只读命令 -> 黑名单模式（handler 没有 event 形参，只能挂 matcher 级）
 save_matcher = on_command("保存图片", aliases=SAVE_COMMANDS, priority=10, block=True)
-get_random_matcher = on_command("提取图片", aliases=GET_RANDOM_COMMANDS, priority=10, block=True)
-get_latest_matcher = on_command("最新内推", aliases=GET_LATEST_COMMANDS, priority=10, block=True)
-list_matcher = on_command("图片列表", aliases=LIST_COMMANDS, priority=10, block=True)
-clear_matcher = on_command("清空图片", aliases=CLEAR_COMMANDS, priority=10, block=True)
+get_random_matcher = on_command(
+    "提取图片", aliases=GET_RANDOM_COMMANDS, priority=10, block=True,
+    permission=blacklist_guard(),
+)
+get_latest_matcher = on_command(
+    "最新内推", aliases=GET_LATEST_COMMANDS, priority=10, block=True,
+    permission=blacklist_guard(),
+)
+list_matcher = on_command(
+    "图片列表", aliases=LIST_COMMANDS, priority=10, block=True,
+    permission=blacklist_guard(),
+)
+clear_matcher = on_command(
+    "清空图片", aliases=CLEAR_COMMANDS, priority=10, block=True,
+    permission=permission_checker("refer_collector:clear"),
+)
+
+
+@get_driver().on_startup
+async def _ensure_default_perm_groups():
+    """确保内推码收集器的默认权限组存在（幂等，不动已有成员）
+
+    存图与清库拆成两个组：能被允许存图的人不该顺带拿到「清空整个图片库」的能力。
+    """
+    await ensure_perm_group(
+        "refer_collector_users",
+        "内推图片保存",
+        ["refer_collector:save"],
+        description="自动创建：向群内推图片库保存图片的权限",
+    )
+    await ensure_perm_group(
+        "refer_collector_managers",
+        "内推图片库管理",
+        ["refer_collector:clear"],
+        description="自动创建：清空内推图片库的权限（破坏性操作）",
+    )
 
 
 @save_matcher.handle()
 async def handle_save(bot: Bot, event: MessageEvent, args: Message = CommandArg()):
+    if not await check_permission(event, "refer_collector:save"):
+        await save_matcher.finish("您没有权限使用此功能", at_sender=True)
+
     # CommandArg() 已经是“命令后的参数”；与 event.get_message() 直接相加会把同一图片重复统计
     images = [seg for seg in args if seg.type == "image"]
     if not images:
