@@ -363,16 +363,26 @@ async def on_bot_connect(bot: Bot):
 # 控制命令
 from nonebot import on_command
 
+from src.common.permission import permission_checker
+
 logger.info("[限速器] 正在注册控制命令...")
 
-enable_rate_limit_cmd = on_command("限速启用", priority=1)
-disable_rate_limit_cmd = on_command("限速禁用", priority=1)
-emergency_stop_cmd = on_command("限速紧急停止", priority=1)
-resume_rate_limit_cmd = on_command("限速恢复", priority=1)  # 恢复限速（取消紧急停止）
-rate_limit_status_cmd = on_command("限速状态", priority=1)
-switch_global_mode_cmd = on_command("限速全局", priority=1)
-switch_group_mode_cmd = on_command("限速按群", priority=1)
-rate_help_cmd = on_command("rate", priority=1)  # 显示所有限速相关命令
+# 限速器是全局开关，控制命令必须持有 rate_limiter:manage、只读命令持有
+# rate_limiter:view（权限点声明见 permissions.py）。此前这 8 条命令没有任何
+# permission= 闸，任何群成员都能把限速关掉。
+# 只读命令额外放行 manage：能控制就应该能看状态，免得只授了 manage 的运维组
+# 连「限速状态」都被静默忽略。
+_MANAGE = permission_checker("rate_limiter:manage")
+_VIEW = permission_checker("rate_limiter:view") | _MANAGE
+
+enable_rate_limit_cmd = on_command("限速启用", permission=_MANAGE, priority=1)
+disable_rate_limit_cmd = on_command("限速禁用", permission=_MANAGE, priority=1)
+emergency_stop_cmd = on_command("限速紧急停止", permission=_MANAGE, priority=1)
+resume_rate_limit_cmd = on_command("限速恢复", permission=_MANAGE, priority=1)  # 恢复限速（取消紧急停止）
+rate_limit_status_cmd = on_command("限速状态", permission=_VIEW, priority=1)
+switch_global_mode_cmd = on_command("限速全局", permission=_MANAGE, priority=1)
+switch_group_mode_cmd = on_command("限速按群", permission=_MANAGE, priority=1)
+rate_help_cmd = on_command("rate", permission=_VIEW, priority=1)  # 显示所有限速相关命令
 
 logger.info("[限速器] ✅ 控制命令已注册: 限速启用, 限速禁用, 限速紧急停止, 限速恢复, 限速状态, 限速全局, 限速按群, rate")
 

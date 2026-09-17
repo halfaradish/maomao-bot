@@ -3,6 +3,7 @@
 """
 from nonebot.plugin import PluginMetadata
 from . import middleware
+from . import permissions  # noqa: F401 — 注册权限点到权限系统
 from src.common.plugin_meta import PluginGroupEnum, PluginBadgeColor
 
 __plugin_meta__ = PluginMetadata(

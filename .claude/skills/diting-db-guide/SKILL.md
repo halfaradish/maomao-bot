@@ -87,7 +87,9 @@ await matcher.finish("已添加")            # 退出块时已 commit
 
 辅助函数同理：`await helper()` 里若可能走到 `finish()`，该 helper 必须在会话块外调用。反过来说，**不要跨网络调用持有 session**——`finish()`/`bot.send()` 都该在块外。
 
-（历史案例：`group_file_manager/handlers.py` 曾因此必须在 `finish()` 前显式补一次 `commit()`。）
+正例：`group_file_manager/handlers.py` 的 `handle_add_monitor` 把 `bot.get_group_info()` 挪到会话块之前，块内只留查/写；`handle_crawl` 的 `crawl_group_files()` 也只在块外调用。
+
+（历史案例：`group_file_manager/handlers.py` 曾因此必须在 `finish()` 前显式补一次 `commit()`——该文件已在 2025-09 的整段重排里改成「块内只做 DB、`finish` 出块」，见 §1.2。）
 
 **规则二：纯读取用 `commit=False`。**
 
@@ -100,18 +102,23 @@ await matcher.finish("已添加")            # 退出块时已 commit
 | 已用 `get_session()` | 43 | 146 |
 | 仍用裸 `async_session_factory()` | 0 | 0 |
 
-（口径：`get_session(` 调用点，含 `commit=False`，含 `scripts/`；`commit=False` 共 62 处。）
+（口径：`get_session(` 调用点，含 `commit=False`，含 `scripts/`；`commit=False` 共 60 处。）
 
 **裸工厂只剩 3 处引用，都不是待迁移的遗留**：
 - `common/database.py` —— 工厂定义处（`get_session()` 自己就建在它上面）；
 - `common/icpc_db_pool.py` —— ICPC 库的连接池，与 bot_db 无关；
 - `api/bot.py` 的 `_ping_mysql(session_factory)` —— 刻意收工厂当参数，好让同一个探针同时服务 bot_db 与 ICPC 库。
 
-**残留的「会话块内 `finish()`」债务：8 处**，全部在 `group_file_manager/handlers.py`（另有 5 处块内 `commit()`，分布见下）：
+**会话块内 `finish()` 已清零**（全仓库 0 处）。`group_file_manager/handlers.py` 原先那 8 处已按 §1.3 的办法整段重排：块内只查/写并把文案记进 `msg` 变量，`finish()` 一律移到块外。顺带把 `handle_add_monitor` 的 `bot.get_group_info()`（网络调用）也挪出了会话块。
 
-`handlers.py` 的 8 处是**有意为之**——`finish()` 之前已经写过数据，所以必须先在块内显式 `commit()` 再 `finish()`，代码里也留了注释。它们行为正确（没有静默回滚），只是没走「DB 全收进块内、`finish` 全移到块外」那套写法；要改就整段重排（把提示文案记进变量、`finish` 移出块），别只删 commit。同文件的另外 4 处块内 `commit()` 就是为它们服务的。
+**只剩 2 处「会话块内显式 `commit()`」，都在白名单里、各有独立理由**（静态闸按 `文件::函数` 白名单校验，见下）：
 
-`hooks.py:66` 的那处 `commit()` 是另一回事：注释写明「必须在 `auto_crawl` 之前提交，否则其独立会话看不到新群行」——**跨会话可见性**要求的提前提交，与 `finish()` 无关，不要动。
+| 位置 | 理由 |
+|---|---|
+| `group_file_manager/handlers.py` `handle_group_upload` | 先把新群落库，再下载文件；下载失败回滚时不能连带丢掉群记录 |
+| `group_file_manager/hooks.py` `init_monitored_groups` | 必须在 `auto_crawl` 之前提交，否则其独立会话看不到新群行 |
+
+这两处所在块内**没有** `finish()`，所以不构成 §1.1 规则一那种「写完又被回滚」的风险；要动它们必须同时确认上面那条语义。
 
 ### 1.3 改 `finish()` 在块内的 handler：只记标志，出块再提示
 
