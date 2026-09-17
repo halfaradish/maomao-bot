@@ -10,6 +10,7 @@ from nonebot.plugin import PluginMetadata
 from nonebot.adapters.onebot.v11 import MessageSegment, Message, MessageEvent
 from nonebot.log import logger
 import re
+from src.common.permission import blacklist_guard
 from src.common.plugin_meta import PluginGroupEnum, PluginBadgeColor
 
 __plugin_meta__ = PluginMetadata(
@@ -102,8 +103,11 @@ async def send_pig_image(matcher, target: Dict[str, Any]):
 
 # --- 指令层 (Controller) ---
 
-# 1. 随机猪猪
-get_pig = on_command("来张猪猪", aliases={"随机猪猪"}, priority=5, block=True)
+# 1. 随机猪猪（只读 -> 黑名单模式）
+get_pig = on_command(
+    "来张猪猪", aliases={"随机猪猪"}, priority=5, block=True,
+    permission=blacklist_guard(),
+)
 
 @get_pig.handle()
 async def handle_random_pig():
@@ -126,7 +130,11 @@ def check_pig(event: MessageEvent) -> bool:
     msg = str(event.get_message()).strip()
     return bool(re.search(r"来只(.*?)(?:猪{1,2})?$", msg))
 
-get_pig_by_tag = on_command("来只", priority=15, block=True, rule=Rule(check_pig))
+# 只读 -> 黑名单模式（handler 无 event 形参，只能挂 matcher 级）
+get_pig_by_tag = on_command(
+    "来只", priority=15, block=True, rule=Rule(check_pig),
+    permission=blacklist_guard(),
+)
 
 @get_pig_by_tag.handle()
 async def handle_tag_pig(event: MessageEvent):

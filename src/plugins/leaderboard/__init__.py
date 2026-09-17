@@ -16,6 +16,7 @@ import asyncio
 import io
 
 from .config import Config
+from src.common.permission import blacklist_guard
 from src.common.plugin_meta import PluginGroupEnum, PluginBadgeColor
 
 config = get_plugin_config(Config)
@@ -33,7 +34,11 @@ __plugin_meta__ = PluginMetadata(
     }
 )
 
-leaderboard = on_command("过题积分榜", aliases={"积分榜"}, priority=10)
+# 只读查询 -> 黑名单模式：普通成员照常可用，只拦黑名单用户/群
+leaderboard = on_command(
+    "过题积分榜", aliases={"积分榜"}, priority=10,
+    permission=blacklist_guard(),
+)
 
 async def fetch_one(session: aiohttp.ClientSession, type: int):
     url: str = f"{config.qingluan_scores_data_base_url}?type={type}"

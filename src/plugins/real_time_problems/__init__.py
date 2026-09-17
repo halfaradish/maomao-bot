@@ -16,7 +16,7 @@ from .config import Config
 from .get_hour_problems import HourSubCondition
 from ...common import utils
 from src.common.plugin_meta import PluginGroupEnum, PluginBadgeColor
-from src.common.permission import get_bound_group_ids
+from src.common.permission import blacklist_guard, get_bound_group_ids
 
 from . import permissions  # noqa: F401
 
@@ -44,11 +44,13 @@ def is_enable():
 logger.info(f"实时过题命令开关状态：{config.rtp_check_enable}")
 
 # 可以在QQ群里发送"检查过题"来手动查看
+# 只读查询 -> 黑名单模式（handler 无 event 形参，只能挂 matcher 级）
 check_ac_command = on_command(
     config.rtp_check_cmd,
     aliases={"过题统计"},
     rule=Rule(is_enable),
-    priority=config.rtp_check_priority
+    priority=config.rtp_check_priority,
+    permission=blacklist_guard(),
 )
 
 class RealTimeProblemsPlugin:

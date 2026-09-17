@@ -21,6 +21,7 @@ import aiohttp
 from typing import Tuple, Union, BinaryIO, List
 
 from .config import Config
+from src.common.permission import blacklist_guard
 from src.common.plugin_meta import PluginGroupEnum, PluginBadgeColor
 
 __plugin_meta__ = PluginMetadata(
@@ -46,18 +47,21 @@ def exact_command(cmds: List[str]):
     return Rule(_rule)
 
 
+# 只读命令 -> 黑名单模式：普通成员照常可用，只拦黑名单用户/群
 clipboard = on_command(
     cmd=config.clip_cmd,
     aliases={"剪切板"},
     rule=exact_command(["cmd", "剪切板"]),
-    priority=config.clip_priority
+    priority=config.clip_priority,
+    permission=blacklist_guard()
 )
 
 clipboard_md = on_command(
     cmd="cvmd",
     aliases={"markdown剪切板"},
     rule=exact_command(["cvmd", "markdown剪切板"]),
-    priority=config.clip_priority
+    priority=config.clip_priority,
+    permission=blacklist_guard()
 )
 
 async def text_to_image_bytes(text_msg: str, api_url: str) -> Tuple[bool, Union[str, BinaryIO]]:
