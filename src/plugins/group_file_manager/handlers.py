@@ -44,25 +44,26 @@ async def handle_today_files(bot: Bot, event: GroupMessageEvent):
         new_files = result.scalars().all()
 
         if not new_files:
-            await today_files.finish("📭 今天还没有收集到新文件~")
-            return
+            msg = "📭 今天还没有收集到新文件~"
+        else:
+            # 构建消息（新格式）
+            msg_lines = [f"📁 今日新文件 ({len(new_files)}个)", "=" * 50]
 
-        # 构建消息（新格式）
-        msg_lines = [f"📁 今日新文件 ({len(new_files)}个)", "=" * 50]
+            for idx, file in enumerate(new_files[:30], 1):  # 最多显示30个
+                upload_time = file.downloaded_at.strftime("%Y-%m-%d %H:%M") if file.downloaded_at else "未知"
+                uploader = str(file.uploader_id) or "未知"
 
-        for idx, file in enumerate(new_files[:30], 1):  # 最多显示30个
-            upload_time = file.downloaded_at.strftime("%Y-%m-%d %H:%M") if file.downloaded_at else "未知"
-            uploader = str(file.uploader_id) or "未知"
+                msg_lines.append(f"{idx}. {file.file_name}")
+                msg_lines.append(f"   群号: {file.group_id} | 上传者: {uploader}")
+                msg_lines.append(f"   时间: {upload_time}")
+                msg_lines.append("")  # 空行分隔
 
-            msg_lines.append(f"{idx}. {file.file_name}")
-            msg_lines.append(f"   群号: {file.group_id} | 上传者: {uploader}")
-            msg_lines.append(f"   时间: {upload_time}")
-            msg_lines.append("")  # 空行分隔
+            if len(new_files) > 30:
+                msg_lines.append(f"... 还有 {len(new_files)-30} 个文件未显示")
 
-        if len(new_files) > 30:
-            msg_lines.append(f"... 还有 {len(new_files)-30} 个文件未显示")
+            msg = "\n".join(msg_lines)
 
-        await today_files.finish("\n".join(msg_lines))
+    await today_files.finish(msg)
 
 
 # 指令：查看文件存储位置
@@ -112,38 +113,34 @@ add_monitor = on_command("添加监控群", aliases={"监控群", "加入监控"
 @add_monitor.handle()
 async def handle_add_monitor(bot: Bot, event: GroupMessageEvent):
     """将当前群添加到监控列表"""
-    async with get_session(commit=False) as session:
-        group_id = event.group_id
+    group_id = event.group_id
 
-        # 获取群信息
-        try:
-            group_info = await bot.get_group_info(group_id=group_id)
-            group_name = group_info.get("group_name", f"群{group_id}")
-        except:
-            group_name = f"群{group_id}"
+    # 群信息是网络调用，放在会话块外：不要跨网络调用持有 session
+    try:
+        group_info = await bot.get_group_info(group_id=group_id)
+        group_name = group_info.get("group_name", f"群{group_id}")
+    except:
+        group_name = f"群{group_id}"
 
+    async with get_session() as session:
         # 检查是否已存在
         result = await session.execute(select(MonitoredGroup).where(MonitoredGroup.group_id == group_id).limit(1))
         existing = result.scalars().first()
         if existing:
             existing.is_active = 1
             existing.group_name = group_name
-            # finish() 抛出的 FinishedException 会跳过 get_session 的自动提交，
-            # 因此这里必须显式提交后再 finish
-            await session.commit()
-            await add_monitor.finish(f"✅ 群 {group_name}({group_id}) 已在监控列表中，已激活")
-            return
+            msg = f"✅ 群 {group_name}({group_id}) 已在监控列表中，已激活"
+        else:
+            # 添加新群
+            group = MonitoredGroup(
+                group_id=group_id,
+                group_name=group_name,
+                is_active=1
+            )
+            session.add(group)
+            msg = f"✅ 已添加监控群: {group_name}({group_id})"
 
-        # 添加新群
-        group = MonitoredGroup(
-            group_id=group_id,
-            group_name=group_name,
-            is_active=1
-        )
-        session.add(group)
-        await session.commit()
-
-        await add_monitor.finish(f"✅ 已添加监控群: {group_name}({group_id})")
+    await add_monitor.finish(msg)
 
 
 # 指令：移除监控群（新增）
@@ -152,18 +149,18 @@ remove_monitor = on_command("移除监控群", aliases={"取消监控", "删除�
 @remove_monitor.handle()
 async def handle_remove_monitor(bot: Bot, event: GroupMessageEvent):
     """将当前群从监控列表移除"""
-    async with get_session(commit=False) as session:
-        group_id = event.group_id
-
+    group_id = event.group_id
+    # 查到就写、查不到不写 → 用默认 commit=True，未命中分支走一次空提交
+    async with get_session() as session:
         result = await session.execute(select(MonitoredGroup).where(MonitoredGroup.group_id == group_id).limit(1))
         group = result.scalars().first()
         if group:
             group.is_active = 0
-            # finish() 前必须显式提交（原因同上）
-            await session.commit()
-            await remove_monitor.finish(f"✅ 已停止监控群: {group_id}")
+            msg = f"✅ 已停止监控群: {group_id}"
         else:
-            await remove_monitor.finish(f"⚠️ 群 {group_id} 不在监控列表中")
+            msg = f"⚠️ 群 {group_id} 不在监控列表中"
+
+    await remove_monitor.finish(msg)
 
 
 # 指令：查看监控群列表（新增）
@@ -177,16 +174,17 @@ async def handle_list_monitor(bot: Bot, event: GroupMessageEvent):
         groups = result.scalars().all()
 
         if not groups:
-            await list_monitor.finish("📭 当前没有监控任何群\n使用「添加监控群」指令添加")
-            return
+            msg = "📭 当前没有监控任何群\n使用「添加监控群」指令添加"
+        else:
+            msg_lines = ["📋 监控群列表", "=" * 40]
+            for idx, group in enumerate(groups, 1):
+                status = "🟢 活跃" if group.is_active else "🔴 停用"
+                msg_lines.append(f"{idx}. {group.group_name}")
+                msg_lines.append(f"   群号: {group.group_id} | 状态: {status}")
 
-        msg_lines = ["📋 监控群列表", "=" * 40]
-        for idx, group in enumerate(groups, 1):
-            status = "🟢 活跃" if group.is_active else "🔴 停用"
-            msg_lines.append(f"{idx}. {group.group_name}")
-            msg_lines.append(f"   群号: {group.group_id} | 状态: {status}")
+            msg = "\n".join(msg_lines)
 
-        await list_monitor.finish("\n".join(msg_lines))
+    await list_monitor.finish(msg)
 
 
 # ========== 事件监听 ==========
