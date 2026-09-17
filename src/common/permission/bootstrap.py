@@ -11,7 +11,7 @@
 from nonebot import logger
 from sqlalchemy import select
 
-from src.common.database import async_session_factory
+from src.common.database import get_session
 from src.common.permission.checker import ADMIN_PERM_KEY
 from src.common.permission.models import (
     PermissionGroup,
@@ -26,7 +26,7 @@ ADMIN_GROUP_NAME = "perm_admin"
 
 async def ensure_admin_group() -> None:
     """确保 ``perm_admin`` 权限组存在；不存在则创建、绑定管理员点、播种 SUPERUSERS"""
-    async with async_session_factory() as session:
+    async with get_session() as session:
         existing = (await session.execute(
             select(PermissionGroup.id).where(PermissionGroup.name == ADMIN_GROUP_NAME).limit(1)
         )).first()
@@ -51,7 +51,6 @@ async def ensure_admin_group() -> None:
         for uid in seeded:
             session.add(PermissionGroupMember(group_id=group.id, user_id=int(uid)))
 
-        await session.commit()
 
     logger.info(
         f"[permission] 已创建管理员组 {ADMIN_GROUP_NAME}"

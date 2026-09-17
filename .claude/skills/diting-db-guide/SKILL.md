@@ -97,14 +97,31 @@ await matcher.finish("已添加")            # 退出块时已 commit
 
 | 状态 | 文件数 | 站点数 |
 |---|---|---|
-| 已用 `get_session()` | 16 | 57 |
-| 仍用裸 `async_session_factory()` | 26 | 84 |
+| 已用 `get_session()` | 28 | 97 |
+| 仍用裸 `async_session_factory()` | 14 | 44 |
 
-（另 `scripts/migrate_json_to_db.py` 5 处未迁移。不计入：`common/database.py` 是工厂定义处、`common/icpc_db_pool.py` 属 ICPC 库。）
+（另 `scripts/migrate_json_to_db.py` 5 处未迁移。不计入：`common/database.py` 是工厂定义处、`common/icpc_db_pool.py` 属 ICPC 库；`api/bot.py` 的 `_ping_mysql(session_factory)` 刻意收工厂当参数以同时服务两个库，有意不改。）
 
-已迁移：`group_statistics/database.py`、`todo_reminder/database.py`、`auto_manage_group/{__init__,group_checker,migrate}.py`，以及 `common/crud.py`、`common/permission/auto_register.py` 和 `{duel,prd,fakemsg,mass_kick,plugin_usage_stats,shit_transport}/dao.py`、`group_file_manager/{handlers,hooks,service}.py`。
+已迁移：`api/` 全部 9 个、`common/permission/{checker,queries,bootstrap}.py`、`group_statistics/database.py`、`todo_reminder/database.py`、`auto_manage_group/{__init__,group_checker,migrate}.py`，以及 `common/crud.py`、`common/permission/auto_register.py` 和 `{duel,prd,fakemsg,mass_kick,plugin_usage_stats,shit_transport}/dao.py`、`group_file_manager/{handlers,hooks,service}.py`。
 
-仍待迁移：`api/` 下 9 个、`plugins/permission_manager/` 下 5 个，以及 `plugins/group_manager`、`plugins/fakemsg`（2 个文件）、`plugins/like`、`plugins/vv`、`plugins/shit_transport/transport.py`、`plugins/group_sentinel`、`plugins/group_card_changer/holidays.py`、`plugins/diting_deploy/commands.py`、`common/permission/{checker,queries,bootstrap}.py`。
+仍待迁移（14 个文件）：`plugins/permission_manager/` 下 5 个（共 20 处，**这里有 18 处 `finish()` 写在会话块内，是下一轮的主要风险区**）、`plugins/group_manager`（6）、`plugins/like`（5）、`plugins/vv`（4）、`plugins/fakemsg`（2 个文件共 4）、`plugins/shit_transport/transport.py`（2）、`plugins/diting_deploy/commands.py`、`plugins/group_card_changer/holidays.py`、`plugins/group_sentinel`。
+
+### 1.3 改 「`add` + `commit`」时当心主键
+
+`session.commit()` 会顺带 flush，所以 `session.add(obj)` → `commit()` → `obj.id` 这种写法里，**`commit()` 同时承担了「拿到自增主键」的职责**。只把 commit 换成块退出的自动提交、却不补 flush，`obj.id` 就会是 `None`，接口静默返回 `"id": null`：
+
+```python
+# ❌ 只删 commit：group.id 还没被 flush 出来
+session.add(group)
+group_id = group.id                    # → None
+
+# ✅ 需要主键时显式 flush，提交交给 get_session()
+session.add(group)
+await session.flush()
+group_id = group.id
+```
+
+既有正例：`api/groups.py` 的 toggle 分支、`common/permission/bootstrap.py` 本来就是这个写法。
 
 **绝对不要**在模块顶层（插件导入时）创建会话：
 

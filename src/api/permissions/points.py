@@ -2,7 +2,7 @@
 from fastapi import APIRouter, Depends, Query, Request
 from sqlalchemy import select
 
-from src.common.database import async_session_factory
+from src.common.database import get_session
 from src.common.permission.models import PermissionPoint
 from src.config.response import success
 
@@ -16,7 +16,7 @@ async def list_permission_plugins(
     request: Request = None,
 ):
     """列出所有已注册权限点的插件名（去重）。"""
-    async with async_session_factory() as session:
+    async with get_session(commit=False) as session:
         stmt = select(PermissionPoint.plugin_name).distinct().order_by(PermissionPoint.plugin_name)
         result = await session.execute(stmt)
         plugins = [row[0] for row in result.all()]
@@ -31,7 +31,7 @@ async def list_permission_points(
     request: Request = None,
 ):
     """列出所有已注册的权限点，支持按插件名过滤。权限点为只读（由插件自动注册）。"""
-    async with async_session_factory() as session:
+    async with get_session(commit=False) as session:
         if plugin:
             stmt = select(PermissionPoint).where(
                 PermissionPoint.plugin_name == plugin

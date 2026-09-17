@@ -9,7 +9,7 @@ from nonebot import get_loaded_plugins
 from sqlalchemy import func, select
 
 from src.api.deps import TokenPayload, verify_token
-from src.common.database import async_session_factory
+from src.common.database import get_session
 from src.common.permission.models import PermissionPoint
 from src.config.response import success
 
@@ -24,7 +24,7 @@ async def list_plugins(
     """列出所有已加载插件（含外部插件），按 group + name 排序。纯展示数据。"""
     # 权限点数量聚合：plugin_name -> count
     perm_counts: dict[str, int] = {}
-    async with async_session_factory() as session:
+    async with get_session(commit=False) as session:
         stmt = (
             select(PermissionPoint.plugin_name, func.count(PermissionPoint.id))
             .group_by(PermissionPoint.plugin_name)

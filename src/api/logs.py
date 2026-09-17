@@ -8,7 +8,7 @@ from fastapi import APIRouter, Depends, Query, Request
 
 from src.api.deps import TokenPayload, verify_token
 from src.api.permissions.helpers import _build_page_data, _paginate_query
-from src.common.database import async_session_factory
+from src.common.database import get_session
 from src.common.models.botdb_models import MessageEventLog
 from src.config.response import success
 from sqlalchemy import select
@@ -45,7 +45,7 @@ async def list_messages(
         stmt = stmt.where(MessageEventLog.time <= end_time)
     stmt = stmt.order_by(MessageEventLog.time.desc(), MessageEventLog.id.desc())
 
-    async with async_session_factory() as session:
+    async with get_session(commit=False) as session:
         rows, total = await _paginate_query(session, stmt, page, size)
 
     items = [

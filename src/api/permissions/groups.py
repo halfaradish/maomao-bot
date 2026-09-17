@@ -4,7 +4,7 @@ from sqlalchemy import delete as sa_delete, select
 from sqlalchemy.orm import selectinload
 
 from src.api.deps import TokenPayload, verify_token
-from src.common.database import async_session_factory
+from src.common.database import get_session
 from src.common.permission.cache import perm_cache
 from src.common.permission.models import (
     PermissionGroup,
@@ -36,7 +36,7 @@ async def list_permission_groups(
     request: Request = None,
 ):
     """分页列出所有权限组，按名称排序。"""
-    async with async_session_factory() as session:
+    async with get_session(commit=False) as session:
         stmt = select(PermissionGroup).order_by(PermissionGroup.name)
         rows, total = await _paginate_query(session, stmt, page_params.page, page_params.size)
 
@@ -52,7 +52,7 @@ async def create_permission_group(
 ):
     """创建一个新的权限组（角色）。name 为唯一标识符。"""
     created_by = _get_caller(auth)
-    async with async_session_factory() as session:
+    async with get_session() as session:
         existing = (await session.execute(
             select(PermissionGroup.id).where(PermissionGroup.name == body.name).limit(1)
         )).first()
@@ -69,7 +69,7 @@ async def create_permission_group(
             created_by=created_by,
         )
         session.add(group)
-        await session.commit()
+        await session.flush()
         group_id = group.id
 
     perm_cache.clear_all()
@@ -92,7 +92,7 @@ async def get_permission_group(
     request: Request = None,
 ):
     """查看权限组详情，包含成员列表和权限点列表。"""
-    async with async_session_factory() as session:
+    async with get_session(commit=False) as session:
         result = await session.execute(
             select(PermissionGroup)
             .where(PermissionGroup.id == group_id)
@@ -136,11 +136,10 @@ async def delete_permission_group(
     request: Request = None,
 ):
     """删除权限组（级联删除其成员和权限点关联）。"""
-    async with async_session_factory() as session:
+    async with get_session() as session:
         result = await session.execute(
             sa_delete(PermissionGroup).where(PermissionGroup.id == group_id)
         )
-        await session.commit()
         if result.rowcount == 0:
             return success(
                 message=f"权限组 ID={group_id} 不存在",
@@ -166,7 +165,7 @@ async def list_group_members(
     request: Request = None,
 ):
     """列出指定权限组的所有成员。"""
-    async with async_session_factory() as session:
+    async with get_session(commit=False) as session:
         # Verify group exists
         group = (await session.execute(
             select(PermissionGroup.id).where(PermissionGroup.id == group_id).limit(1)
@@ -195,7 +194,7 @@ async def add_group_members(
     request: Request = None,
 ):
     """批量添加用户到权限组。已存在的成员会被跳过并记录。"""
-    async with async_session_factory() as session:
+    async with get_session() as session:
         # Verify group exists
         group = (await session.execute(
             select(PermissionGroup.id).where(PermissionGroup.id == group_id).limit(1)
@@ -218,9 +217,6 @@ async def add_group_members(
                 session.add(PermissionGroupMember(group_id=group_id, user_id=user_id))
                 added.append(user_id)
 
-        if added:
-            await session.commit()
-
     if added:
         perm_cache.clear_all()
     return success(
@@ -237,14 +233,13 @@ async def remove_group_member(
     request: Request = None,
 ):
     """从权限组中移除指定用户。"""
-    async with async_session_factory() as session:
+    async with get_session() as session:
         result = await session.execute(
             sa_delete(PermissionGroupMember).where(
                 PermissionGroupMember.group_id == group_id,
                 PermissionGroupMember.user_id == user_id,
             )
         )
-        await session.commit()
         if result.rowcount == 0:
             return success(
                 message=f"用户 {user_id} 不在权限组 ID={group_id} 中",
@@ -271,7 +266,7 @@ async def list_group_perms(
     request: Request = None,
 ):
     """列出指定权限组绑定的所有权限点。"""
-    async with async_session_factory() as session:
+    async with get_session(commit=False) as session:
         group = (await session.execute(
             select(PermissionGroup.id).where(PermissionGroup.id == group_id).limit(1)
         )).first()
@@ -299,7 +294,7 @@ async def add_group_perms(
     request: Request = None,
 ):
     """批量添加权限点到权限组。已存在的权限点会被跳过并记录。"""
-    async with async_session_factory() as session:
+    async with get_session() as session:
         group = (await session.execute(
             select(PermissionGroup.id).where(PermissionGroup.id == group_id).limit(1)
         )).first()
@@ -321,9 +316,6 @@ async def add_group_perms(
                 session.add(PermissionGroupPerm(group_id=group_id, perm_key=perm_key))
                 added.append(perm_key)
 
-        if added:
-            await session.commit()
-
     if added:
         perm_cache.clear_all()
     return success(
@@ -344,14 +336,13 @@ async def remove_group_perm(
     perm_key 可以是完整路径（如 `plugin_name:action`），
     包含冒号时会被正确解析。
     """
-    async with async_session_factory() as session:
+    async with get_session() as session:
         result = await session.execute(
             sa_delete(PermissionGroupPerm).where(
                 PermissionGroupPerm.group_id == group_id,
                 PermissionGroupPerm.perm_key == perm_key,
             )
         )
-        await session.commit()
         if result.rowcount == 0:
             return success(
                 message=f"权限点 {perm_key} 不在权限组 ID={group_id} 中",

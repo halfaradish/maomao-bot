@@ -3,7 +3,7 @@ from fastapi import APIRouter, Request
 from sqlalchemy import select
 from sqlalchemy.orm import selectinload
 
-from src.common.database import async_session_factory
+from src.common.database import get_session
 from src.common.permission.models import (
     PermissionGroup,
     PermissionGroupMember,
@@ -26,10 +26,12 @@ async def get_user_status(
     返回：是否为管理员、黑名单/白名单状态、所属权限组（含权限点）、
     以及通过群绑定获得的权限组。
     """
-    async with async_session_factory() as session:
-        # 1. Admin check（持有管理员权限点；这里无群语境，只统计直属成员关系）
-        is_admin = await user_has_permission(user_id, ADMIN_PERM_KEY)
+    # 1. Admin check（持有管理员权限点；这里无群语境，只统计直属成员关系）
+    #    放在会话块之前：user_has_permission 内部自带会话，留在块内会让
+    #    单个请求同时持有 3 个连接。
+    is_admin = await user_has_permission(user_id, ADMIN_PERM_KEY)
 
+    async with get_session(commit=False) as session:
         # 2. Blacklist check
         bl = (await session.execute(
             select(UserBlacklist).where(UserBlacklist.user_id == user_id).limit(1)

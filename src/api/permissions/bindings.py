@@ -2,7 +2,7 @@
 from fastapi import APIRouter, Query, Request
 from sqlalchemy import delete as sa_delete, select
 
-from src.common.database import async_session_factory
+from src.common.database import get_session
 from src.common.permission.cache import perm_cache
 from src.common.permission.models import GroupPermBinding, PermissionGroup
 from src.config.response import success
@@ -19,7 +19,7 @@ async def list_group_bindings(
     request: Request = None,
 ):
     """列出指定权限组已绑定的所有QQ群。"""
-    async with async_session_factory() as session:
+    async with get_session(commit=False) as session:
         group = (await session.execute(
             select(PermissionGroup.id).where(PermissionGroup.id == group_id).limit(1)
         )).first()
@@ -43,7 +43,7 @@ async def list_bindings(
     request: Request = None,
 ):
     """列出所有群与权限组的绑定关系，可按群号过滤。"""
-    async with async_session_factory() as session:
+    async with get_session(commit=False) as session:
         if group_id is not None:
             stmt = select(GroupPermBinding).where(
                 GroupPermBinding.qq_group_id == group_id
@@ -67,7 +67,7 @@ async def create_binding(
     request: Request = None,
 ):
     """将一个QQ群绑定到权限组，群成员将获得该组的权限。"""
-    async with async_session_factory() as session:
+    async with get_session() as session:
         # Verify permission group exists
         pg = (await session.execute(
             select(PermissionGroup.id, PermissionGroup.name)
@@ -99,7 +99,7 @@ async def create_binding(
             permission_group_id=body.permission_group_id,
         )
         session.add(binding)
-        await session.commit()
+        await session.flush()
         binding_id = binding.id
 
     perm_cache.clear_all()
@@ -121,7 +121,7 @@ async def delete_binding(
     request: Request = None,
 ):
     """解除指定绑定（按绑定ID）。"""
-    async with async_session_factory() as session:
+    async with get_session() as session:
         # Fetch binding info before deletion
         binding = (await session.execute(
             select(GroupPermBinding).where(GroupPermBinding.id == binding_id).limit(1)
@@ -136,7 +136,6 @@ async def delete_binding(
         await session.execute(
             sa_delete(GroupPermBinding).where(GroupPermBinding.id == binding_id)
         )
-        await session.commit()
 
     perm_cache.clear_all()
     return success(

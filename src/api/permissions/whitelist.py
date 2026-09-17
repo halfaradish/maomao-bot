@@ -3,7 +3,7 @@ from fastapi import APIRouter, Depends, Request
 from sqlalchemy import delete as sa_delete, select
 
 from src.api.deps import TokenPayload, verify_token
-from src.common.database import async_session_factory
+from src.common.database import get_session
 from src.common.permission.cache import perm_cache
 from src.common.permission.models import GroupWhitelist, UserWhitelist
 from src.config.response import success
@@ -32,7 +32,7 @@ async def list_whitelist_users(
     request: Request = None,
 ):
     """分页列出所有白名单用户，按创建时间倒序。"""
-    async with async_session_factory() as session:
+    async with get_session(commit=False) as session:
         stmt = select(UserWhitelist).order_by(UserWhitelist.created_at.desc())
         rows, total = await _paginate_query(session, stmt, page_params.page, page_params.size)
 
@@ -48,7 +48,7 @@ async def add_whitelist_user(
 ):
     """将一个用户加入白名单。已存在则返回提示。"""
     created_by = _get_caller(auth)
-    async with async_session_factory() as session:
+    async with get_session() as session:
         existing = (await session.execute(
             select(UserWhitelist.id).where(UserWhitelist.user_id == body.user_id).limit(1)
         )).first()
@@ -63,7 +63,6 @@ async def add_whitelist_user(
             reason=body.reason,
             created_by=created_by,
         ))
-        await session.commit()
 
     perm_cache.clear_pattern(f"perm:{body.user_id}:")
     return success(
@@ -79,11 +78,10 @@ async def remove_whitelist_user(
     request: Request = None,
 ):
     """从白名单中移除指定用户。"""
-    async with async_session_factory() as session:
+    async with get_session() as session:
         result = await session.execute(
             sa_delete(UserWhitelist).where(UserWhitelist.user_id == user_id)
         )
-        await session.commit()
         if result.rowcount == 0:
             return success(
                 message=f"用户 {user_id} 不在白名单中",
@@ -110,7 +108,7 @@ async def list_whitelist_groups(
     request: Request = None,
 ):
     """分页列出所有白名单群，按创建时间倒序。"""
-    async with async_session_factory() as session:
+    async with get_session(commit=False) as session:
         stmt = select(GroupWhitelist).order_by(GroupWhitelist.created_at.desc())
         rows, total = await _paginate_query(session, stmt, page_params.page, page_params.size)
 
@@ -126,7 +124,7 @@ async def add_whitelist_group(
 ):
     """将一个群加入白名单。已存在则返回提示。"""
     created_by = _get_caller(auth)
-    async with async_session_factory() as session:
+    async with get_session() as session:
         existing = (await session.execute(
             select(GroupWhitelist.id).where(GroupWhitelist.group_id == body.group_id).limit(1)
         )).first()
@@ -141,7 +139,6 @@ async def add_whitelist_group(
             reason=body.reason,
             created_by=created_by,
         ))
-        await session.commit()
 
     perm_cache.clear_pattern(f"perm::{body.group_id}:")
     return success(
@@ -157,11 +154,10 @@ async def remove_whitelist_group(
     request: Request = None,
 ):
     """从白名单中移除指定群。"""
-    async with async_session_factory() as session:
+    async with get_session() as session:
         result = await session.execute(
             sa_delete(GroupWhitelist).where(GroupWhitelist.group_id == group_id)
         )
-        await session.commit()
         if result.rowcount == 0:
             return success(
                 message=f"群 {group_id} 不在白名单中",

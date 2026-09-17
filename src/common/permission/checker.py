@@ -21,7 +21,7 @@ from nonebot.adapters.onebot.v11 import Event
 
 from sqlalchemy import select
 
-from src.common.database import async_session_factory
+from src.common.database import get_session
 from src.common.permission.cache import perm_cache
 from src.common.permission.models import (
     UserBlacklist,
@@ -93,7 +93,7 @@ class PermissionChecker:
         if cached is not None:
             return cached
 
-        async with async_session_factory() as session:
+        async with get_session(commit=False) as session:
             result = await self._check_permission_groups(
                 session, user_id, group_id, ADMIN_PERM_KEY
             )
@@ -107,7 +107,7 @@ class PermissionChecker:
         perm_key: str,
     ) -> bool:
         """无缓存的完整校验流程（单 session）"""
-        async with async_session_factory() as session:
+        async with get_session(commit=False) as session:
             # 1. 用户黑名单
             stmt = select(UserBlacklist.id).where(UserBlacklist.user_id == user_id).limit(1)
             if (await session.execute(stmt)).first() is not None:
@@ -198,7 +198,7 @@ async def is_blacklisted(user_id: int, group_id: Optional[int] = None) -> bool:
     同样返回 False。需要把「被拒绝」与「无权限」区分开的场景（例如按群等级
     放行的业务兜底）用本函数单独判断。
     """
-    async with async_session_factory() as session:
+    async with get_session(commit=False) as session:
         stmt = select(UserBlacklist.id).where(UserBlacklist.user_id == user_id).limit(1)
         if (await session.execute(stmt)).first() is not None:
             return True

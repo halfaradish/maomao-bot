@@ -22,7 +22,7 @@ from sqlalchemy import func, select
 
 from src.api.deps import TokenPayload, verify_token
 from src.api.permissions.helpers import _build_page_data
-from src.common.database import async_session_factory
+from src.common.database import get_session
 from src.common.models.botdb_models import (
     GroupStatistic,
     MessageEventLog,
@@ -90,7 +90,7 @@ async def _fetch_group_stats_map() -> dict[int, dict]:
         .where(MessageEventLog.group_id.isnot(None))
         .group_by(MessageEventLog.group_id)
     )
-    async with async_session_factory() as session:
+    async with get_session(commit=False) as session:
         rows = (await session.execute(stmt)).all()
     return {
         int(row[0]): {
@@ -132,7 +132,7 @@ async def list_groups(
             pass  # 网关异常时降级为仅数据库数据
 
     # 2. group_statistics 表（落库的群号/群名/功能标记）
-    async with async_session_factory() as session:
+    async with get_session(commit=False) as session:
         stat_rows = (await session.execute(select(GroupStatistic))).scalars().all()
         mon_rows = (await session.execute(select(MonitoredGroup))).scalars().all()
     for g in stat_rows:
@@ -215,7 +215,7 @@ async def get_group_stats(
         except Exception:
             pass
 
-    async with async_session_factory() as session:
+    async with get_session(commit=False) as session:
         stat = (await session.execute(
             select(GroupStatistic).where(GroupStatistic.group_id == str(group_id))
         )).scalars().first()
@@ -287,7 +287,7 @@ async def toggle_group_feature(
 
     perm_key, pg_name, display_name = feat["perm_key"], feat["pg_name"], feat["name"]
 
-    async with async_session_factory() as session:
+    async with get_session() as session:
         pg = (await session.execute(
             select(PermissionGroup).where(PermissionGroup.name == pg_name).limit(1)
         )).scalars().first()
@@ -313,7 +313,6 @@ async def toggle_group_feature(
             )).first()
             if existing is None:
                 session.add(GroupPermBinding(qq_group_id=group_id, permission_group_id=pg.id))
-            await session.commit()
         else:
             # 关闭：删除群与该权限组的绑定
             bindings = []
@@ -326,7 +325,6 @@ async def toggle_group_feature(
                 )).scalars().all()
                 for binding in bindings:
                     await session.delete(binding)
-                await session.commit()
 
     # 清除该群的群功能缓存；告警日志还需清目标群列表缓存
     perm_cache.delete(f"group_feature:{group_id}:{perm_key}")
