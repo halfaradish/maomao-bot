@@ -11,7 +11,7 @@ from typing import Dict, Optional, cast
 
 from src.api.deps import TokenPayload, verify_token
 from src.common.database import async_session_factory
-from src.common.icpc_database import icpc_async_session_factory
+from src.common.icpc_db_pool import get_icpc_db_connection
 from src.common.oj_redis_pool import get_redis_connection
 from src.config.response import success
 
@@ -96,6 +96,20 @@ async def _ping_mysql(session_factory) -> bool:
         return False
 
 
+async def _ping_icpc_mysql() -> bool:
+    """执行 SELECT 1 检测 ICPC 库连通性。
+
+    走 get_icpc_db_connection()，与业务查询共用同一套失效连接探活/重建逻辑，
+    避免池中残留的失效连接让健康检查误报为不可用。
+    """
+    try:
+        async with get_icpc_db_connection() as db:
+            await db.execute("SELECT 1")
+        return True
+    except Exception:
+        return False
+
+
 def _ping_redis_sync() -> bool:
     """同步执行 Redis ping（供 asyncio.to_thread 调用）"""
     try:
@@ -144,7 +158,7 @@ async def bot_info(
     # 三个连接状态并发检测
     bot_db_ok, icpc_db_ok, redis_ok = await asyncio.gather(
         _ping_mysql(async_session_factory),
-        _ping_mysql(icpc_async_session_factory),
+        _ping_icpc_mysql(),
         asyncio.to_thread(_ping_redis_sync),
     )
 

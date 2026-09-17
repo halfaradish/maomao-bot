@@ -32,7 +32,9 @@ icpc_engine = create_async_engine(
     ICPC_ASYNC_DB_URL,
     echo=False,
     pool_pre_ping=True,
-    pool_recycle=3600,
+    # 远端 ICPC 库（172.16.40.37:3307）上的空闲连接存活时间明显短于 1 小时，
+    # 取 300 秒可以让多数取出的连接本来就是新建立的，避免依赖失效连接的重试路径。
+    pool_recycle=300,
     pool_size=IcpcDBConfig.ICPC_DB_POOL_SIZE,
     max_overflow=10,
 )

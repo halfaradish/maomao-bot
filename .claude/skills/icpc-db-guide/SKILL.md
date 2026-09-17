@@ -53,7 +53,8 @@ data/sql/read/*.sql                 ← 5 个 SQL 文件，使用 %s 占位符
 | 组件 | 说明 |
 |---|---|
 | 驱动 | `asyncmy`（异步 MySQL） — 与 Bot DB 相同的异步驱动 |
-| 连接池 | `pool_pre_ping=True`, `pool_recycle=3600`, 池大小由 `ICPC_DB_POOL_SIZE` 控制（默认 20） |
+| 连接池 | `pool_pre_ping=True`, `pool_recycle=300`, 池大小由 `ICPC_DB_POOL_SIZE` 控制（默认 20） |
+| 连接失效保护 | 会话交出前先执行一次 `SELECT 1` 探活；失败则 `dispose()` 重建连接池并重试一次 |
 | 最大溢出 | `max_overflow=10` |
 | 会话 | `expire_on_commit=False` |
 | 基类 | `IcpcBase = DeclarativeBase`（独立于 Bot DB 的 `Base`） |
@@ -124,6 +125,25 @@ from src.common.icpc_db_pool import close_icpc_engine
 await close_icpc_engine()
 ```
 
+### 1.4 连接失效由连接层自动处理
+
+`get_icpc_db_connection()` 在把会话交给你之前会先执行一次 `SELECT 1` 探活，因此调用方不需要自己处理失效连接：
+
+1. 池中连接可能已被服务端或中间网络设备单方面关闭。此时 uvloop 会在写入已关闭的
+   transport 时抛出裸 `RuntimeError`（`... <TCPTransport closed=True ...>; the handler is closed`）。
+   它**不是** DBAPI 异常，SQLAlchemy 的 `pool_pre_ping` 只把 DBAPI 异常判定为断连，
+   识别不了它，坏连接会既不被失效也不被替换，被反复取出。
+2. 探活失败且判定为连接类错误时，连接层会丢弃该会话、`dispose()` 清空连接池，
+   然后用全新连接重试**一次**；第二次仍失败则原样抛出。
+3. 因此日志里仍出现 `ICPC DB 查询失败` 意味着真正的故障（数据库不可达、SQL 有误等），
+   而不是偶发的连接失效。
+
+```python
+# ✅ 调用方无需重试逻辑，连接层已经处理过失效连接
+async with get_icpc_db_connection() as db:
+    rows = await db.execute(query, params)
+```
+
 ---
 
 ## 2. 执行查询
@@ -186,7 +206,7 @@ async with get_icpc_db_connection() as db:
 
 ### 2.4 错误处理模式
 
-所有 5 个消费者插件都使用统一的错误处理模式：
+展示型查询（统计、榜单）使用统一的"失败即返回空列表"模式：
 
 ```python
 async with get_icpc_db_connection() as db:
@@ -197,6 +217,35 @@ async with get_icpc_db_connection() as db:
         logger.error(f"ICPC DB 查询失败：{query[:200]}...")
         return []  # 一律返回空列表
 ```
+
+**但"查询失败"和"查无结果"含义不同，不能互相替代。** 如果查询结果会驱动一个决定
+（放行/拒绝、发通知/静默），把异常压成空结果就会把基础设施故障变成业务结论。此时必须
+让故障向上传播，由调用方给出不同处置：
+
+```python
+class LookupError(RuntimeError):
+    """查询本身失败（基础设施故障，非"不存在"）。"""
+
+
+async def _code_exists(code: str) -> bool:
+    try:
+        async with get_icpc_db_connection() as db:
+            rows = await db.execute("SELECT code FROM gxu_major WHERE TRIM(code) = %s LIMIT 1", [code])
+            return len(rows) > 0
+    except Exception as e:
+        logger.error(f"查询 gxu_major 失败: {e}")
+        raise LookupError(str(e)) from e
+
+
+try:
+    exists = await _code_exists(major_code)
+except LookupError:
+    return False, "审核服务查询失败，请稍后重试"  # ← 不是"专业编码不存在"
+if not exists:
+    return False, "专业编码不存在"
+```
+
+参考实现：`src/plugins/group_sentinel/auditor.py`（`MajorCodeLookupError`）。
 
 ---
 
@@ -938,6 +987,15 @@ class DingCheckup(Base):      # ❌ 错误：会在 Bot DB 中建表
 ### 9.10 `execute_many` 自动 commit
 
 `execute_many()` 在循环全部结束后自动 commit。不要在调用后重复 commit。如果要在同一个事务中混合执行 `execute()` 和 `execute_many()`，注意 `execute_many` 会 commit，后续的 `execute` 将在新事务中执行——此时应改用 `IcpcSession._session` 直接控制事务。
+
+### 9.11 不要把查询失败当成"不存在"
+
+`execute()` 失败会抛异常，返回 `[]` 才是真的没有数据。把 `except Exception` 写成
+`return False` / `return []` 再据此下判断，等于把数据库故障变成了业务结论。历史故障
+案例：`group_sentinel` 取到连接池中的失效连接，查询抛错被压成 `False`，实际存在的专业
+编码 `0714` 被判为"专业编码不存在"，申请人被错误挂起待人工复核。
+
+需要"不存在"语义时，让异常向上传播并单独处理，见 §2.4。
 
 ---
 

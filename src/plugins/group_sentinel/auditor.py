@@ -56,10 +56,18 @@ def _get_max_grade() -> int:
         return 26
 
 
+class MajorCodeLookupError(RuntimeError):
+    """查询 gxu_major 失败（基础设施故障，非"编码不存在"）。"""
+
+
 async def _major_code_exists(code: str) -> bool:
     """检查专业编码是否在 gxu_major 表中存在。
 
     精确匹配，忽略首尾空格。
+
+    Raises:
+        MajorCodeLookupError: 查询本身失败。查询失败不等于"编码不存在"，不能把
+            基础设施故障当作审核结论，否则合法编码会被误判为"专业编码不存在"。
     """
     try:
         async with get_icpc_db_connection() as db:
@@ -70,7 +78,7 @@ async def _major_code_exists(code: str) -> bool:
             return len(rows) > 0
     except Exception as e:
         logger.error(f"[group_sentinel] 查询 gxu_major 失败: {e}")
-        return False
+        raise MajorCodeLookupError(str(e)) from e
 
 
 async def audit_join_request(
@@ -112,7 +120,12 @@ async def audit_join_request(
 
     # 3. 后 4 位专业编码校验
     major_code = student_id[2:]  # 后 4 位
-    if not await _major_code_exists(major_code):
+    try:
+        major_code_exists = await _major_code_exists(major_code)
+    except MajorCodeLookupError:
+        # 查询失败时不下"编码不存在"的结论，交由人工复核处理
+        return False, "审核服务查询失败，请稍后重试"
+    if not major_code_exists:
         return False, "专业编码不存在"
 
     return True, ""
