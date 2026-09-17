@@ -110,6 +110,7 @@ if config.nickname_changer_schedule_enable:
     @scheduler.scheduled_job(
         'cron',
         hour=0,
+        id="bot_group_card_changer",
         name="bot_group_card_changer"
     )
     async def _():

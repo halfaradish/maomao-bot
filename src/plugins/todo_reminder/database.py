@@ -179,6 +179,28 @@ class TodoDatabase:
             logger.error(f"更新提醒状态失败: {e}")
             return False
     
+    async def increment_execution_count(self, reminder_id: int) -> int:
+        """把 execution_count 原子 +1，并返回自增后的值
+
+        每次尝试（成功或失败）都算一次，所以该列的含义是「尝试次数」，
+        `ReminderScheduler._handle_failed_reminder` 用它判断是否达到重试上限。
+        递增与读回放在同一事务里，避免依赖本轮开始时的快照。
+        """
+        try:
+            async with get_session() as session:
+                await session.execute(
+                    sa_update(TodoReminder)
+                    .where(TodoReminder.id == reminder_id)
+                    .values(execution_count=TodoReminder.execution_count + 1)
+                )
+                value = await session.scalar(
+                    select(TodoReminder.execution_count).where(TodoReminder.id == reminder_id)
+                )
+                return int(value or 0)
+        except Exception as e:
+            logger.error(f"递增执行次数失败: {e}")
+            return 0
+
     async def delete_reminder(self, reminder_id: int, user_id: int) -> bool:
         """删除提醒（个人）"""
         try:

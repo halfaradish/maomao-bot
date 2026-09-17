@@ -53,6 +53,9 @@ if _todo_cmd_enabled:
     # 初始化提醒调度器
     scheduler = ReminderScheduler(db, time_parser)
 
+    # 把检查循环注册成 apscheduler 的 interval job（起停由 apscheduler 插件接管）
+    scheduler.register_job()
+
     # 初始化命令处理器
     commands = TodoCommands(db, time_parser, scheduler, config)
 

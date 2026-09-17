@@ -99,7 +99,7 @@ await matcher.finish("已添加")            # 退出块时已 commit
 
 | 状态 | 文件数 | 站点数 |
 |---|---|---|
-| 已用 `get_session()` | 43 | 146 |
+| 已用 `get_session()` | 43 | 147 |
 | 仍用裸 `async_session_factory()` | 0 | 0 |
 
 （口径：`get_session(` **调用点**，含 `scripts/`；其中 `commit=False` 共 **59** 处——只统计值确实为 `False` 的调用点，另有 1 处显式写 `commit=True`。想复核就按「AST 里 `get_session` 调用 + `commit` 关键字取值为 `False`」来数，别用 `grep commit=False`，那个会把注释和 docstring 一起算进去。）
@@ -707,8 +707,8 @@ def _ensure_naive_local(dt):
 
 | 插件 | 模式 | 使用的模型 | 特色操作 |
 |---|---|---|---|
-| `ack_manager` | CRUD 全部 | QQRobotMessage, QQMessageReaction, QQMessageReceiptSummary, Group, GroupMember | 关系遍历过滤 (`group__name__in`)；update-or-create reaction/summary；消息状态机 |
-| `todo_reminder` | **混合** (CRUD + 直接 SQLAlchemy) | TodoReminder, TodoReminderLog | 原子递增 (`execution_count + 1`)；复合条件删除 (`and_` + `in_`)；`_ensure_naive_local` |
+| `ack_manager` | CRUD 全部 | QQRobotMessage, QQMessageReaction, QQMessageReceiptSummary, Group, GroupMember | 关系遍历过滤 (`group__name__in`)；update-or-create reaction/summary；消息状态机；提醒轮询是 apscheduler interval job（`reminder_stage` + `next_reminder_at` 当游标，每次查询各自开短会话） |
+| `todo_reminder` | **混合** (CRUD + 直接 SQLAlchemy) | TodoReminder, TodoReminderLog | 原子递增 (`execution_count + 1`，成功与失败都算一次尝试)；复合条件删除 (`and_` + `in_`)；`_ensure_naive_local`；到期扫描是 apscheduler interval job |
 | `like` | 直接 SQLAlchemy | LikeRecord, PluginConfig | 原子递增；对象属性直接修改后 commit；KV 配置存储；`@scheduler` 定时任务中使用 session |
 | `logging_info` | CRUD 全部 | MessageEventLog | DAO 模式封装 CRUD；`__icontains` 搜索；北京时区转换 |
 | `auto_manage_group` | 直接 SQLAlchemy | MessageEventLog | 时间范围查询 (`and_` + `>=` + `<=` + `!=`)；只在一个函数中使用 |
@@ -717,7 +717,7 @@ def _ensure_naive_local(dt):
 | `group_statistics` | 直接 SQLAlchemy | GroupStatistic | `session.delete()` 删除；独立 DAO 类；异常静默返回 False |
 | `plugin_usage_stats` | 直接 SQLAlchemy | PluginUsageRecord | DAO 模块级异步函数分层；`env_tag` 环境隔离；热路径异常吞掉不阻断消息 |
 | `mass_kick` / `shit_transport` / `fakemsg` / `duel` / `prd` | 直接 SQLAlchemy | 各自 `*_models.py`（见 6.3） | 由 JSON 存储迁移而来；MySQL upsert（`mysql_insert.on_duplicate_key_update`）做原子计数；DAO 返回 legacy dict 保持旧字段形状 |
-| `group_card_changer` | 直接 SQLAlchemy | CustomHoliday | 只读加载自定义节假日覆盖 API 数据；DB 失败降级为「仅用 API 数据」 |
+| `group_card_changer` | 直接 SQLAlchemy | CustomHoliday | 只读加载自定义节假日覆盖 API 数据；DB 失败降级为「仅用 API 数据」；改名是 apscheduler cron job（`id=bot_group_card_changer`） |
 | `vv` / `group_sentinel` / `diting_deploy` | 直接 SQLAlchemy | VvGroupBlacklist / PermissionGroup 系列 | 专属黑名单 + 权限组播种；启动钩子里 `add + flush` 后由块退出提交 |
 
 > 这张表是**示例**而非清单——以 `src/plugins/` 目录为准；`api/` 下 9 个模块与 `common/permission/*` 也都走 `get_session()`。

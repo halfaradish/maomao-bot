@@ -1,14 +1,17 @@
 """
 全员确认提醒调度器
 负责定时检查未确认的消息并发送提醒
+
+轮询由 APScheduler 的 interval job 驱动（见 ``register_job``），不再自建
+``while + asyncio.sleep`` 循环：起停交给 ``nonebot_plugin_apscheduler``，
+本模块只提供「一轮检查」的入口 ``tick()``。
 """
 from __future__ import annotations
 
-import asyncio
 from datetime import datetime, timedelta
 from typing import Any, Dict, List, Optional
 
-from nonebot import get_bot, get_driver, logger
+from nonebot import get_bot, get_driver, logger, require
 from nonebot.adapters.onebot.v11 import Bot
 
 from . import database
@@ -16,7 +19,17 @@ from .config import Config
 from ...common.crud import async_get_many, async_get_one, async_update_records
 from ...common.models.botdb_models import QQMessageReceiptSummary, QQRobotMessage
 
+require("nonebot_plugin_apscheduler")
+# 别名：本包 __init__.py 里 `scheduler` 这个名字已经绑给了 AckReminderScheduler 单例
+from nonebot_plugin_apscheduler import scheduler as aps_scheduler  # noqa: E402
+
 plugin_config = Config.parse_obj(get_driver().config.dict())
+
+#: 检查任务的 job id（全局唯一，便于在日志/WebUI 里定位）
+TICK_JOB_ID = "ack_manager_reminder_tick"
+#: tick 迟到多少秒内仍然补跑。APScheduler 默认只给 1 秒，而一轮检查里有发消息的
+#: 网络调用，必然超时——不显式放宽的话 tick 会被静默丢弃。
+TICK_MISFIRE_GRACE = 30
 
 
 class AckReminderScheduler:
@@ -27,51 +40,18 @@ class AckReminderScheduler:
     MAX_REMINDER_STAGE = len(REMINDER_INTERVALS)  # 最多提醒3次
     
     def __init__(self):
-        self.running = False
-        self.task: Optional[asyncio.Task] = None
         self.check_interval = 60  # 检查间隔(秒)，每分钟检查一次
-    
-    async def start(self):
-        """启动调度器"""
-        if not plugin_config.enabled:
-            logger.info("ACK 插件已禁用，跳过提醒调度器启动。")
-            return
-        if self.running:
-            logger.warning("全员确认提醒调度器已在运行")
-            return
-        
-        self.running = True
-        self.task = asyncio.create_task(self._scheduler_loop())
-        logger.info("全员确认提醒调度器已启动")
-    
-    async def stop(self):
-        """停止调度器"""
-        if not self.running:
-            return
-        
-        self.running = False
-        if self.task:
-            self.task.cancel()
-            try:
-                await self.task
-            except asyncio.CancelledError:
-                pass
-        
-        logger.info("全员确认提醒调度器已停止")
-    
-    async def _scheduler_loop(self):
-        """调度器主循环"""
-        if not plugin_config.enabled:
-            return
-        while self.running:
-            try:
-                await self._check_and_send_reminders()
-                await asyncio.sleep(self.check_interval)
-            except asyncio.CancelledError:
-                break
-            except Exception as e:
-                logger.error(f"全员确认提醒调度器错误: {e}", exc_info=True)
-                await asyncio.sleep(self.check_interval)
+
+    async def tick(self):
+        """执行一轮检查（apscheduler 的 job 目标）
+
+        异常自己吞掉：job 抛异常不会终止后续调度，但会在 apscheduler 日志里刷
+        traceback，且与旧的「出错继续下一轮」语义不符。
+        """
+        try:
+            await self._check_and_send_reminders()
+        except Exception as e:
+            logger.error(f"全员确认提醒调度器错误: {e}", exc_info=True)
     
     async def _check_and_send_reminders(self):
         """检查并发送到期的提醒"""
@@ -272,4 +252,33 @@ def get_scheduler() -> AckReminderScheduler:
     if _scheduler is None:
         _scheduler = AckReminderScheduler()
     return _scheduler
+
+
+def register_job() -> None:
+    """把「一轮检查」注册成 APScheduler 的 interval job
+
+    插件禁用时不注册任何任务（等价于旧实现「禁用就不起循环」）。起停由
+    ``nonebot_plugin_apscheduler`` 自己接管，这里不需要 on_startup/on_shutdown。
+    """
+    if not plugin_config.enabled:
+        logger.info("ACK 插件已禁用，不注册提醒任务。")
+        return
+
+    interval = get_scheduler().check_interval
+    aps_scheduler.add_job(
+        get_scheduler().tick,
+        "interval",
+        seconds=interval,
+        # 启动即跑一次，保持旧循环「起来就先查一遍」的语义
+        next_run_time=datetime.now(aps_scheduler.timezone),
+        id=TICK_JOB_ID,
+        replace_existing=True,
+        misfire_grace_time=TICK_MISFIRE_GRACE,
+        coalesce=True,
+        max_instances=1,
+    )
+    logger.info(f"全员确认提醒任务已注册: id={TICK_JOB_ID}, 每 {interval} 秒一次")
+
+
+register_job()
 

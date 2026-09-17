@@ -751,9 +751,62 @@ if config.clist_schedule_job_enable:
 ```
 
 **关键点**：
-- `id` 必须全局唯一 — 动态任务使用 `uuid4().hex`
+- `id` 必须全局唯一 — 动态任务使用 `uuid4().hex`；**静态任务也要显式给 `id`**（只写 `name=` 的话 APScheduler 会给个随机 id，日志/WebUI 里没法定位，也没法按 id 移除）
 - 用配置变量控制是否启用定时任务（`if config.xxx_schedule_enable:`）
 - 定时任务中通过 `bot = get_bot()` 获取 bot 实例
+
+### 8.4 轮询型任务：用 interval job，不要自研 `while` + `sleep`
+
+需要「每隔 N 秒扫一遍数据库」时（典型：`ack_manager` 的未确认提醒、`todo_reminder` 的到期提醒），**不要**再写自建循环 + `asyncio.create_task`——那样起停要自己管、异常要自己兜、`stop()` 漏调还会留一个永不退出的任务。统一用 interval job：
+
+```python
+from nonebot import require
+require("nonebot_plugin_apscheduler")
+from nonebot_plugin_apscheduler import scheduler as aps_scheduler  # 别名，别和自研类重名
+
+TICK_JOB_ID = "my_plugin_tick"          # 全局唯一，日志里能一眼找到
+TICK_MISFIRE_GRACE = 30                 # 见下方说明，必须显式设
+
+def register_job(inst) -> None:
+    aps_scheduler.add_job(
+        inst.tick,                       # 一轮检查的入口
+        "interval",
+        seconds=60,
+        next_run_time=datetime.now(aps_scheduler.timezone),  # 启动即跑一次
+        id=TICK_JOB_ID,
+        replace_existing=True,           # 允许重复调用（幂等）
+        misfire_grace_time=TICK_MISFIRE_GRACE,
+        coalesce=True,
+        max_instances=1,
+    )
+```
+
+四个参数一个都不能省：
+
+| 参数 | 不设会怎样 |
+|---|---|
+| `misfire_grace_time` | **APScheduler 默认只给 1 秒**，而一轮检查里有发消息的网络调用，必然超时 → tick 被静默丢弃（只留一行 warning） |
+| `coalesce=True` | 默认就是 True；显式写出来是为了防「补跑堆积」 |
+| `max_instances=1` | 默认就是 1；显式写出来是为了保证**串行**（不会两轮检查并发跑同一批提醒） |
+| `next_run_time=now` | 不设的话第一次 tick 要等满一个间隔；设了才等价于旧的「启动即查一遍」 |
+
+注册时机：**import 期**即可（scheduler 还没 start 也能 `add_job`，APScheduler 会先放进 `_pending_jobs`，start 时补齐）。插件禁用时不要注册（用 `if config.xxx_enable:` 圈住，或把模块放进启用分支里 import）——`require` + 停用开关的组合见 §9。
+
+两条容易踩的坑：
+
+1. **取不到 bot 就跳过整轮，绝不能算作「某条提醒执行失败」**。`get_bot()` 在没有可用连接时**抛 `ValueError`**（不是返回 None，`if not bot` 永远不成立），如果这个异常落到「发送失败」的处理里，就会：白占重试次数、并且在离线期间每 tick 给每条待发提醒写一行失败日志。
+
+```python
+async def tick(self):
+    try:
+        bot = get_bot()
+    except Exception as e:
+        logger.warning(f"没有可用 bot，本轮跳过: {e}")
+        return
+    ...
+```
+2. 重试计数要在**数据库里**递增（`execution_count = execution_count + 1`），不要依赖本轮开头读到的快照——失败路径下那个快照永远是旧值，上限就永远到不了。
+
 
 ## 9. 插件启停控制
 
@@ -999,7 +1052,18 @@ async with get_session() as session:      # 异常时 get_session 已代为 roll
         raise
 ```
 
-**调度器循环错误处理**：
+**轮询任务的错误处理（优先用 apscheduler，见 §8.4）**：
+
+```python
+# ✅ 首选：把「一轮」暴露成 tick()，注册成 interval job；异常在 tick 里自吞
+async def tick(self):
+    try:
+        await self._check_and_execute()
+    except Exception as e:
+        logger.error(f"[my_plugin] 调度器错误: {e}")
+```
+
+只有确实需要「跑完再睡、连轴转」这类 apscheduler 表达不了的节奏时，才用下面这个自建循环模板——那就必须自己管好起停（`on_startup` 起 + `on_shutdown` 停，否则 `stop()` 漏调会留一个永不退出的任务）：
 
 ```python
 while self.running:
@@ -1065,7 +1129,8 @@ async def _(bot: Bot):
 | [group_sentinel](../../../src/plugins/group_sentinel) | 权限点注册, 禁用模式, on_request, 启动钩子 | 生产级多模式插件 |
 | [permission_manager](../../../src/plugins/permission_manager) | 多模块包拆分（runtime 共享 matcher / dispatch 子命令分发 / 完整 DB CRUD / 缓存失效 / matcher.got 二次确认） | 权限系统集成 |
 | [logging_info](../../../src/plugins/logging_info) | on_message 监听, DAO 模式, 事件序列化 | 消息日志机器人 |
-| [todo_reminder](../../../src/plugins/todo_reminder) | 多模块插件, 自然语言解析, 调度器集成 | 复杂业务逻辑 |
+| [todo_reminder](../../../src/plugins/todo_reminder) | 多模块插件, 自然语言解析, apscheduler interval job（见 §8.4）, 重试计数 | 复杂业务逻辑 |
+| [ack_manager](../../../src/plugins/ack_manager) | on_notice 表情追踪, apscheduler interval job, 阶段化提醒（DB 游标 `reminder_stage`） | 定时轮询 + 状态机 |
 | [group_file_manager](../../../src/plugins/group_file_manager) | 禁用模式, on_notice (upload), 条件导入, FK 迁移 | 文件管理 + 条件加载 |
 | [auto_manage_group](../../../src/plugins/auto_manage_group) | 权限集成, on_notice (join/leave), 多特性 | 功能完整的群管理 |
 | [rate_limiter_middleware](../../../src/plugins/rate_limiter_middleware) | bot.send/call_api 挂钩, 双权限点(manage/view)闸 | 全局开关类插件参考 |

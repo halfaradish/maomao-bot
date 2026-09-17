@@ -1,18 +1,34 @@
 """
 Todo提醒插件调度器
 负责定时检查和执行提醒
+
+轮询由 APScheduler 的 interval job 驱动（见 ``register_job``），不再自建
+``while + asyncio.sleep`` 循环：起停交给 ``nonebot_plugin_apscheduler``，
+本模块只提供「一轮检查」的入口 ``tick()``。
 """
 
-import asyncio
 from datetime import datetime, timedelta
 from typing import Dict, Any, List, Optional, Tuple
 
-from nonebot import logger, get_bot
+from nonebot import logger, get_bot, require
 from nonebot.adapters.onebot.v11 import Bot, MessageSegment
 from nonebot.adapters.onebot.v11.exception import ActionFailed
 
 from .database import TodoDatabase
 from .time_parser import TimeParser
+
+require("nonebot_plugin_apscheduler")
+# 别名：本包 __init__.py 里 `scheduler` 这个名字已经绑给了 ReminderScheduler 实例
+from nonebot_plugin_apscheduler import scheduler as aps_scheduler  # noqa: E402
+
+#: 检查任务的 job id（全局唯一，便于在日志/WebUI 里定位）
+TICK_JOB_ID = "todo_reminder_tick"
+#: tick 迟到多少秒内仍然补跑。APScheduler 默认只给 1 秒，而一轮检查里有发消息的
+#: 网络调用，必然超时——不显式放宽的话 tick 会被静默丢弃。
+TICK_MISFIRE_GRACE = 30
+#: 单条提醒的尝试次数上限（含首次投递）。失败也会计入 execution_count，
+#: 达到上限即标记为 failed，不再重试。
+MAX_ATTEMPTS = 3
 
 
 class ReminderScheduler:
@@ -21,55 +37,61 @@ class ReminderScheduler:
     def __init__(self, database: TodoDatabase, time_parser: TimeParser):
         self.database = database
         self.time_parser = time_parser
-        self.running = False
-        self.task = None
         self.check_interval = 60  # 检查间隔(秒)
-    
-    async def start(self):
-        """启动调度器"""
-        if self.running:
-            logger.warning("提醒调度器已在运行")
-            return
-        
-        self.running = True
-        self.task = asyncio.create_task(self._scheduler_loop())
-        logger.info("提醒调度器已启动")
-    
-    async def stop(self):
-        """停止调度器"""
-        if not self.running:
-            return
-        
-        self.running = False
-        if self.task:
-            self.task.cancel()
-            try:
-                await self.task
-            except asyncio.CancelledError:
-                pass
-        
-        logger.info("提醒调度器已停止")
-    
-    async def _scheduler_loop(self):
-        """调度器主循环"""
-        while self.running:
-            try:
-                await self._check_and_execute_reminders()
-                await asyncio.sleep(self.check_interval)
-            except asyncio.CancelledError:
-                break
-            except Exception as e:
-                logger.error(f"提醒调度器错误: {e}")
-                await asyncio.sleep(self.check_interval)
-    
+
+    async def tick(self):
+        """执行一轮检查（apscheduler 的 job 目标）
+
+        异常自己吞掉：job 抛异常不会终止后续调度，但会在 apscheduler 日志里刷
+        traceback，且与旧的「出错继续下一轮」语义不符。
+        """
+        try:
+            await self._check_and_execute_reminders()
+        except Exception as e:
+            logger.error(f"提醒调度器错误: {e}")
+
+    def is_running(self) -> bool:
+        """任务是否已注册（供 main.is_scheduler_ready 判断）"""
+        return aps_scheduler.get_job(TICK_JOB_ID) is not None
+
+    def register_job(self) -> None:
+        """把「一轮检查」注册成 APScheduler 的 interval job
+
+        幂等（``replace_existing=True``），可以安全地被 on_startup 与 /todo 的
+        兜底路径重复调用。本模块只在插件启用分支被 import，所以「禁用 ⇒ 不注册」
+        自动成立；起停由 ``nonebot_plugin_apscheduler`` 接管。
+        """
+        aps_scheduler.add_job(
+            self.tick,
+            "interval",
+            seconds=self.check_interval,
+            # 启动即跑一次，保持旧循环「起来就先查一遍」的语义
+            next_run_time=datetime.now(aps_scheduler.timezone),
+            id=TICK_JOB_ID,
+            replace_existing=True,
+            misfire_grace_time=TICK_MISFIRE_GRACE,
+            coalesce=True,
+            max_instances=1,
+        )
+        logger.info(f"Todo提醒任务已注册: id={TICK_JOB_ID}, 每 {self.check_interval} 秒一次")
+
     async def _check_and_execute_reminders(self):
         """检查并执行到期的提醒"""
         try:
             current_time = datetime.now()
-            
+
+            # bot 取一次给两趟用：取不到就整轮跳过。
+            # 注意：绝不能让「没有可用 bot」变成某条提醒的执行失败——那会白占
+            # 重试次数、还会在离线期间每 tick 写一堆 failed 日志。
+            try:
+                bot = get_bot()
+            except Exception as e:
+                logger.warning(f"无法获取机器人实例，本轮提醒跳过: {e}")
+                return
+
             # 1. 检查需要发送提前提醒的提醒
-            await self._check_and_send_advance_reminders(current_time)
-            
+            await self._check_and_send_advance_reminders(bot, current_time)
+
             # 2. 获取待执行的提醒
             pending_reminders = await self.database.get_pending_reminders(limit=100)
             if not pending_reminders:
@@ -79,7 +101,7 @@ class ReminderScheduler:
             
             for reminder in pending_reminders:
                 try:
-                    await self._execute_reminder(reminder)
+                    await self._execute_reminder(bot, reminder)
                 except Exception as e:
                     logger.error(f"执行提醒失败 {reminder['id']}: {e}")
                     # 尝试重试失败的提醒
@@ -88,7 +110,7 @@ class ReminderScheduler:
         except Exception as e:
             logger.error(f"检查提醒时发生错误: {e}")
     
-    async def _check_and_send_advance_reminders(self, current_time: datetime):
+    async def _check_and_send_advance_reminders(self, bot: Bot, current_time: datetime):
         """检查并发送提前提醒"""
         try:
             # 获取需要发送提前提醒的提醒列表
@@ -97,12 +119,6 @@ class ReminderScheduler:
                 return
             
             logger.info(f"检查到 {len(advance_reminders)} 个需要发送提前提醒的提醒")
-            
-            # 获取机器人实例
-            bot = get_bot()
-            if not bot:
-                logger.error("无法获取机器人实例，跳过提前提醒")
-                return
             
             for reminder in advance_reminders:
                 try:
@@ -197,56 +213,42 @@ class ReminderScheduler:
         return message
     
     async def _handle_failed_reminder(self, reminder: Dict[str, Any], error_message: str):
-        """处理失败的提醒，决定是否重试"""
+        """处理失败的提醒，决定是否重试
+
+        每次尝试（含失败）都会把 ``execution_count`` 原子 +1，所以它是「尝试次数」
+        而不是「成功次数」；达到 :data:`MAX_ATTEMPTS` 就标记 failed、不再重试。
+        """
         try:
-            # 获取当前执行次数
-            execution_count = reminder.get('execution_count', 0) or 0
-            
-            # 检查配置（从 Config 类获取，这里使用默认值）
-            max_retry_attempts = 3  # 可以从 config 获取
-            retry_failed_reminders = True  # 可以从 config 获取
-            
-            if not retry_failed_reminders:
-                # 如果配置不允许重试，直接标记为失败
-                await self.database.update_reminder_status(
-                    reminder['id'], 'failed', error_message
-                )
-                await self.database.log_reminder_execution(
-                    reminder['id'], 'failed', error_message
-                )
-                return
-            
-            if execution_count < max_retry_attempts:
-                # 还可以重试，重新设置为 pending 状态，等待下次执行
-                # 注意：这里不更新 execution_count，让下次执行时再更新
-                logger.info(f"提醒 {reminder['id']} 执行失败，将重试 (第 {execution_count + 1}/{max_retry_attempts} 次)")
-                # 保持 pending 状态，等待下次执行
-                await self.database.log_reminder_execution(
-                    reminder['id'], 'failed', error_message, execution_duration=None
+            # 递增并取回自增后的值：计数必须在数据库里做，不能依赖本轮快照
+            # （快照是这一轮开始时读的，失败路径下永远是旧值）
+            attempts = await self.database.increment_execution_count(reminder['id'])
+
+            if attempts < MAX_ATTEMPTS:
+                # 还可以重试：保持 pending 状态，等待下次执行
+                logger.info(
+                    f"提醒 {reminder['id']} 执行失败，将重试 "
+                    f"(第 {attempts}/{MAX_ATTEMPTS} 次)"
                 )
             else:
-                # 超过最大重试次数，标记为失败
-                logger.error(f"提醒 {reminder['id']} 超过最大重试次数，标记为失败")
+                # 达到尝试上限，标记为失败（error_message 一并落库）
+                logger.error(
+                    f"提醒 {reminder['id']} 已尝试 {attempts} 次仍失败，标记为失败"
+                )
                 await self.database.update_reminder_status(
                     reminder['id'], 'failed', error_message
                 )
-                await self.database.log_reminder_execution(
-                    reminder['id'], 'failed', error_message
-                )
+
+            await self.database.log_reminder_execution(
+                reminder['id'], 'failed', error_message, execution_duration=None
+            )
         except Exception as e:
             logger.error(f"处理失败提醒时发生错误: {e}")
     
-    async def _execute_reminder(self, reminder: Dict[str, Any]):
+    async def _execute_reminder(self, bot: Bot, reminder: Dict[str, Any]):
         """执行单个提醒"""
         start_time = datetime.now()
         
         try:
-            # 获取机器人实例
-            bot = get_bot()
-            if not bot:
-                logger.error("无法获取机器人实例")
-                return
-            
             # 根据提醒类型发送消息
             if reminder['target_user_id'] == -1:
                 # @全体成员提醒
@@ -529,8 +531,14 @@ class ReminderScheduler:
             if reminder['status'] != 'pending':
                 logger.warning(f"提醒状态不是pending: {reminder_id}")
                 return False
-            
-            await self._execute_reminder(reminder)
+
+            try:
+                bot = get_bot()
+            except Exception as e:
+                logger.warning(f"无法获取机器人实例，立即执行取消: {e}")
+                return False
+
+            await self._execute_reminder(bot, reminder)
             return True
             
         except Exception as e:
@@ -548,9 +556,11 @@ class ReminderScheduler:
             return 0
     
     def get_scheduler_status(self) -> Dict[str, Any]:
-        """获取调度器状态"""
+        """获取调度器状态（job 由 apscheduler 持有，这里只做只读映射）"""
+        job = aps_scheduler.get_job(TICK_JOB_ID)
         return {
-            "running": self.running,
+            "running": job is not None,
             "check_interval": self.check_interval,
-            "task_running": self.task is not None and not self.task.done() if self.task else False
+            "task_running": job is not None,
+            "job_id": TICK_JOB_ID,
         }

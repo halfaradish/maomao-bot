@@ -28,10 +28,10 @@ scheduler_started = False
 
 # 启动调度器
 async def start_scheduler():
-    """启动提醒调度器"""
+    """确保提醒任务已注册（幂等；起停由 apscheduler 插件接管）"""
     global scheduler_started
     try:
-        await scheduler.start()
+        scheduler.register_job()
         scheduler_started = True
         logger.info("Todo提醒调度器启动成功")
     except Exception as e:
@@ -40,8 +40,8 @@ async def start_scheduler():
 
 # 检查调度器状态
 def is_scheduler_ready():
-    """检查调度器是否已启动"""
-    return scheduler_started and scheduler.running
+    """检查提醒任务是否已注册"""
+    return scheduler_started and scheduler.is_running()
 
 async def create_forward_message(bot: Bot, event: Event, text: str, bot_name: str = "谛听"):
     """发送转发消息格式（节点构造与发送委托 common；失败降级为普通消息）"""
